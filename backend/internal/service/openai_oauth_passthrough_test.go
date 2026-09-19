@@ -81,8 +81,10 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 	if len(u.responses) > 0 {
 		resp := u.responses[0]
 		u.responses = u.responses[1:]
+		ObserveHTTPUpstreamResponse(req, resp)
 		return resp, nil
 	}
+	ObserveHTTPUpstreamResponse(req, u.resp)
 	return u.resp, nil
 }
 

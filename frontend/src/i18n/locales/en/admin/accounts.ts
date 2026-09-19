@@ -1,5 +1,17 @@
 export default {
     accounts: {
+      ticketPolicy: 'Requests without a ticket',
+      ticketInherit: 'Follow global default',
+      ticketAllow: 'Allow without ticket',
+      ticketDeny: 'Require ticket',
+      ticketEffective: 'Effective policy: {policy}',
+      ticketDisabled: 'Ticket enforcement is disabled globally',
+      ticketPolicyLoadError: 'Unable to load global ticket settings',
+      testTextPrompt: 'Test prompt',
+      testTextPromptHint: 'Leave empty to use the default test prompt',
+      upstreamHeaders: 'Upstream response headers',
+      upstreamHeadersEmpty: 'No upstream response headers received yet',
+
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',

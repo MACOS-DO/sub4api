@@ -66,16 +66,18 @@
         />
       </div>
 
-      <div v-if="supportsImageTest" class="space-y-1.5">
+      <div class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="t('admin.accounts.imagePromptLabel')"
-          :placeholder="t('admin.accounts.imagePromptPlaceholder')"
-          :hint="t('admin.accounts.imageTestHint')"
+          :label="t(supportsImageTest ? 'admin.accounts.imagePromptLabel' : 'admin.accounts.testTextPrompt')"
+          :placeholder="t(supportsImageTest ? 'admin.accounts.imagePromptPlaceholder' : 'admin.accounts.testTextPromptHint')"
+          :hint="t(supportsImageTest ? 'admin.accounts.imageTestHint' : 'admin.accounts.testTextPromptHint')"
           :disabled="status === 'connecting'"
           rows="3"
         />
       </div>
+
+      <AccountTestResponseHeaders :responses="upstreamResponses" />
 
       <!-- Terminal Output -->
       <div class="group relative">
@@ -242,6 +244,9 @@
 </template>
 
 <script setup lang="ts">
+import AccountTestResponseHeaders from '@/components/account/AccountTestResponseHeaders.vue'
+import type { AccountTestUpstreamResponse } from '@/components/account/accountTestResponse'
+
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -283,6 +288,7 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+const upstreamResponses = ref<AccountTestUpstreamResponse[]>([])
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
@@ -372,6 +378,7 @@ const loadAvailableModels = async () => {
 }
 
 const resetState = () => {
+  upstreamResponses.value = []
   status.value = 'idle'
   outputLines.value = []
   streamingContent.value = ''
@@ -430,7 +437,7 @@ const startTest = async () => {
       },
       body: JSON.stringify({
         model_id: selectedModelId.value,
-        prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
+        prompt: testPrompt.value.trim(),
         mode: isOpenAIAccount.value ? testMode.value : 'default'
       }),
       signal: abortController.signal
@@ -489,9 +496,13 @@ const handleEvent = (event: {
   success?: boolean
   error?: string
   image_url?: string
+  data?: AccountTestUpstreamResponse
   mime_type?: string
 }) => {
   switch (event.type) {
+    case 'upstream_response':
+      if (event.data) upstreamResponses.value.push(event.data)
+      break
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {

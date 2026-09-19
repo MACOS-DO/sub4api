@@ -897,6 +897,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else if s != nil && s.cfg != nil {
 		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
 	}
+	if v, ok := settings[SettingKeyOpenAICodexTicketAllowWithoutTicket]; ok && v != "" {
+		result.OpenAICodexTicketAllowWithoutTicket = v == "true"
+	} else if s != nil && s.cfg != nil {
+		result.OpenAICodexTicketAllowWithoutTicket = !s.cfg.Gateway.OpenAICodexTicket.FailClosed
+	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]

@@ -29,6 +29,7 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
+			ObserveHTTPUpstreamResponse(request, response)
 			return response, err
 		}
 	}
