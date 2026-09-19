@@ -67,7 +67,8 @@ func TestHTTPUpstreamObserverPreservesWireCompressionHeaders(t *testing.T) {
 				server.EnableHTTP2 = protocol == "http2"
 				server.StartTLS()
 				defer server.Close()
-				upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+				upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+				require.True(t, ok)
 				var entry *upstreamClientEntry
 				var err error
 				profile := &tlsfingerprint.Profile{Name: "diagnostics-test"}
@@ -77,7 +78,8 @@ func TestHTTPUpstreamObserverPreservesWireCompressionHeaders(t *testing.T) {
 					entry, err = upstream.getClientEntry("", 41, 1, service.HTTPUpstreamProfileDefault, false, false)
 				}
 				require.NoError(t, err)
-				transport := entry.client.Transport.(*http.Transport)
+				transport, ok := entry.client.Transport.(*http.Transport)
+				require.True(t, ok)
 				defer transport.CloseIdleConnections()
 				roots := x509.NewCertPool()
 				roots.AddCert(server.Certificate())
@@ -107,7 +109,7 @@ func TestHTTPUpstreamObserverPreservesWireCompressionHeaders(t *testing.T) {
 					resp, err = upstream.Do(req, "", 41, 1)
 				}
 				require.NoError(t, err)
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 				if protocol == "http2" {
 					require.Equal(t, 2, resp.ProtoMajor)
 				}
@@ -143,7 +145,8 @@ func TestHTTPUpstreamObserverPreservesWireCompressionHeaders(t *testing.T) {
 func TestHTTPUpstreamObserverRecordsEveryGrokFallbackResponse(t *testing.T) {
 	for _, fallbackStatus := range []int{200, 403, 502, 0} {
 		t.Run(strconv.Itoa(fallbackStatus), func(t *testing.T) {
-			upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+			upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+			require.True(t, ok)
 			entry, err := upstream.getClientEntry("", 41, 1, service.HTTPUpstreamProfileDefault, false, false)
 			require.NoError(t, err)
 			wireBody := diagnosticsGzip(t, `{"error":"Access denied"}`)
@@ -170,7 +173,7 @@ func TestHTTPUpstreamObserverRecordsEveryGrokFallbackResponse(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer test-token")
 			resp, err := upstream.Do(req, "", 41, 1)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, 2, calls, "compressed access-denied body must still trigger fallback")
@@ -207,7 +210,8 @@ func TestHTTPUpstreamObserverRedirectsAndRepeatedRequests(t *testing.T) {
 		_, _ = io.WriteString(w, "ok")
 	}))
 	defer server.Close()
-	upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+	upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+	require.True(t, ok)
 	var events []service.AccountTestUpstreamResponse
 	ctx := diagnosticsContext(&events)
 	for range 2 {
@@ -250,10 +254,12 @@ func TestHTTPUpstreamObserverPreservesEncodingNegotiation(t *testing.T) {
 				_, _ = io.WriteString(w, "plain")
 			}))
 			defer server.Close()
-			upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+			upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+			require.True(t, ok)
 			entry, err := upstream.getClientEntry("", 41, 1, service.HTTPUpstreamProfileDefault, false, false)
 			require.NoError(t, err)
-			transport := entry.client.Transport.(*http.Transport)
+			transport, ok := entry.client.Transport.(*http.Transport)
+			require.True(t, ok)
 			transport.DisableCompression = tc.disableCompression
 			defer transport.CloseIdleConnections()
 			var events []service.AccountTestUpstreamResponse
@@ -303,7 +309,8 @@ func TestHTTPUpstreamObserverLeavesUnobservedClientAlone(t *testing.T) {
 }
 
 func TestHTTPUpstreamObserverDoesNotInventNetworkResponses(t *testing.T) {
-	upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+	upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+	require.True(t, ok)
 	entry, err := upstream.getClientEntry("", 41, 1, service.HTTPUpstreamProfileDefault, false, false)
 	require.NoError(t, err)
 	entry.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {

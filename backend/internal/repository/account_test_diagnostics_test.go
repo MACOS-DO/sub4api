@@ -43,7 +43,8 @@ func TestAccountTestDiagnosticsThroughRealHTTPUpstream(t *testing.T) {
 					"expires_at": time.Now().Add(time.Hour).Format(time.RFC3339),
 				},
 			}
-			upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+			upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+			require.True(t, ok)
 			isolation := upstream.getIsolationMode()
 			profile := service.HTTPUpstreamProfileDefault
 			protocolMode := upstream.resolveProtocolMode(profile, directProxyKey, nil)

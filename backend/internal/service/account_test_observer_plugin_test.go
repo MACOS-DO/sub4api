@@ -60,7 +60,7 @@ func TestAccountTestObserverRecordsPluginResponseOnce(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := svc.doOpenAIAccountTestUpstream(req, "", &Account{ID: 41, Platform: PlatformOpenAI, Type: AccountTypeOAuth}, true)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Len(t, events, 1)
