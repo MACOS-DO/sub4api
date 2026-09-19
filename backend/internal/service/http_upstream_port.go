@@ -8,6 +8,8 @@ import (
 
 // HTTPUpstream 上游 HTTP 请求接口
 // 用于向上游 API（Claude、OpenAI、Gemini 等）发送请求
+// Implementations notify the optional context observer before changing or
+// discarding each response, including responses consumed by internal retries.
 type HTTPUpstream interface {
 	// Do 执行 HTTP 请求（不启用 TLS 指纹）
 	Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error)

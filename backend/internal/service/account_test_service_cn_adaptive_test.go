@@ -290,3 +290,20 @@ func TestAccountTestService_AnthropicProtocol401MarksAccountError(t *testing.T) 
 	repo := svc.accountRepo.(*openAIAccountTestRepo)
 	require.Equal(t, account.ID, repo.setErrorID)
 }
+
+func TestAccountTestServiceAdaptivePromptAndAllResponseHeaders(t *testing.T) {
+	account := adaptiveCNAccountTestAccount(391, PlatformDeepseek)
+	responses := []*http.Response{adaptiveCNChatTestResponse(), adaptiveCNAnthropicTestResponse(), adaptiveCNResponsesTestResponse()}
+	for _, resp := range responses {
+		resp.Header["X-Multi"] = []string{"one", "two"}
+	}
+	svc, upstream := adaptiveCNAccountTestService(account, responses...)
+	c, recorder := newTestContext()
+	prompt := "请解释代码\n第二行"
+	require.NoError(t, svc.TestAccountConnection(c, account.ID, "deepseek-chat", prompt, AccountTestModeDefault))
+	require.Equal(t, prompt, gjson.GetBytes(upstream.bodies[0], "messages.0.content").String())
+	require.Equal(t, prompt, gjson.GetBytes(upstream.bodies[1], "messages.0.content.0.text").String())
+	require.Equal(t, prompt, gjson.GetBytes(upstream.bodies[2], "input.0.content.0.text").String())
+	require.Equal(t, 3, strings.Count(recorder.Body.String(), `"type":"upstream_response"`))
+	require.Equal(t, 3, strings.Count(recorder.Body.String(), `"X-Multi":["one","two"]`))
+}

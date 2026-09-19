@@ -324,6 +324,28 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('saves explicit ticket exceptions and clears them when restoring inheritance', async () => {
+    const account = buildAccount()
+    account.platform = 'openai'
+    account.type = 'oauth'
+    account.extra = { codex_allow_without_ticket: false, unrelated: 'keep' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const field = wrapper.findComponent({ name: 'CodexTicketPolicyField' })
+    expect(field.exists()).toBe(true)
+    expect(field.props('modelValue')).toBe('deny')
+    await field.get('select').setValue('allow')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ codex_allow_without_ticket: true, unrelated: 'keep' })
+    updateAccountMock.mockClear()
+    await field.get('select').setValue('inherit')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_allow_without_ticket')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.unrelated).toBe('keep')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
   })

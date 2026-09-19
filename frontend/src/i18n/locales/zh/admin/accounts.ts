@@ -1,5 +1,17 @@
 export default {
     accounts: {
+      ticketPolicy: '无票请求策略',
+      ticketInherit: '跟随全局',
+      ticketAllow: '允许无票',
+      ticketDeny: '禁止无票',
+      ticketEffective: '当前生效：{policy}',
+      ticketDisabled: '票据总开关已关闭，不限制无票请求',
+      ticketPolicyLoadError: '无法读取全局票据设置',
+      testTextPrompt: '测试提示词',
+      testTextPromptHint: '留空使用默认测试提示词',
+      upstreamHeaders: '上游响应头',
+      upstreamHeadersEmpty: '尚未收到上游响应头',
+
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',

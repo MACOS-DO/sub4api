@@ -2,7 +2,7 @@
 
 ## 已有 Docker Compose
 
-只替换应用镜像为 `ghcr.io/macos-do/sub4api:0.2.7`（或 `latest`），保留原服务、网络、卷、数据库参数和挂载路径。不要执行 `down -v`，也不要将新 Compose 的卷名直接套在旧安装上。
+只替换应用镜像为 `ghcr.io/macos-do/sub4api:0.2.8`（或 `latest`），保留原服务、网络、卷、数据库参数和挂载路径。不要执行 `down -v`，也不要将新 Compose 的卷名直接套在旧安装上。
 
 镜像同时支持 `/app/sub4api`、旧路径 `/app/sub2api`，以及 `sub4api`、`sub2api` 用户名（相同 UID/GID 1000）。旧 `SUB2API_*` 环境变量仍有效；显式 `SUB4API_*` 值优先，包括显式空值。配置搜索先检查 `/etc/sub4api`，再检查 `/etc/sub2api`，原有 `CONFIG_FILE`、`DATA_DIR` 和 `/app/data` 优先级不变。
 

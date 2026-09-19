@@ -142,7 +142,7 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 			exp := ticket.ExpiresAt
 			status.ExpiresAt = &exp
 		}
-		status.Blocked = cfg.FailClosed && !status.Ready
+		status.Blocked = !OpenAICodexAllowsWithoutTicket(account, !cfg.FailClosed) && !status.Ready
 		out = append(out, status)
 	}
 	return out
@@ -303,7 +303,7 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 		h.Set(openAICodexTurnStateHeader, ticket.State)
 		return nil
 	}
-	if !cfg.FailClosed {
+	if s.openAICodexAllowsWithoutTicket(ctx, account) {
 		return nil
 	}
 	return ErrOpenAICodexTicketUnavailable
@@ -346,7 +346,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 		return false
 	}
 	cfg := s.openAICodexTicketConfig()
-	if !cfg.FailClosed {
+	if s.openAICodexAllowsWithoutTicket(context.Background(), account) {
 		return false
 	}
 	model := normalizeOpenAICodexTicketModel(outboundModel)
@@ -679,4 +679,22 @@ func RedactOpenAICodexTicketExtra(extra map[string]any) map[string]any {
 		}
 	}
 	return redacted
+}
+
+// OpenAICodexAllowsWithoutTicket applies an explicit account override to the global default.
+func OpenAICodexAllowsWithoutTicket(account *Account, globalDefault bool) bool {
+	if account != nil {
+		if allow, ok := account.Extra["codex_allow_without_ticket"].(bool); ok {
+			return allow
+		}
+	}
+	return globalDefault
+}
+
+func (s *OpenAIGatewayService) openAICodexAllowsWithoutTicket(ctx context.Context, account *Account) bool {
+	allow := !s.openAICodexTicketConfig().FailClosed
+	if s.settingService != nil {
+		allow = s.settingService.GetOpenAICodexTicketAllowWithoutTicket(ctx, allow)
+	}
+	return OpenAICodexAllowsWithoutTicket(account, allow)
 }

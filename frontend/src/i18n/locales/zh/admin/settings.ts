@@ -536,6 +536,8 @@ export default {
         openaiCodexVersionAutoSyncHint: '每 6 小时从官方仓库获取最新稳定版客户端版本号，无需为了跟版本而升级本服务。关闭后仅使用上方手填版本或内置版本。',
         openaiCodexVersionSyncedValue: '当前同步到：{version}',
         codexHardeningTitle: 'Codex 设置',
+        codexTicketAllowWithoutTicket: '默认允许无票请求',
+        codexTicketAllowWithoutTicketDesc: '账号未单独设置时使用此策略；关闭表示需要有效票据，账号可以单独设置例外。',
         codexTicketEnabled: '292 打票',
         codexTicketEnabledDesc:
           '关闭后不打票、不注入 x-codex-turn-state，按原链路转发。开启后后台打票，并在业务请求中覆盖该头。',

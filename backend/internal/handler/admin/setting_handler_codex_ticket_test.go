@@ -46,3 +46,20 @@ func TestSettingsCodexTicketRejectInvalidProxyWithoutLeakingPassword(t *testing.
 	require.NotContains(t, rec.Body.String(), "invalid-secret")
 	require.Equal(t, "http://previous.example.com:8080", repo.values[key])
 }
+
+func TestSettingsCodexTicketAllowWithoutTicketRoundTrip(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketAllowWithoutTicket
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{key: "false"})
+	require.False(t, h.settingService.GetOpenAICodexTicketAllowWithoutTicket(context.Background(), true))
+	rec := doUpdateSettings(t, h, map[string]any{key: true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "true", repo.values[key])
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_allow_without_ticket":true`)
+	require.True(t, h.settingService.GetOpenAICodexTicketAllowWithoutTicket(context.Background(), false))
+	rec = doUpdateSettings(t, h, map[string]any{}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "true", repo.values[key], "omitting the field preserves the saved policy")
+	rec = doUpdateSettings(t, h, map[string]any{key: false}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.False(t, h.settingService.GetOpenAICodexTicketAllowWithoutTicket(context.Background(), true))
+}

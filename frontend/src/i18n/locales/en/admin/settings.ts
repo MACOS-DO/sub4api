@@ -543,6 +543,8 @@ export default {
         openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
         openaiCodexVersionSyncedValue: 'Currently synced: {version}',
         codexHardeningTitle: "Codex Settings",
+        codexTicketAllowWithoutTicket: 'Allow requests without tickets by default',
+        codexTicketAllowWithoutTicketDesc: 'Used when an account has no override. When disabled, a valid ticket is required. Accounts can override this default.',
         codexTicketEnabled: "292 ticket harvest",
         codexTicketEnabledDesc:
           "When off, the gateway neither harvests nor injects x-codex-turn-state and forwards traffic as usual. When on, it harvests tickets in the background and overwrites that header on production requests.",
