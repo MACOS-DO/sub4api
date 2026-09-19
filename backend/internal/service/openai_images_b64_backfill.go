@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/util/urlvalidator"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )

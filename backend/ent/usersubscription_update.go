@@ -11,11 +11,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/usagelog"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/MACOS-DO/sub4api/ent/group"
+	"github.com/MACOS-DO/sub4api/ent/predicate"
+	"github.com/MACOS-DO/sub4api/ent/usagelog"
+	"github.com/MACOS-DO/sub4api/ent/user"
+	"github.com/MACOS-DO/sub4api/ent/usersubscription"
 )
 
 // UserSubscriptionUpdate is the builder for updating UserSubscription entities.

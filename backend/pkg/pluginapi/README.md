@@ -1,4 +1,4 @@
-# Sub2API 本地插件协议
+# Sub4API 本地插件协议
 
 本目录是插件开发者可以依赖的公开契约。`v1/plugin.proto` 和 `v1/runtime.go` 定义进程协议，`v1/manifest.schema.json` 定义包清单，`docs/` 记录开发和发布规范。Provider 私有实现不应放入本目录。
 
@@ -11,13 +11,13 @@
 
 ## 实体与运行方式
 
-插件的交付实体是一个 `.s2plugin` 文件，本质上是带清单、签名、独立可执行文件和静态 UI 的 ZIP 包。管理员在独立的插件管理页手动上传，Sub2API 不从网络自动下载插件，也不要求 Docker。
+插件的交付实体是一个 `.s2plugin` 文件，本质上是带清单、签名、独立可执行文件和静态 UI 的 ZIP 包。管理员在独立的插件管理页手动上传，Sub4API 不从网络自动下载插件，也不要求 Docker。
 
-启用后，Sub2API 以子进程方式拉起当前操作系统和 CPU 架构对应的二进制，通过本机 gRPC 流传递请求与响应。插件进程退出时会随 Sub2API 清理；停用时先停止接收新请求，再等待正在处理的请求结束。
+启用后，Sub4API 以子进程方式拉起当前操作系统和 CPU 架构对应的二进制，通过本机 gRPC 流传递请求与响应。插件进程退出时会随 Sub4API 清理；停用时先停止接收新请求，再等待正在处理的请求结束。
 
 多实例部署不要求共享插件目录。宿主会在数据库保存已验签的原始插件包，各实例缺少本地文件时会重新验签和解包，并周期性对齐启用状态、灰度比例和加密配置。所有实例必须连接同一数据库并使用相同的加密密钥。
 
-独立进程是代码和发布边界，不是操作系统安全沙箱。插件拥有 Sub2API 服务用户所拥有的文件和网络权限，因此只应安装可信发布者的签名包。闭源二进制可提高源码分发门槛，但不能承诺无法反编译。
+独立进程是代码和发布边界，不是操作系统安全沙箱。插件拥有 Sub4API 服务用户所拥有的文件和网络权限，因此只应安装可信发布者的签名包。闭源二进制可提高源码分发门槛，但不能承诺无法反编译。
 
 ## 初期能力边界
 
@@ -26,8 +26,8 @@
 - 仅匹配 `platform=openai` 且 `account_type=oauth` 的上游 HTTP 请求。
 - API Key 账号、其他 provider、OAuth 登录与 Token 刷新流程不进入插件。
 - 插件建立真实的上游 HTTP/TLS 连接并返回原始 HTTP 响应。
-- 命中插件的 OAuth WebSocket 账号会使用 Sub2API 现有 HTTP Bridge，不直接建立上游 WebSocket，避免绕过 v1 HTTP 插件协议。
-- Sub2API 继续负责响应状态处理、SSE 解析、错误映射、用量统计、计费和下游输出。
+- 命中插件的 OAuth WebSocket 账号会使用 Sub4API 现有 HTTP Bridge，不直接建立上游 WebSocket，避免绕过 v1 HTTP 插件协议。
+- Sub4API 继续负责响应状态处理、SSE 解析、错误映射、用量统计、计费和下游输出。
 - 灰度比例以账号 ID 稳定分桶，未命中的 OAuth 账号继续使用原有内置路径。
 
 ## 宿主服务（HostService）
@@ -65,9 +65,9 @@ ui/assets/...
 
 清单必须同时声明：
 
-- `requires.sub2api`：允许的 Sub2API 语义化版本范围。
-- `requires.recommended_sub2api_version`：建议使用的宿主版本。
-- `requires.tested_sub2api_versions`：发布者实际验证过的宿主版本。
+- `requires.sub4api`：允许的 Sub4API 语义化版本范围。
+- `requires.recommended_sub4api_version`：建议使用的宿主版本。
+- `requires.tested_sub4api_versions`：发布者实际验证过的宿主版本。
 - `plugin_protocol`、`transport_api`、`ui_bridge`：三个独立协议版本。
 
 宿主版本超出范围时，插件可以安装并查看，但保持“不兼容”状态且不能启用。版本在范围内但未列入已测试版本时，管理员必须再次确认才能启用。
@@ -88,7 +88,7 @@ UI 可以发送以下消息。消息按语义分层，鉴权与副作用一致�
 
 每个请求消息带 `request_id`，宿主以 `<type>.result` 返回结果。
 
-- 配置整体使用 Sub2API 的密钥加密后存入数据库；运行中插件会先验证并应用新配置，数据库写入失败时恢复旧配置。
+- 配置整体使用 Sub4API 的密钥加密后存入数据库；运行中插件会先验证并应用新配置，数据库写入失败时恢复旧配置。
 - `config.test` 的结果由插件 UI 自行展示（内联或经 `ui.notify`），宿主不再对成功结果强制弹出提示，避免插件把它当作轻量状态轮询时刷屏。
 - `plugin.status` 是通用的**只读**状态通道：宿主经 `GET /admin/plugins/:id/status` 调用运行中插件的 `Health`，返回 `{healthy, message, status_json}`。`status_json` 是插件自定义的**不透明** JSON 快照（宿主不解析、不参与健康判定），插件必须以无副作用方式生成（不得应用配置、访问上游或触发探测），因此该端点只读、免二次验证。插件未运行时返回 `healthy=false` 且不含 `status_json`。这样带状态面板的插件无需滥用 `config.test` 即可展示实时状态。
 
@@ -98,4 +98,4 @@ UI 可以发送以下消息。消息按语义分层，鉴权与副作用一致�
 - `v1/runtime.go`：Go 插件进程启动入口和宿主客户端声明。
 - `v1/manifest.schema.json`：`manifest.json` 的 JSON Schema。
 
-插件通过进程协议协作，不使用 Go 动态链接，也不要求插件与 Sub2API 使用相同编译器或共享内存 ABI。
+插件通过进程协议协作，不使用 Go 动态链接，也不要求插件与 Sub4API 使用相同编译器或共享内存 ABI。

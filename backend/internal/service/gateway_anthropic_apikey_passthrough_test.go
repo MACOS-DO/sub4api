@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/pkg/claude"
+	"github.com/MACOS-DO/sub4api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"

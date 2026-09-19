@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	pluginv1 "github.com/MACOS-DO/sub4api/pkg/pluginapi/v1"
 )
 
 const (
@@ -583,7 +583,7 @@ func (m *PluginManager) Enable(ctx context.Context, id int64, acceptUntested boo
 		return nil, errors.Join(errors.New(compatibility.Message), stateErr)
 	}
 	if !compatibility.Tested && !acceptUntested {
-		return nil, errors.New("插件未声明已测试当前 Sub2API 版本，需要管理员确认后启用")
+		return nil, errors.New("插件未声明已测试当前 Sub4API 版本，需要管理员确认后启用")
 	}
 	installation, err = m.ensureLocalInstallation(ctx, installation)
 	if err != nil {

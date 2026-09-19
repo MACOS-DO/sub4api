@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	_ "github.com/MACOS-DO/sub4api/ent/runtime"
+	"github.com/MACOS-DO/sub4api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -64,7 +64,7 @@ func TestMain(m *testing.M) {
 	pgContainer, err := tcpostgres.Run(
 		ctx,
 		postgresImage,
-		tcpostgres.WithDatabase("sub2api_test"),
+		tcpostgres.WithDatabase("sub4api_test"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
 		tcpostgres.BasicWaitStrategies(),
@@ -142,15 +142,15 @@ func dockerIsAvailable(ctx context.Context) bool {
 
 // selectDockerImage resolves the container image for the harness.
 //
-// SUB2API_TEST_POSTGRES_IMAGE overrides the PostgreSQL image so the suite can be
+// SUB4API_TEST_POSTGRES_IMAGE overrides the PostgreSQL image so the suite can be
 // run against the oldest documented-supported server, not just the newest. That
 // matters for SQL that behaves differently across major versions: jsonpath
 // .datetime() only accepts the ISO-8601 "Z" designator from PostgreSQL 17 on, so
 // a suite pinned to 18 cannot observe breakage on 14-16.
 //
-//	SUB2API_TEST_POSTGRES_IMAGE=postgres:15-alpine go test -tags integration ./internal/repository/
+//	SUB4API_TEST_POSTGRES_IMAGE=postgres:15-alpine go test -tags integration ./internal/repository/
 func selectDockerImage(ctx context.Context, preferred string) string {
-	if override := strings.TrimSpace(os.Getenv("SUB2API_TEST_POSTGRES_IMAGE")); override != "" &&
+	if override := strings.TrimSpace(os.Getenv("SUB4API_TEST_POSTGRES_IMAGE")); override != "" &&
 		strings.HasPrefix(preferred, "postgres:") {
 		return override
 	}

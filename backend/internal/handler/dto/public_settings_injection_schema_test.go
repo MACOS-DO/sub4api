@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/service"
 )
 
 // TestPublicSettingsInjectionPayload_SchemaDoesNotDrift guarantees the SSR

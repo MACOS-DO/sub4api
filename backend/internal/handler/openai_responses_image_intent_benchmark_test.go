@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/service"
 )
 
 var openAIResponsesImageIntentRoutingBenchmarkSink service.OpenAIEndpointCapability

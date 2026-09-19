@@ -70,7 +70,7 @@ func TestBuildUpstreamBillingRateSnapshotItemsPreservesAllAPIKeyPlatforms(t *tes
 
 func upstreamBillingProbeValidBody() io.ReadCloser {
 	return io.NopCloser(strings.NewReader(`{
-		"object":"sub2api.key_billing",
+		"object":"sub4api.key_billing",
 		"schema_version":1,
 		"billing_scope":"token",
 		"group_rate_multiplier":0.02,

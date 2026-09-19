@@ -10,7 +10,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/service"
 )
 
 const (

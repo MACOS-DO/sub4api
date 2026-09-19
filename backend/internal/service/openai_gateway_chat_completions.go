@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/MACOS-DO/sub4api/internal/pkg/apicompat"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/openai_compat"
+	"github.com/MACOS-DO/sub4api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -43,7 +43,7 @@ var cursorResponsesUnsupportedFields = []string{
 //
 // 历史背景：该函数原本对所有 OpenAI 账号无差别走 CC→Responses 转换 + /v1/responses
 // 端点——这在 OAuth（ChatGPT 内部 API 仅支持 Responses）和官方 APIKey 账号上是
-// 正确的，但 sub2api 接入 DeepSeek/Kimi/GLM 等第三方 OpenAI 兼容上游后假设破裂：
+// 正确的，但 sub4api 接入 DeepSeek/Kimi/GLM 等第三方 OpenAI 兼容上游后假设破裂：
 // 这些上游普遍只支持 /v1/chat/completions，无 /v1/responses 端点。
 //
 // 当前路由策略：

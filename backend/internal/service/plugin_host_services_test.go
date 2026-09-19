@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	pluginv1 "github.com/MACOS-DO/sub4api/pkg/pluginapi/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"

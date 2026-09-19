@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/payment"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/MACOS-DO/sub4api/internal/payment"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 )
 
 func TestNormalizeVisibleMethods(t *testing.T) {
@@ -817,7 +817,7 @@ func mustCreateFallbackSignedToken(t *testing.T, claims any) string {
 		t.Fatalf("marshal claims: %v", err)
 	}
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
-	mac := hmac.New(sha256.New, []byte("sub2api-payment-resume"))
+	mac := hmac.New(sha256.New, []byte("sub4api-payment-resume"))
 	_, _ = mac.Write([]byte(encodedPayload))
 	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return encodedPayload + "." + signature

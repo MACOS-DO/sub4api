@@ -1,8 +1,9 @@
 syntax = "proto3";
 
+// Wire namespace retained for installed v1 plugins; Go imports use the new module.
 package sub2api.plugin.v1;
 
-option go_package = "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1";
+option go_package = "github.com/MACOS-DO/sub4api/pkg/pluginapi/v1;pluginv1";
 
 service TransportPlugin {
   rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);

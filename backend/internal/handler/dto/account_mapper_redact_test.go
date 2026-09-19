@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/service"
 )
 
 func TestAccountFromServiceShallow_RedactsSensitiveCredentials(t *testing.T) {

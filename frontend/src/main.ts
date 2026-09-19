@@ -1,3 +1,4 @@
+import './utils/legacyStorage'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
@@ -45,7 +46,7 @@ async function bootstrap() {
   appStore.initFromInjectedConfig()
 
   // Set document title immediately after config is loaded
-  if (appStore.siteName && appStore.siteName !== 'Sub2API') {
+  if (appStore.siteName && appStore.siteName !== 'Sub4API') {
     document.title = `${appStore.siteName} - AI API Gateway`
   }
   updateFavicon(appStore.siteLogo)

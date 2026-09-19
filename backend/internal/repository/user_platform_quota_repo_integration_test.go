@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/ent/schema/mixins"
+	"github.com/MACOS-DO/sub4api/ent/userplatformquota"
+	"github.com/MACOS-DO/sub4api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 

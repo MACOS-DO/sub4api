@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/openai"
+	openaiwsv2 "github.com/MACOS-DO/sub4api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"

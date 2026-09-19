@@ -1,10 +1,10 @@
-# Sub2API Configuration File
-# Sub2API 配置文件
+# Sub4API Configuration File
+# Sub4API 配置文件
 #
-# Copy this file to /etc/sub2api/config.yaml and modify as needed
-# 复制此文件到 /etc/sub2api/config.yaml 并根据需要修改
+# Copy this file to /etc/sub4api/config.yaml and modify as needed
+# 复制此文件到 /etc/sub4api/config.yaml 并根据需要修改
 #
-# Documentation / 文档: https://github.com/Wei-Shaw/sub2api
+# Documentation / 文档: https://github.com/MACOS-DO/sub4api
 
 # =============================================================================
 # Server Configuration
@@ -37,10 +37,10 @@ server:
   # Keep-Alive 空闲连接超时（秒）。
   idle_timeout: 120
   # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
-  # List only the exact proxy addresses that connect directly to Sub2API.
+  # List only the exact proxy addresses that connect directly to Sub4API.
   # Set [] explicitly to disable forwarded-IP trust in high-security mode.
   # security.trust_forwarded_ip_for_api_key_acl=false 时使用的可信代理。
-  # 只填写直接连接 Sub2API 的精确代理地址；显式设置 [] 可在高安全模式下
+  # 只填写直接连接 Sub4API 的精确代理地址；显式设置 [] 可在高安全模式下
   # 禁用转发 IP 信任。
   trusted_proxies:
     - 127.0.0.1/32
@@ -82,10 +82,10 @@ server:
 # 填写浏览器访问使用的完整 Origin。
 webauthn:
   enabled: false
-  rp_display_name: "Sub2API"
-  # Example / 示例: "sub2api.example.com"
+  rp_display_name: "Sub4API"
+  # Example / 示例: "sub4api.example.com"
   rp_id: ""
-  # Example / 示例: ["https://sub2api.example.com"]
+  # Example / 示例: ["https://sub4api.example.com"]
   rp_origins: []
 
 # =============================================================================
@@ -620,7 +620,7 @@ log:
   format: "console"
   # Service name field written into each log line
   # 每条日志都会附带 service 字段
-  service_name: "sub2api"
+  service_name: "sub4api"
   # Environment field written into each log line
   # 每条日志都会附带 env 字段
   env: "production"
@@ -638,11 +638,11 @@ log:
     # 启用文件输出（默认路径自动推导）
     to_file: true
     # Empty means:
-    # - DATA_DIR set: {{DATA_DIR}}/logs/sub2api.log
-    # - otherwise: /app/data/logs/sub2api.log
+    # - DATA_DIR set: {{DATA_DIR}}/logs/sub4api.log
+    # - otherwise: /app/data/logs/sub4api.log
     # 留空时：
-    # - 设置 DATA_DIR：{{DATA_DIR}}/logs/sub2api.log
-    # - 否则：/app/data/logs/sub2api.log
+    # - 设置 DATA_DIR：{{DATA_DIR}}/logs/sub4api.log
+    # - 否则：/app/data/logs/sub4api.log
     file_path: ""
   rotation:
     # Max file size before rotation (MB)
@@ -864,7 +864,7 @@ database:
   password: "your_secure_password_here"
   # Database name
   # 数据库名称
-  dbname: "sub2api"
+  dbname: "sub4api"
   # SSL mode: disable, prefer, require, verify-ca, verify-full
   # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
   # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
@@ -960,7 +960,7 @@ totp:
 
 # =============================================================================
 # LinuxDo Connect OAuth Login (SSO)
-# LinuxDo Connect OAuth 登录（用于 Sub2API 用户登录）
+# LinuxDo Connect OAuth 登录（用于 Sub4API 用户登录）
 # =============================================================================
 linuxdo_connect:
   enabled: false
@@ -985,7 +985,7 @@ linuxdo_connect:
 
 # =============================================================================
 # Generic OIDC OAuth Login (SSO)
-# 通用 OIDC OAuth 登录（用于 Sub2API 用户登录）
+# 通用 OIDC OAuth 登录（用于 Sub4API 用户登录）
 # =============================================================================
 oidc_connect:
   enabled: false
@@ -1157,8 +1157,8 @@ turnstile:
 # Gemini OAuth (Required for Gemini accounts)
 # Gemini OAuth 配置（Gemini 账户必需）
 # =============================================================================
-# Sub2API supports TWO Gemini OAuth modes:
-# Sub2API 支持两种 Gemini OAuth 模式：
+# Sub4API supports TWO Gemini OAuth modes:
+# Sub4API 支持两种 Gemini OAuth 模式：
 #
 # 1. Code Assist OAuth (requires GCP project_id)
 # 1. Code Assist OAuth（需要 GCP project_id）

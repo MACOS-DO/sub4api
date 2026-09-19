@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	pluginv1 "github.com/MACOS-DO/sub4api/pkg/pluginapi/v1"
 )
 
 const (
@@ -45,9 +45,9 @@ type PluginManifest struct {
 }
 
 type PluginRequirements struct {
-	Sub2API                   string   `json:"sub2api"`
-	RecommendedSub2APIVersion string   `json:"recommended_sub2api_version,omitempty"`
-	TestedSub2APIVersions     []string `json:"tested_sub2api_versions,omitempty"`
+	Sub4API                   string   `json:"sub4api"`
+	RecommendedSub4APIVersion string   `json:"recommended_sub4api_version,omitempty"`
+	TestedSub4APIVersions     []string `json:"tested_sub4api_versions,omitempty"`
 	PluginProtocol            int      `json:"plugin_protocol"`
 	TransportAPI              int      `json:"transport_api"`
 	UIBridge                  int      `json:"ui_bridge"`
@@ -79,9 +79,9 @@ type PluginCompatibility struct {
 	Tested             bool   `json:"tested"`
 	Status             string `json:"status"`
 	Message            string `json:"message"`
-	CurrentSub2API     string `json:"current_sub2api_version"`
-	RequiredSub2API    string `json:"required_sub2api_version"`
-	RecommendedSub2API string `json:"recommended_sub2api_version"`
+	CurrentSub4API     string `json:"current_sub4api_version"`
+	RequiredSub4API    string `json:"required_sub4api_version"`
+	RecommendedSub4API string `json:"recommended_sub4api_version"`
 	PluginProtocol     int    `json:"plugin_protocol"`
 	TransportAPI       int    `json:"transport_api"`
 	UIBridge           int    `json:"ui_bridge"`
@@ -157,8 +157,8 @@ func (m PluginManifest) Validate() error {
 	if normalizeSemver(m.Version) == "" {
 		return errors.New("插件版本必须是有效的语义化版本")
 	}
-	if strings.TrimSpace(m.Requires.Sub2API) == "" {
-		return errors.New("插件必须声明 requires.sub2api")
+	if strings.TrimSpace(m.Requires.Sub4API) == "" {
+		return errors.New("插件必须声明 requires.sub4api")
 	}
 	if m.Requires.PluginProtocol != pluginv1.ProtocolVersion ||
 		m.Requires.TransportAPI != pluginv1.TransportAPIVersion ||
@@ -211,4 +211,30 @@ func (m PluginManifest) SortedCapabilities() []PluginCapability {
 	out := append([]PluginCapability(nil), m.Capabilities...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// UnmarshalJSON accepts installed plugin manifests while preferring explicit Sub4API fields.
+// Signatures are verified against the original archive bytes, never this normalized representation.
+func (r *PluginRequirements) UnmarshalJSON(data []byte) error {
+	type plain PluginRequirements
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for current, legacy := range map[string]string{
+		"sub4api":                     "sub2api",
+		"recommended_sub4api_version": "recommended_sub2api_version",
+		"tested_sub4api_versions":     "tested_sub2api_versions",
+	} {
+		if _, exists := fields[current]; !exists {
+			if value, ok := fields[legacy]; ok {
+				fields[current] = value
+			}
+		}
+	}
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(normalized, (*plain)(r))
 }

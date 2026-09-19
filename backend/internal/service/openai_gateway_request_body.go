@@ -10,9 +10,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/MACOS-DO/sub4api/internal/pkg/apicompat"
+	"github.com/MACOS-DO/sub4api/internal/pkg/ctxkey"
+	"github.com/MACOS-DO/sub4api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -1652,7 +1652,7 @@ func (e *OpenAIFastBlockedError) Error() string { return e.Message }
 //
 // Matching rules:
 //   - Scope filters by account type (all / oauth / apikey / bedrock)
-//   - UserIDs, when present, filters by the trusted Sub2API user that owns the API key
+//   - UserIDs, when present, filters by the trusted Sub4API user that owns the API key
 //   - ServiceTier must be empty (= any), "all", "missing", or equal the normalized tier
 //   - ModelWhitelist narrows the rule to specific models; FallbackAction
 //     handles the non-matching case (default: pass)

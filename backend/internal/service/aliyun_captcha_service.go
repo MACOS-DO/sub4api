@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 )
 
 var (
@@ -74,7 +74,7 @@ func normalizeAliyunCaptchaRegion(value string) string {
 }
 
 // aliyunCredentialValidationParam 用于后台保存时探测凭证有效性的假验证参数
-const aliyunCredentialValidationParam = "sub2api-credential-validation"
+const aliyunCredentialValidationParam = "sub4api-credential-validation"
 
 // aliyunInvalidCredentialCodes 表示 AK/SK 本身无效的阿里云错误码；
 // 其余错误码（如 param 无效）说明签名已通过、凭证可用。

@@ -8,7 +8,7 @@ check_application_security_opt() {
   file=$1
   count=$(
     awk '
-      $0 == "  sub2api:" {
+      $0 == "  sub4api:" {
         in_application = 1
         next
       }
@@ -27,7 +27,7 @@ check_application_security_opt() {
   )
 
   if [ "$count" -ne 1 ]; then
-    printf '%s must enable no-new-privileges exactly once for the sub2api service\n' "$file" >&2
+    printf '%s must enable no-new-privileges exactly once for the sub4api service\n' "$file" >&2
     exit 1
   fi
 }

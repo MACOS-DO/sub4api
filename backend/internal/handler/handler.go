@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
+	"github.com/MACOS-DO/sub4api/internal/handler/admin"
+	"github.com/MACOS-DO/sub4api/internal/securityaudit"
 )
 
 // AdminHandlers contains all admin-related HTTP handlers

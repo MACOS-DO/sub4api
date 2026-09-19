@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/oauth"
+	"github.com/MACOS-DO/sub4api/internal/pkg/proxyurl"
+	"github.com/MACOS-DO/sub4api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/util/logredact"
 
 	"github.com/imroc/req/v3"
 )

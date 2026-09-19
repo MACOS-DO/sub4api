@@ -80,7 +80,7 @@ const DefaultCacheControlTTL = "5m"
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
 // 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
 //
-// ⚠️ 读取实际生效的版本号请用 CLIVersion()，它会叠加 SUB2API_CLAUDE_CLI_VERSION 覆盖。
+// ⚠️ 读取实际生效的版本号请用 CLIVersion()，它会叠加 SUB4API_CLAUDE_CLI_VERSION 覆盖。
 // 直接引用本常量只在"表达内置基线"时才正确（例如覆盖值的下限校验）。
 const CLICurrentVersion = "2.1.258"
 

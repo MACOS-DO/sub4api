@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
+	"github.com/MACOS-DO/sub4api/ent/predicate"
+	"github.com/MACOS-DO/sub4api/ent/tlsfingerprintprofile"
 )
 
 // TLSFingerprintProfileUpdate is the builder for updating TLSFingerprintProfile entities.

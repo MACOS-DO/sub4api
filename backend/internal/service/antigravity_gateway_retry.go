@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/antigravity"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 

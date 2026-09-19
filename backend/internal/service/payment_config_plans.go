@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/group"
-	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/ent/group"
+	"github.com/MACOS-DO/sub4api/ent/subscriptionplan"
+	"github.com/MACOS-DO/sub4api/internal/payment"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 )
 
 // normalizePlanCurrency validates and normalizes the display-only currency label.

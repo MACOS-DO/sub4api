@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/internal/service"
 	gocache "github.com/patrickmn/go-cache"
 )
 

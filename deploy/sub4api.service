@@ -1,27 +1,27 @@
 [Unit]
-Description=Sub2API - AI API Gateway Platform
-Documentation=https://github.com/Wei-Shaw/sub2api
+Description=Sub4API - AI API Gateway Platform
+Documentation=https://github.com/MACOS-DO/sub4api
 After=network.target postgresql.service redis.service
 Wants=postgresql.service redis.service
 
 [Service]
 Type=simple
-User=sub2api
-Group=sub2api
-WorkingDirectory=/opt/sub2api
-ExecStart=/opt/sub2api/sub2api
+User=sub4api
+Group=sub4api
+WorkingDirectory=/opt/sub4api
+ExecStart=/opt/sub4api/sub4api
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=sub2api
+SyslogIdentifier=sub4api
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/sub2api
+ReadWritePaths=/opt/sub4api
 
 # Environment - Server configuration
 # Modify these values to change listen address and port

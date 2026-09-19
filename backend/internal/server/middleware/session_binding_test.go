@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/pkg/ip"
+	"github.com/MACOS-DO/sub4api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"

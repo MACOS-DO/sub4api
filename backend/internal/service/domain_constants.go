@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/MACOS-DO/sub4api/internal/domain"
 )
 
 // Status constants
@@ -564,7 +564,7 @@ const (
 	SettingKeyPluginManagementEnabled = "plugin_management_enabled"
 
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
-	// for probing remote Sub2API API-key billing metadata.
+	// for probing remote Sub4API API-key billing metadata.
 	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
 
 	// SettingKeyOllamaCloudUsageSettings stores the opt-in global runner switch and interval.

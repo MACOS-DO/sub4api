@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/pkg/tlsfingerprint"
+	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
+	"github.com/MACOS-DO/sub4api/internal/service"
 )
 
 type grokQuotaHandlerAccountRepo struct {

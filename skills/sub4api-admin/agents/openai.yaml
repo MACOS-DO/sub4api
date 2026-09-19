@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sub4API Admin"
+  short_description: "Manage Sub4API admin accounts and settings"
+  default_prompt: "Use $sub4api-admin to inspect and manage Sub4API backend accounts safely."
+
+policy:
+  allow_implicit_invocation: true

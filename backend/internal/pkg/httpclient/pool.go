@@ -23,10 +23,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/MACOS-DO/sub4api/internal/pkg/proxyurl"
+	"github.com/MACOS-DO/sub4api/internal/pkg/proxyutil"
+	"github.com/MACOS-DO/sub4api/internal/pkg/servertiming"
+	"github.com/MACOS-DO/sub4api/internal/util/urlvalidator"
 )
 
 // Transport 连接池默认配置

@@ -19,7 +19,7 @@ func TestBuildSMTPMessageProducesStandardsCompliantMIME(t *testing.T) {
 	config := &SMTPConfig{
 		Host:     "smtp.example.com",
 		From:     "reply@example.com",
-		FromName: "Sub2API 通知",
+		FromName: "Sub4API 通知",
 	}
 	body := "<html>\n<body>验证码：123456 &amp; ready</body>\n</html>"
 
@@ -33,7 +33,7 @@ func TestBuildSMTPMessageProducesStandardsCompliantMIME(t *testing.T) {
 
 	from, err := mail.ParseAddress(parsed.Header.Get("From"))
 	require.NoError(t, err)
-	require.Equal(t, "Sub2API 通知", from.Name)
+	require.Equal(t, "Sub4API 通知", from.Name)
 	require.Equal(t, "reply@example.com", from.Address)
 
 	recipient, err := mail.ParseAddress(parsed.Header.Get("To"))

@@ -154,19 +154,19 @@
                   {{ t("admin.plugins.currentVersion") }}
                 </dt>
                 <dd class="font-mono text-gray-800 dark:text-gray-200">
-                  {{ plugin.compatibility.current_sub2api_version }}
+                  {{ plugin.compatibility.current_sub4api_version }}
                 </dd>
                 <dt class="text-gray-500">
                   {{ t("admin.plugins.requiredVersion") }}
                 </dt>
                 <dd class="font-mono text-gray-800 dark:text-gray-200">
-                  {{ plugin.compatibility.required_sub2api_version }}
+                  {{ plugin.compatibility.required_sub4api_version }}
                 </dd>
                 <dt class="text-gray-500">
                   {{ t("admin.plugins.recommendedVersion") }}
                 </dt>
                 <dd class="font-mono text-gray-800 dark:text-gray-200">
-                  {{ plugin.compatibility.recommended_sub2api_version || "-" }}
+                  {{ plugin.compatibility.recommended_sub4api_version || "-" }}
                 </dd>
               </dl>
             </div>

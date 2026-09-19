@@ -13,7 +13,7 @@
 *.dylib
 backend/bin/
 backend/server
-backend/sub2api
+backend/sub4api
 backend/main
 
 # Go 测试二进制
@@ -122,6 +122,9 @@ tests
 CLAUDE.md
 .claude
 scripts
+!/scripts/
+/scripts/*
+!/scripts/release/
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
@@ -156,5 +159,5 @@ output/
 
 # Vitest / Vite cache at repo root
 .vite/
-# 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
+# 本地闭源插件开发目录及构建产物不进入 Sub4API 仓库
 /plugins/

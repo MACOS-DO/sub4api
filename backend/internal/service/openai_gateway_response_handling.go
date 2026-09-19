@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/MACOS-DO/sub4api/internal/pkg/apicompat"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
+	"github.com/MACOS-DO/sub4api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -1594,7 +1594,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	// Detect SSE responses for ALL account types via Content-Type header.
-	// Some OpenAI-compatible upstreams (including other sub2api instances)
+	// Some OpenAI-compatible upstreams (including other sub4api instances)
 	// may return SSE even when stream=false was requested.
 	if isEventStreamResponse(resp.Header) {
 		return s.handleSSEToJSON(resp, c, account, body, originalModel, mappedModel)

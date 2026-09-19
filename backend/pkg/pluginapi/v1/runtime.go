@@ -22,7 +22,8 @@ const (
 	TransportPluginName = "oauth_transport"
 )
 
-// HandshakeConfig 防止普通可执行文件被误当成 Sub2API 插件启动。
+// HandshakeConfig 防止普通可执行文件被误当成 Sub4API 插件启动。
+// Keep the v1 cookie so existing signed plugin executables continue to start.
 var HandshakeConfig = hcplugin.HandshakeConfig{
 	ProtocolVersion:  ProtocolVersion,
 	MagicCookieKey:   "SUB2API_PLUGIN_MAGIC_COOKIE",

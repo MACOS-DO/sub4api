@@ -80,7 +80,7 @@
 ### 3.1 OpenSpec
 
 ```bash
-cd /Users/mt/code/mt-ai/sub2api/sub2api-mt
+cd /Users/mt/code/mt-ai/sub4api/sub4api-mt
 openspec status --change add-openai-compatible-prompt-audit
 openspec validate add-openai-compatible-prompt-audit --type change --strict --no-interactive
 openspec show add-openai-compatible-prompt-audit
@@ -89,7 +89,7 @@ openspec show add-openai-compatible-prompt-audit
 ### 3.2 后端快速门禁
 
 ```bash
-cd /Users/mt/code/mt-ai/sub2api/sub2api-mt/backend
+cd /Users/mt/code/mt-ai/sub4api/sub4api-mt/backend
 
 go test ./internal/securityaudit/... -count=1
 go test ./internal/handler/... ./internal/server/... -count=1
@@ -104,7 +104,7 @@ go test -race ./internal/securityaudit/... -count=1
 项目已有基于 Testcontainers 的 integration harness。实现时把 Prompt Audit migration/Repository/Redis 场景接入同一模式：
 
 ```bash
-cd /Users/mt/code/mt-ai/sub2api/sub2api-mt/backend
+cd /Users/mt/code/mt-ai/sub4api/sub4api-mt/backend
 go test -tags=integration ./internal/repository ./internal/securityaudit/... -run 'PromptAudit|PromptGuard' -count=1
 go test -tags=integration -race ./internal/securityaudit/... -run 'MultiWorker|MultiInstance|Lease|ConfigInvalidation' -count=1
 ```
@@ -114,7 +114,7 @@ CI 中 Docker 不可用必须失败；本地跳过要在证据中明确写“未
 ### 3.4 前端
 
 ```bash
-cd /Users/mt/code/mt-ai/sub2api/sub2api-mt
+cd /Users/mt/code/mt-ai/sub4api/sub4api-mt
 pnpm --dir frontend run lint:check
 pnpm --dir frontend run typecheck
 pnpm --dir frontend exec vitest run \
@@ -127,7 +127,7 @@ pnpm --dir frontend run build
 ### 3.5 全量
 
 ```bash
-cd /Users/mt/code/mt-ai/sub2api/sub2api-mt
+cd /Users/mt/code/mt-ai/sub4api/sub4api-mt
 make test-backend
 make test-frontend
 make build
@@ -328,7 +328,7 @@ URL_QUERY_CANARY_<random>
 复现命令：
 
 ```bash
-cd /Users/mt/code/mt-ai/sub2api/sub2api-mt/backend
+cd /Users/mt/code/mt-ai/sub4api/sub4api-mt/backend
 go test ./internal/securityaudit -run TestPromptAuditSyntheticAsyncBaseline -count=1 -v
 ```
 

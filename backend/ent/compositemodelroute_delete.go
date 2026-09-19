@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/MACOS-DO/sub4api/ent/compositemodelroute"
+	"github.com/MACOS-DO/sub4api/ent/predicate"
 )
 
 // CompositeModelRouteDelete is the builder for deleting a CompositeModelRoute entity.

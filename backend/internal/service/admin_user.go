@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/ent/authidentity"
+	"github.com/MACOS-DO/sub4api/ent/authidentitychannel"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/pagination"
 )
 
 // User management implementations

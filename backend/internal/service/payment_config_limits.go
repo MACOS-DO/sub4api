@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/ent/paymentproviderinstance"
+	"github.com/MACOS-DO/sub4api/internal/payment"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 )
 
 // GetAvailableMethodLimits collects all payment types from enabled provider

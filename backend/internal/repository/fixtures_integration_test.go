@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	dbaccount "github.com/MACOS-DO/sub4api/ent/account"
+	"github.com/MACOS-DO/sub4api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 

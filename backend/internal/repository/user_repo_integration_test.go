@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/authidentity"
-	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/ent/authidentity"
+	"github.com/MACOS-DO/sub4api/ent/authidentitychannel"
+	"github.com/MACOS-DO/sub4api/internal/pkg/pagination"
+	"github.com/MACOS-DO/sub4api/internal/service"
 	"github.com/stretchr/testify/suite"
 )
 

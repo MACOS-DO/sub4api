@@ -1,5 +1,5 @@
 /**
- * Core Type Definitions for Sub2API Frontend
+ * Core Type Definitions for Sub4API Frontend
  */
 
 // ==================== Common Types ====================
@@ -1049,7 +1049,7 @@ export interface TempUnschedulableStatus {
 }
 
 export interface UpstreamBillingData {
-  object: 'sub2api.key_billing'
+  object: 'sub4api.key_billing'
   schema_version: 1
   billing_scope: 'token'
   group_rate_multiplier: number

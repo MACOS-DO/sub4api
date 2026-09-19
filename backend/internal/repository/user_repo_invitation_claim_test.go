@@ -6,10 +6,10 @@ import (
 	"context"
 	"testing"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/ent/redeemcode"
+	"github.com/MACOS-DO/sub4api/ent/user"
+	"github.com/MACOS-DO/sub4api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
