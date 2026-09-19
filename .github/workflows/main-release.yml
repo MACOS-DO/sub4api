@@ -22,6 +22,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: sub4api
     steps:
       - uses: actions/checkout@v6
         with:
