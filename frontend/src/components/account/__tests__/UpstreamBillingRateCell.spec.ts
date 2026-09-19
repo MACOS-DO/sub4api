@@ -43,7 +43,7 @@ const makeAccount = (overrides: Partial<Account> = {}): Account => ({
 })
 
 const billingData = {
-  object: 'sub2api.key_billing' as const,
+  object: 'sub4api.key_billing' as const,
   schema_version: 1 as const,
   billing_scope: 'token' as const,
   group_rate_multiplier: 0.8,

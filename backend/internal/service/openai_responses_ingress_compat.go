@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/MACOS-DO/sub4api/internal/pkg/apicompat"
 	"github.com/tidwall/gjson"
 )
 

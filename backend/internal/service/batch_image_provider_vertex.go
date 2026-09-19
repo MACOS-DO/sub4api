@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 )
 
 const (
@@ -465,9 +465,9 @@ func vertexBatchDisplayName(input BatchImageInput) string {
 		return v
 	}
 	if v := strings.TrimSpace(input.BatchID); v != "" {
-		return "sub2api-" + v
+		return "sub4api-" + v
 	}
-	return "sub2api-image-batch"
+	return "sub4api-image-batch"
 }
 
 func BuildVertexBatchJSONL(input BatchImageInput) ([]byte, error) {

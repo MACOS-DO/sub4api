@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
+	"github.com/MACOS-DO/sub4api/ent/schema/mixins"
+	"github.com/MACOS-DO/sub4api/ent/userplatformquota"
 	"github.com/stretchr/testify/require"
 )
 

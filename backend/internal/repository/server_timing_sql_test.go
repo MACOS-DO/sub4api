@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
+	"github.com/MACOS-DO/sub4api/internal/pkg/servertiming"
 )
 
 const fakeDriverDelay = 2 * time.Millisecond

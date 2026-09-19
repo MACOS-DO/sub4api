@@ -26,8 +26,8 @@ assert_count() {
 test -s backend/resources/model-pricing/model_prices_and_context_window.json || \
   fail 'fallback pricing data is missing or empty'
 
-assert_line Dockerfile.goreleaser 'COPY --chown=sub2api:sub2api backend/resources /app/resources'
-assert_line deploy/Dockerfile 'COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources'
+assert_line Dockerfile.goreleaser 'COPY --chown=sub4api:sub4api backend/resources /app/resources'
+assert_line deploy/Dockerfile 'COPY --from=backend-builder --chown=sub4api:sub4api /app/backend/resources /app/resources'
 assert_count .goreleaser.yaml '      - backend/resources' 4
 assert_count .goreleaser.simple.yaml '      - backend/resources' 1
 

@@ -21,9 +21,9 @@ ui/assets/...
 字段规范见 [`v1/manifest.schema.json`](../v1/manifest.schema.json)。版本字段含义：
 
 - `version`：插件自身语义化版本。
-- `requires.sub2api`：宿主硬兼容范围。
-- `recommended_sub2api_version`：建议宿主版本。
-- `tested_sub2api_versions`：发布者真实验证过的版本。
+- `requires.sub4api`：宿主硬兼容范围。
+- `recommended_sub4api_version`：建议宿主版本。
+- `tested_sub4api_versions`：发布者真实验证过的版本。
 - `plugin_protocol`：进程握手协议。
 - `transport_api`：请求和响应帧协议。
 - `ui_bridge`：配置 UI 消息协议。
@@ -40,6 +40,6 @@ ui/assets/...
 }
 ```
 
-签名对象是 `manifest.json` 的精确原始字节。发布者私钥不得进入插件包、源码仓库或 Sub2API 运行环境。部署者只配置 Base64 Ed25519 公钥。
+签名对象是 `manifest.json` 的精确原始字节。发布者私钥不得进入插件包、源码仓库或 Sub4API 运行环境。部署者只配置 Base64 Ed25519 公钥。
 
 默认生产配置拒绝未签名包。官方 OpenAI Transport 使用宿主内置公钥验签，不需要配置；其他发布者仍需配置 `trusted_publishers`。`allow_unsigned` 只用于开发者自己构建的本地包。

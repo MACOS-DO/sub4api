@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 )
 
@@ -2357,7 +2357,7 @@ func (s *RateLimitService) HandleOpenAIImageCapabilityLoss(ctx context.Context, 
 }
 
 // isOpenAIImageCapabilityLossError reports whether upstream rejected the
-// image_generation tool choice that sub2api itself put into the request body.
+// image_generation tool choice that sub4api itself put into the request body.
 // Only meaningful for self-built images requests, where tools always carries a
 // matching image_generation entry — upstream saying otherwise means the account
 // lost the capability.

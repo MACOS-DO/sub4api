@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MACOS-DO/sub4api/internal/pkg/envcompat"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,10 +20,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
+	"github.com/MACOS-DO/sub4api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
@@ -61,7 +62,7 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 	defaultModelsListCacheTTL              = 15 * time.Second
 	postUsageBillingTimeout                = 15 * time.Second
 	claudeCodeNoopDeltaKeepaliveMinVersion = "2.1.193"
-	debugGatewayBodyEnv                    = "SUB2API_DEBUG_GATEWAY_BODY"
+	debugGatewayBodyEnv                    = "SUB4API_DEBUG_GATEWAY_BODY"
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	gatewayUpstreamErrorBodyReadLimit int64 = 512 << 10
 )
@@ -793,7 +794,7 @@ type GatewayService struct {
 	channelService        *ChannelService
 	resolver              *ModelPricingResolver
 	compositeResolver     *CompositeRouteResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
+	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB4API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
@@ -877,9 +878,9 @@ func NewGatewayService(
 		&svc.userGroupRateSF,
 		"service.gateway",
 	)
-	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
-	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
-	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
+	svc.debugModelRouting.Store(parseDebugEnvBool(envcompat.Getenv("SUB4API_DEBUG_MODEL_ROUTING")))
+	svc.debugClaudeMimic.Store(parseDebugEnvBool(envcompat.Getenv("SUB4API_DEBUG_CLAUDE_MIMIC")))
+	if path := strings.TrimSpace(envcompat.Getenv(debugGatewayBodyEnv)); path != "" {
 		svc.initDebugGatewayBodyFile(path)
 	}
 	return svc
@@ -1610,7 +1611,7 @@ func (s *GatewayService) initDebugGatewayBodyFile(path string) {
 	}
 
 	// 如果 path 指向一个已存在的目录，自动追加默认文件名
-	if info, err := os.Stat(path); err == nil && info.IsDir() { //nolint:gosec // G703: path 仅来自启动环境变量 SUB2API_DEBUG_GATEWAY_BODY（运维配置），非请求输入
+	if info, err := os.Stat(path); err == nil && info.IsDir() { //nolint:gosec // G703: path 仅来自启动环境变量 SUB4API_DEBUG_GATEWAY_BODY（运维配置），非请求输入
 		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
 	}
 
@@ -1636,8 +1637,8 @@ func (s *GatewayService) initDebugGatewayBodyFile(path string) {
 //
 // 启用方式（环境变量）：
 //
-//	SUB2API_DEBUG_GATEWAY_BODY=1                          # 写入 gateway_debug.log
-//	SUB2API_DEBUG_GATEWAY_BODY=/tmp/gateway_debug.log     # 写入指定路径
+//	SUB4API_DEBUG_GATEWAY_BODY=1                          # 写入 gateway_debug.log
+//	SUB4API_DEBUG_GATEWAY_BODY=/tmp/gateway_debug.log     # 写入指定路径
 //
 // tag: "CLIENT_ORIGINAL" 或 "UPSTREAM_FORWARD"
 func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {

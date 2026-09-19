@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	pluginv1 "github.com/MACOS-DO/sub4api/pkg/pluginapi/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,13 +17,13 @@ func TestEvaluatePluginCompatibility(t *testing.T) {
 	assert.True(t, result.Tested)
 	assert.Equal(t, "compatible", result.Status)
 
-	manifest.Requires.TestedSub2APIVersions = []string{"0.1.178"}
+	manifest.Requires.TestedSub4APIVersions = []string{"0.1.178"}
 	result = EvaluatePluginCompatibility(manifest, host)
 	require.True(t, result.Compatible)
 	assert.False(t, result.Tested)
 	assert.Equal(t, "untested", result.Status)
 
-	manifest.Requires.Sub2API = ">=0.2.0 <0.3.0"
+	manifest.Requires.Sub4API = ">=0.2.0 <0.3.0"
 	result = EvaluatePluginCompatibility(manifest, host)
 	assert.False(t, result.Compatible)
 	assert.Equal(t, "incompatible", result.Status)

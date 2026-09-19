@@ -235,16 +235,16 @@ func TestDatabaseConnectionDSNsUseConfiguredTargetAndLegacyBootstrapDatabase(t *
 	cfg := &DatabaseConfig{
 		Host:     "db",
 		Port:     5432,
-		User:     "sub2api",
+		User:     "sub4api",
 		Password: "secret",
-		DBName:   "sub2api",
+		DBName:   "sub4api",
 		SSLMode:  "disable",
 	}
 
 	targetDSN := buildPostgresDSN(cfg, cfg.DBName)
 	bootstrapDSN := buildPostgresDSN(cfg, postgresBootstrapDatabase)
 
-	if !strings.Contains(targetDSN, "dbname=sub2api") {
+	if !strings.Contains(targetDSN, "dbname=sub4api") {
 		t.Fatalf("target DSN = %q, want configured database", targetDSN)
 	}
 	if !strings.Contains(bootstrapDSN, "dbname=postgres") {

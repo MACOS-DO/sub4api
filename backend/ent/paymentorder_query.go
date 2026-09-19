@@ -12,9 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
-	"github.com/Wei-Shaw/sub2api/ent/predicate"
-	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/MACOS-DO/sub4api/ent/paymentorder"
+	"github.com/MACOS-DO/sub4api/ent/predicate"
+	"github.com/MACOS-DO/sub4api/ent/user"
 )
 
 // PaymentOrderQuery is the builder for querying PaymentOrder entities.

@@ -46,16 +46,16 @@ inspect_resource() {
         if [[ -s "${STATE_DIR}/network-subnets/${resource_name}" ]]; then
             subnet="$(<"${STATE_DIR}/network-subnets/${resource_name}")"
         fi
-        printf '[{"configuration":{"ipv4Subnet":"%s","labels":{"org.sub2api.stack":"%s"}}}]\n' \
+        printf '[{"configuration":{"ipv4Subnet":"%s","labels":{"org.sub4api.stack":"%s"}}}]\n' \
             "${subnet}" "${label_value}"
         return
     fi
     case "${resource_name}" in
-        sub2api-apple-postgres) address="192.168.65.2/24" ;;
-        sub2api-apple-redis) address="192.168.65.3/24" ;;
+        sub4api-apple-postgres) address="192.168.65.2/24" ;;
+        sub4api-apple-redis) address="192.168.65.3/24" ;;
     esac
 
-    printf '[{"configuration":{"labels":{"org.sub2api.stack":"%s"}},"status":{"networks":[{"ipv4Address":"%s"}]}}]\n' \
+    printf '[{"configuration":{"labels":{"org.sub4api.stack":"%s"}},"status":{"networks":[{"ipv4Address":"%s"}]}}]\n' \
         "${label_value}" "${address}"
 }
 

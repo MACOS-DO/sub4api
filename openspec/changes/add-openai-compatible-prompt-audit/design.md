@@ -2,7 +2,7 @@
 
 ### 当前系统
 
-sub2api 当前已经存在一套完整的内容审核能力：
+sub4api 当前已经存在一套完整的内容审核能力：
 
 - 核心实现位于 `backend/internal/service/content_moderation*.go`。
 - 管理 API 位于 `backend/internal/handler/admin/content_moderation_handler.go`，路由前缀为 `/admin/risk-control`。
@@ -520,7 +520,7 @@ Handler 使用自己已有的 OpenAI、Claude 或 Gemini error helper。正文�
 
 - OpenAI Chat/Responses：保持 `error.type/message` 或 Responses 现有结构，并设置 `error.code=<prompt_guard_*>`。
 - Claude Messages：保持 `type=error` 和合法的 `error.type=permission_error|api_error`，增加可选 `error.code=<prompt_guard_*>`。
-- Gemini：保持 Google envelope 的数值 `error.code`、message 和 canonical status；在 `error.details[]` 增加 `type.googleapis.com/google.rpc.ErrorInfo`，其 `reason=<prompt_guard_*>`、domain=`sub2api.securityaudit`，metadata 只允许 request_id。
+- Gemini：保持 Google envelope 的数值 `error.code`、message 和 canonical status；在 `error.details[]` 增加 `type.googleapis.com/google.rpc.ErrorInfo`，其 `reason=<prompt_guard_*>`、domain=`sub4api.securityaudit`，metadata 只允许 request_id。
 
 不得把 Gemini 数值 `error.code` 替换为字符串，也不得把类别、Prompt、节点或内部错误放入 details。协议 golden test 必须锁定三类 envelope。
 

@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/account"
-	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/MACOS-DO/sub4api/ent/account"
+	"github.com/MACOS-DO/sub4api/ent/proxy"
 )
 
 // ProxyCreate is the builder for creating a Proxy entity.

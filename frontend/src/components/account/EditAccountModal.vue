@@ -5647,7 +5647,7 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      // 上游倍率自动探测对全部 API-key 平台开放（sub2api 上游即可应答），
+      // 上游倍率自动探测对全部 API-key 平台开放（sub4api 上游即可应答），
       // Bedrock 凭证无静态 Key 不参与。
       if (props.account.type === 'apikey') {
         delete newExtra.upstream_billing_probe_enabled

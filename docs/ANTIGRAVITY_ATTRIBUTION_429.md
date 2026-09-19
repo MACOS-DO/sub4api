@@ -4,8 +4,8 @@
 
 ## 现象与环境
 
-- 实测部署为 Sub2API 0.2.0，Claude Desktop 2.110.0，内嵌 Claude Code 2.1.271，CC Switch 3.20.3。
-- 请求链路：Claude Desktop → CC Switch 本地代理 → Sub2API Antigravity → Google 上游；映射模型为 `gemini-3.8-flash-high`。
+- 实测部署为 Sub4API 0.2.0，Claude Desktop 2.110.0，内嵌 Claude Code 2.1.271，CC Switch 3.20.3。
+- 请求链路：Claude Desktop → CC Switch 本地代理 → Sub4API Antigravity → Google 上游；映射模型为 `gemini-3.8-flash-high`。
 - 新对话中的简单问候也返回 `429 RESOURCE_EXHAUSTED`，上游信息为 `Resource has been exhausted (e.g. check quota).`。
 - 随后账号进入模型冷却，单账号组还可能出现 `503 No available accounts`。
 - 独立构造的极简请求成功，但真实客户端请求失败。客户端即使只发送一句问候，也会附带 system 提示词和工具定义。
@@ -52,7 +52,7 @@ x-anthropic-billing-header: cc_version=2.1.271.4bf; cc_entrypoint=claude-desktop
 
 Claude Code 提供 [`CLAUDE_CODE_ATTRIBUTION_HEADER`](https://code.claude.com/docs/en/env-vars) 环境变量，但桌面端是否继承该配置需要实测。本次仅修改全局 Claude 设置并未消除 Desktop 请求中的元数据。
 
-更重要的是，原生 Anthropic OAuth 线路有相反的报告：禁用 attribution 会造成 429，见 [issue #6344](https://github.com/Wei-Shaw/sub2api/issues/6344)。因此，不建议为这个 Antigravity 问题统一设置 `CLAUDE_CODE_ATTRIBUTION_HEADER=0` 或在所有上游请求中删除该文本。
+更重要的是，原生 Anthropic OAuth 线路有相反的报告：禁用 attribution 会造成 429，见 [issue #6344](https://github.com/MACOS-DO/sub4api/issues/6344)。因此，不建议为这个 Antigravity 问题统一设置 `CLAUDE_CODE_ATTRIBUTION_HEADER=0` 或在所有上游请求中删除该文本。
 
 ## 验证与仍需排查的情况
 

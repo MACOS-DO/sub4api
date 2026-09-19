@@ -121,7 +121,7 @@
 | --- | --- |
 | 冻结方式 | 只读 tracked patch + untracked tar archive |
 | 冻结 commit/tag | base commit `7a50378851a80650cb0c086260b23abeb3469e6b`（detached restore） |
-| patch/archive 绝对路径 | `/Users/mt/code/mt-ai/sub2api/sub2api-mt/openspec/changes/add-openai-compatible-prompt-audit/source-freeze/` |
+| patch/archive 绝对路径 | `/Users/mt/code/mt-ai/sub4api/sub4api-mt/openspec/changes/add-openai-compatible-prompt-audit/source-freeze/` |
 | manifest SHA-256 | `badab312bf6af4d2c77857a9400381f4da4fbf45722d9f4a6df23bc7005273b6` |
 | tracked patch SHA-256 | `f751a13cce3f3a73cd60cae3aececcef6e1e76dcec8c551a7a4747f032234d2b` |
 | untracked archive SHA-256 | `1536e2781703b7620e26f2d08b249431fa5846ad9e32b2e8b0d547c3fa3b3632` |

@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -51,7 +51,7 @@ func newOpenAIFirstOutputStage(limit int64) *openAIFirstOutputStage {
 	}
 	return &openAIFirstOutputStage{
 		limit:      limit,
-		createTemp: func() (*os.File, error) { return os.CreateTemp("", "sub2api-openai-first-output-*") },
+		createTemp: func() (*os.File, error) { return os.CreateTemp("", "sub4api-openai-first-output-*") },
 		removeFile: os.Remove,
 		memoryOnly: runtime.GOOS == "windows",
 	}

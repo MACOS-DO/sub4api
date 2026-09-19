@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
+	pluginv1 "github.com/MACOS-DO/sub4api/pkg/pluginapi/v1"
 	"golang.org/x/mod/semver"
 )
 
@@ -15,9 +15,9 @@ type PluginHostInfo struct {
 
 func EvaluatePluginCompatibility(manifest PluginManifest, host PluginHostInfo) PluginCompatibility {
 	result := PluginCompatibility{
-		CurrentSub2API:     host.Version,
-		RequiredSub2API:    manifest.Requires.Sub2API,
-		RecommendedSub2API: manifest.Requires.RecommendedSub2APIVersion,
+		CurrentSub4API:     host.Version,
+		RequiredSub4API:    manifest.Requires.Sub4API,
+		RecommendedSub4API: manifest.Requires.RecommendedSub4APIVersion,
 		PluginProtocol:     manifest.Requires.PluginProtocol,
 		TransportAPI:       manifest.Requires.TransportAPI,
 		UIBridge:           manifest.Requires.UIBridge,
@@ -26,16 +26,16 @@ func EvaluatePluginCompatibility(manifest PluginManifest, host PluginHostInfo) P
 		manifest.Requires.TransportAPI != pluginv1.TransportAPIVersion ||
 		manifest.Requires.UIBridge != pluginv1.UIBridgeVersion {
 		result.Status = "incompatible"
-		result.Message = "插件协议版本与当前 Sub2API 不兼容"
+		result.Message = "插件协议版本与当前 Sub4API 不兼容"
 		return result
 	}
-	if !matchesSemverRange(host.Version, manifest.Requires.Sub2API) {
+	if !matchesSemverRange(host.Version, manifest.Requires.Sub4API) {
 		result.Status = "incompatible"
-		result.Message = fmt.Sprintf("当前 Sub2API %s 不满足插件要求 %s", host.Version, manifest.Requires.Sub2API)
+		result.Message = fmt.Sprintf("当前 Sub4API %s 不满足插件要求 %s", host.Version, manifest.Requires.Sub4API)
 		return result
 	}
 	result.Compatible = true
-	for _, tested := range manifest.Requires.TestedSub2APIVersions {
+	for _, tested := range manifest.Requires.TestedSub4APIVersions {
 		if normalizeSemver(tested) == normalizeSemver(host.Version) {
 			result.Tested = true
 			break
@@ -43,10 +43,10 @@ func EvaluatePluginCompatibility(manifest PluginManifest, host PluginHostInfo) P
 	}
 	if result.Tested {
 		result.Status = "compatible"
-		result.Message = "当前 Sub2API 版本已由插件声明测试"
+		result.Message = "当前 Sub4API 版本已由插件声明测试"
 	} else {
 		result.Status = "untested"
-		result.Message = "版本范围兼容，但插件未声明已测试当前 Sub2API 版本"
+		result.Message = "版本范围兼容，但插件未声明已测试当前 Sub4API 版本"
 	}
 	return result
 }

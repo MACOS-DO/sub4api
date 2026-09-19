@@ -3,21 +3,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${SUB2API_ENV_FILE:-${SCRIPT_DIR}/.env}"
+ENV_FILE="${SUB4API_ENV_FILE-${SUB2API_ENV_FILE-${SCRIPT_DIR}/.env}}"
 
-STACK_LABEL_KEY="org.sub2api.stack"
+STACK_LABEL_KEY="org.sub4api.stack"
 STACK_LABEL_VALUE="apple-container"
-NETWORK_NAME="sub2api-apple"
-APP_CONTAINER="sub2api-apple"
-POSTGRES_CONTAINER="sub2api-apple-postgres"
-REDIS_CONTAINER="sub2api-apple-redis"
-APP_VOLUME="sub2api-apple-data"
-POSTGRES_VOLUME="sub2api-apple-postgres-data"
-REDIS_VOLUME="sub2api-apple-redis-data"
+NETWORK_NAME="sub4api-apple"
+APP_CONTAINER="sub4api-apple"
+POSTGRES_CONTAINER="sub4api-apple-postgres"
+REDIS_CONTAINER="sub4api-apple-redis"
+APP_VOLUME="sub4api-apple-data"
+POSTGRES_VOLUME="sub4api-apple-postgres-data"
+REDIS_VOLUME="sub4api-apple-redis-data"
 PLATFORM="linux/arm64"
 
 TEMP_DIR=""
-LOCK_DIR="${TMPDIR:-/tmp}/sub2api-apple-container.lock"
+LOCK_DIR="${TMPDIR:-/tmp}/sub4api-apple-container.lock"
 LOCK_ACQUIRED=false
 
 APP_IMAGE=""
@@ -58,7 +58,7 @@ Usage: ./apple-container.sh <command> [options]
 
 Commands:
   init                  Create .env and generate required secrets
-  up [--recreate]       Create and start the complete Sub2API stack
+  up [--recreate]       Create and start the complete Sub4API stack
   down                  Stop the stack and preserve all data
   restart               Restart the stack in dependency order
   status                Show container and workload health
@@ -71,7 +71,7 @@ Destroy options:
   --yes                 Skip the confirmation prompt
 
 Environment:
-  SUB2API_ENV_FILE      Path to the deployment env file (default: deploy/.env)
+  SUB4API_ENV_FILE      Path to the deployment env file (default: deploy/.env)
 EOF
 }
 
@@ -99,7 +99,7 @@ acquire_lock() {
             rm -rf "${LOCK_DIR}"
             mkdir "${LOCK_DIR}" || die "Failed to reclaim stale operation lock."
         else
-            die "Another Sub2API Apple container operation is already running."
+            die "Another Sub4API Apple container operation is already running."
         fi
     fi
     printf '%s\n' "$$" >"${LOCK_DIR}/pid"
@@ -372,7 +372,7 @@ cmd_init() {
     mv "${temp_file}" "${ENV_FILE}"
 
     info "Created ${ENV_FILE} with generated secrets."
-    info "Review the file, then run: SUB2API_ENV_FILE='${ENV_FILE}' ${SCRIPT_DIR}/apple-container.sh up"
+    info "Review the file, then run: SUB4API_ENV_FILE='${ENV_FILE}' ${SCRIPT_DIR}/apple-container.sh up"
 }
 
 validate_port() {
@@ -414,14 +414,14 @@ validate_env_file_security() {
 prepare_environment() {
     validate_env_file_security
 
-    APP_IMAGE="$(read_env_value APPLE_CONTAINER_SUB2API_IMAGE weishaw/sub2api:latest)"
+    APP_IMAGE="$(read_env_value APPLE_CONTAINER_SUB4API_IMAGE "$(read_env_value APPLE_CONTAINER_SUB2API_IMAGE ghcr.io/macos-do/sub4api:latest)")"
     POSTGRES_IMAGE="$(read_env_value APPLE_CONTAINER_POSTGRES_IMAGE postgres:18-alpine)"
     REDIS_IMAGE="$(read_env_value APPLE_CONTAINER_REDIS_IMAGE redis:8-alpine)"
     BIND_HOST="$(read_env_value BIND_HOST 0.0.0.0)"
     HOST_PORT="$(read_env_value SERVER_PORT 8080)"
-    POSTGRES_USER="$(read_env_value POSTGRES_USER sub2api)"
+    POSTGRES_USER="$(read_env_value POSTGRES_USER sub4api)"
     POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD)"
-    POSTGRES_DB="$(read_env_value POSTGRES_DB sub2api)"
+    POSTGRES_DB="$(read_env_value POSTGRES_DB sub4api)"
     REDIS_PASSWORD="$(read_env_value REDIS_PASSWORD)"
     TZ_VALUE="$(read_env_value TZ Asia/Shanghai)"
     NETWORK_SUBNET="$(read_env_value APPLE_CONTAINER_NETWORK_SUBNET)"
@@ -440,7 +440,7 @@ prepare_environment() {
         die "Set a secure POSTGRES_PASSWORD in ${ENV_FILE}."
     fi
 
-    TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sub2api-apple.XXXXXX")"
+    TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sub4api-apple.XXXXXX")"
     APP_ENV_FILE="${TEMP_DIR}/app.env"
     POSTGRES_ENV_FILE="${TEMP_DIR}/postgres.env"
     POSTGRES_PROBE_ENV_FILE="${TEMP_DIR}/postgres-probe.env"
@@ -488,7 +488,7 @@ REDIS_HOST=${REDIS_ADDRESS}
 REDIS_PORT=6379
 REDIS_PASSWORD=${REDIS_PASSWORD}
 DATA_DIR=/app/storage/data
-APPLE_CONTAINER_SUB2API_IMAGE_ID=${APP_IMAGE_ID}
+APPLE_CONTAINER_SUB4API_IMAGE_ID=${APP_IMAGE_ID}
 EOF
     chmod 600 "${APP_ENV_FILE}"
 }
@@ -522,7 +522,7 @@ create_redis_container() {
 }
 
 create_app_container() {
-    info "Creating Sub2API container..."
+    info "Creating Sub4API container..."
     container create \
         --name "${APP_CONTAINER}" \
         --label "${STACK_LABEL_KEY}=${STACK_LABEL_VALUE}" \
@@ -537,26 +537,26 @@ create_app_container() {
         -c '
 set -e
 mkdir -p "$DATA_DIR"
-chown -R sub2api:sub2api "$DATA_DIR"
+chown -R sub4api:sub4api "$DATA_DIR"
 
 runtime_dir=/app/storage/runtime
-runtime_binary="$runtime_dir/sub2api"
+runtime_binary="$runtime_dir/sub4api"
 image_marker="$runtime_dir/base-image-id"
 installed_image_id=""
 if [ -f "$image_marker" ]; then
     installed_image_id="$(cat "$image_marker")"
 fi
-if [ ! -x "$runtime_binary" ] || [ "$installed_image_id" != "$APPLE_CONTAINER_SUB2API_IMAGE_ID" ]; then
+if [ ! -x "$runtime_binary" ] || [ "$installed_image_id" != "$APPLE_CONTAINER_SUB4API_IMAGE_ID" ]; then
     mkdir -p "$runtime_dir"
-    cp /app/sub2api "${runtime_binary}.new"
-    chown sub2api:sub2api "${runtime_binary}.new"
+    cp /app/sub4api "${runtime_binary}.new"
+    chown sub4api:sub4api "${runtime_binary}.new"
     chmod 0755 "${runtime_binary}.new"
     mv "${runtime_binary}.new" "$runtime_binary"
-    printf "%s\n" "$APPLE_CONTAINER_SUB2API_IMAGE_ID" >"${image_marker}.new"
+    printf "%s\n" "$APPLE_CONTAINER_SUB4API_IMAGE_ID" >"${image_marker}.new"
     mv "${image_marker}.new" "$image_marker"
     rm -f "${runtime_binary}.backup"
 fi
-chown -R sub2api:sub2api "$runtime_dir"
+chown -R sub4api:sub4api "$runtime_dir"
 
 child_pid=""
 stop() {
@@ -570,14 +570,14 @@ stop() {
 trap stop TERM INT
 
 while true; do
-    su-exec sub2api "$runtime_binary" &
+    su-exec sub4api "$runtime_binary" &
     child_pid=$!
     set +e
     wait "$child_pid"
     status=$?
     set -e
     child_pid=""
-    echo "Sub2API exited with status ${status}; restarting in 1 second..." >&2
+    echo "Sub4API exited with status ${status}; restarting in 1 second..." >&2
     sleep 1
 done
 ' \
@@ -702,11 +702,11 @@ start_dependencies() {
 
 start_app() {
     start_container_if_needed "${APP_CONTAINER}"
-    if ! wait_for_probe "Sub2API" 180 probe_app; then
+    if ! wait_for_probe "Sub4API" 180 probe_app; then
         show_failure_logs "${APP_CONTAINER}"
-        die "Sub2API did not become ready."
+        die "Sub4API did not become ready."
     fi
-    if ! wait_for_probe "Sub2API host port" 15 probe_host_app; then
+    if ! wait_for_probe "Sub4API host port" 15 probe_host_app; then
         die "Host port forwarding failed. In System Settings > Privacy & Security > Local Network, allow container-runtime-linux; restart Apple container services; then run 'apple-container.sh up' again."
     fi
 }
@@ -753,7 +753,7 @@ cmd_up() {
     create_app_container
     start_app
 
-    info "Sub2API is available at http://${ACCESS_HOST}:${HOST_PORT}"
+    info "Sub4API is available at http://${ACCESS_HOST}:${HOST_PORT}"
 }
 
 cmd_down() {
@@ -766,7 +766,7 @@ cmd_down() {
     stop_container_if_running "${APP_CONTAINER}"
     stop_container_if_running "${REDIS_CONTAINER}"
     stop_container_if_running "${POSTGRES_CONTAINER}"
-    info "Sub2API stack stopped; persistent volumes were preserved."
+    info "Sub4API stack stopped; persistent volumes were preserved."
 }
 
 cmd_restart() {
@@ -848,7 +848,7 @@ cmd_logs() {
     fi
 
     case "${service}" in
-        app|sub2api) container_name="${APP_CONTAINER}" ;;
+        app|sub4api) container_name="${APP_CONTAINER}" ;;
         postgres) container_name="${POSTGRES_CONTAINER}" ;;
         redis) container_name="${REDIS_CONTAINER}" ;;
         *) die "Unknown service '${service}'. Use app, postgres, or redis." ;;
@@ -881,9 +881,9 @@ confirm_destroy() {
     local answer
 
     if [[ "${include_volumes}" == true ]]; then
-        printf 'Delete the Sub2API stack and all persistent data? [y/N] '
+        printf 'Delete the Sub4API stack and all persistent data? [y/N] '
     else
-        printf 'Delete the Sub2API containers and network, preserving volumes? [y/N] '
+        printf 'Delete the Sub4API containers and network, preserving volumes? [y/N] '
     fi
     read -r answer
     [[ "${answer}" == "y" || "${answer}" == "Y" ]]
@@ -934,13 +934,28 @@ cmd_destroy() {
         delete_volume_if_present "${APP_VOLUME}"
         delete_volume_if_present "${REDIS_VOLUME}"
         delete_volume_if_present "${POSTGRES_VOLUME}"
-        info "Sub2API stack and persistent data deleted."
+        info "Sub4API stack and persistent data deleted."
     else
-        info "Sub2API stack deleted; persistent volumes were preserved."
+        info "Sub4API stack deleted; persistent volumes were preserved."
     fi
 }
 
 main() {
+    # Keep an existing stack's resource names and ownership labels.
+    if command -v container >/dev/null 2>&1 &&
+       ! resource_exists container sub4api-apple &&
+       ! resource_exists volume sub4api-apple-data &&
+       { resource_exists container sub2api-apple || resource_exists volume sub2api-apple-data; }; then
+        STACK_LABEL_KEY="org.sub2api.stack"
+        NETWORK_NAME="sub2api-apple"
+        APP_CONTAINER="sub2api-apple"
+        POSTGRES_CONTAINER="sub2api-apple-postgres"
+        REDIS_CONTAINER="sub2api-apple-redis"
+        APP_VOLUME="sub2api-apple-data"
+        POSTGRES_VOLUME="sub2api-apple-postgres-data"
+        REDIS_VOLUME="sub2api-apple-redis-data"
+        LOCK_DIR="${TMPDIR:-/tmp}/sub2api-apple-container.lock"
+    fi
     local command=${1-}
     if [[ $# -gt 0 ]]; then
         shift

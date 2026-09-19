@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/MACOS-DO/sub4api/internal/util/urlvalidator"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,7 +88,7 @@ func TestBuildAuthorizationURLIncludesHermesCompatibleParameters(t *testing.T) {
 	require.Equal(t, "challenge", values.Get("code_challenge"))
 	require.Equal(t, "S256", values.Get("code_challenge_method"))
 	require.Equal(t, "generic", values.Get("plan"))
-	require.Equal(t, "sub2api", values.Get("referrer"))
+	require.Equal(t, "sub4api", values.Get("referrer"))
 }
 
 func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {

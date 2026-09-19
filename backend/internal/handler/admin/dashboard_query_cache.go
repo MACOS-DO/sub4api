@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/MACOS-DO/sub4api/internal/pkg/usagestats"
 )
 
 var (

@@ -5,7 +5,7 @@ package service
 import (
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/MACOS-DO/sub4api/internal/pkg/apicompat"
 	"github.com/stretchr/testify/require"
 )
 

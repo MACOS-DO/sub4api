@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/MACOS-DO/sub4api/internal/payment"
 )
 
 // issue #6292: mapi.php 上游若回相对形式的 payurl/payurl2/qrcode，网关原样

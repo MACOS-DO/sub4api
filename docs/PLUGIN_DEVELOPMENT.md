@@ -1,8 +1,8 @@
-# Sub2API 插件开发教程
+# Sub4API 插件开发教程
 
-本文面向希望为 Sub2API 开发、打包和发布插件的团队。插件是独立进程和静态 UI 组成的 `.s2plugin` 包，宿主通过稳定的 gRPC 协议调用它。本文以当前宿主已经定义的 `openai.oauth.outbound_transport.v1` 能力作为协议示例，说明开发者需要准备什么、哪些职责属于插件、哪些职责仍由 Sub2API 负责。
+本文面向希望为 Sub4API 开发、打包和发布插件的团队。插件是独立进程和静态 UI 组成的 `.s2plugin` 包，宿主通过稳定的 gRPC 协议调用它。本文以当前宿主已经定义的 `openai.oauth.outbound_transport.v1` 能力作为协议示例，说明开发者需要准备什么、哪些职责属于插件、哪些职责仍由 Sub4API 负责。
 
-本文不是一个可直接安装的完整插件，也不代表 Sub2API 已经发布对应的官方插件包。当前文档主要描述公开协议、宿主边界和开发流程。后续是否发布可安装包、支持哪些 Provider，以及如何提供示例仓库，都需要另行公告。
+本文不是一个可直接安装的完整插件，也不代表 Sub4API 已经发布对应的官方插件包。当前文档主要描述公开协议、宿主边界和开发流程。后续是否发布可安装包、支持哪些 Provider，以及如何提供示例仓库，都需要另行公告。
 
 ## 1. 准备开发环境
 
@@ -40,7 +40,7 @@ my-plugin/
 
 开发时至少准备以下部分：
 
-1. `manifest.source.json`：插件 ID、名称、版本、作者、能力和兼容的 Sub2API 版本；
+1. `manifest.source.json`：插件 ID、名称、版本、作者、能力和兼容的 Sub4API 版本；
 2. `cmd/<plugin>/main.go`：启动入口和运行时版本注入，并同步打包器中的构建目标和二进制名称；
 3. `internal/pluginconfig/`：配置结构、默认值、严格校验和规范化；
 4. `internal/transport/`：HTTP 客户端、代理、请求头、请求体、网络连接参数、响应流和资源回收；
@@ -70,7 +70,7 @@ my-plugin/
 
 ## 4. 设计插件配置
 
-插件配置由插件定义，由 Sub2API 加密保存。推荐流程是：
+插件配置由插件定义，由 Sub4API 加密保存。推荐流程是：
 
 1. 在 `internal/pluginconfig.Config` 中定义字段和默认值；
 2. 使用 `json.Decoder.DisallowUnknownFields` 等严格方式解析；
@@ -82,7 +82,7 @@ JSON 字段统一使用 `snake_case`。敏感配置不要放入 URL、UI 通知�
 
 ## 5. 实现插件自己的配置 UI
 
-UI 是插件包内的静态页面，不需要修改 Sub2API 前端源码。宿主会在受限 iframe 中加载 `ui/index.html`，并通过 UI Bridge 提供配置读写和测试能力。
+UI 是插件包内的静态页面，不需要修改 Sub4API 前端源码。宿主会在受限 iframe 中加载 `ui/index.html`，并通过 UI Bridge 提供配置读写和测试能力。
 
 页面初始化流程：
 
@@ -119,9 +119,9 @@ UI 是插件包内的静态页面，不需要修改 Sub2API 前端源码。宿�
   "name": "Example OpenAI Transport",
   "version": "0.1.0",
   "requires": {
-    "sub2api": ">=0.1.179 <0.2.0",
-    "recommended_sub2api_version": "0.1.179",
-    "tested_sub2api_versions": ["0.1.179"],
+    "sub4api": ">=0.1.179 <0.2.0",
+    "recommended_sub4api_version": "0.1.179",
+    "tested_sub4api_versions": ["0.1.179"],
     "plugin_protocol": 1,
     "transport_api": 1,
     "ui_bridge": 1
@@ -139,7 +139,7 @@ UI 是插件包内的静态页面，不需要修改 Sub2API 前端源码。宿�
 }
 ```
 
-打包器会自动填充目标平台运行时、UI 和运行时文件的 SHA-256。清单中的 `requires.sub2api` 是硬兼容范围；`tested_sub2api_versions` 应只填写真实验证过的版本；`recommended_sub2api_version` 用于管理页面展示。当前宿主仅处理 `openai.oauth.outbound_transport.v1`，声明其他能力不会自动产生新路由。后续增加 Provider 支持时，会在协议、能力清单和宿主路由完成适配后，再补充对应的清单示例。
+打包器会自动填充目标平台运行时、UI 和运行时文件的 SHA-256。清单中的 `requires.sub4api` 是硬兼容范围；`tested_sub4api_versions` 应只填写真实验证过的版本；`recommended_sub4api_version` 用于管理页面展示。当前宿主仅处理 `openai.oauth.outbound_transport.v1`，声明其他能力不会自动产生新路由。后续增加 Provider 支持时，会在协议、能力清单和宿主路由完成适配后，再补充对应的清单示例。
 
 ## 7. 生成密钥并签名
 
@@ -162,7 +162,7 @@ go run ./tools/keygen -out build/keys/my-publisher
 
 签名覆盖最终 `manifest.json` 的精确字节；清单中的文件哈希再覆盖运行时和 UI 文件。签名完成后不要重新格式化 `manifest.json`。
 
-部署者在 Sub2API 配置文件中追加公钥：
+部署者在 Sub4API 配置文件中追加公钥：
 
 ```yaml
 plugins:
@@ -187,23 +187,23 @@ node --check ui/assets/app.js
 unzip -t dist/*.s2plugin
 ```
 
-回到 Sub2API 仓库根目录后，再使用真实构建包运行宿主集成测试：
+回到 Sub4API 仓库根目录后，再使用真实构建包运行宿主集成测试：
 
 ```bash
 cd ../..
-SUB2API_TEST_PLUGIN_PACKAGE=plugins/my-openai-plugin/dist/my-openai-plugin.s2plugin \
+SUB4API_TEST_PLUGIN_PACKAGE=plugins/my-openai-plugin/dist/my-openai-plugin.s2plugin \
   go test ./backend/internal/service -run '^TestPluginRuntimeIntegration$' -count=1
 ```
 
 最低测试集应覆盖配置默认值和边界值、插件身份、请求和响应分块、流式响应、上下文取消、插件退出、代理开关、包哈希、签名、路径安全、目标平台运行时以及 UI Bridge 的加载、保存、测试、错误和超时。
 
-安装后先保持停用，确认清单兼容性、签名和诊断结果，再按账号灰度启用。API Key 账号和未命中灰度的 OAuth 账号继续走 Sub2API 原有路径。
+安装后先保持停用，确认清单兼容性、签名和诊断结果，再按账号灰度启用。API Key 账号和未命中灰度的 OAuth 账号继续走 Sub4API 原有路径。
 
 ## 9. 发布前检查清单
 
 - 插件版本与 `GetInfo` 返回值一致；
-- `requires.sub2api` 覆盖范围经过验证，没有未经测试的破坏性版本；
-- `tested_sub2api_versions` 与实际测试记录一致；
+- `requires.sub4api` 覆盖范围经过验证，没有未经测试的破坏性版本；
+- `tested_sub4api_versions` 与实际测试记录一致；
 - 每个支持的平台和架构都有运行时文件；
 - 生产包存在有效 `signature.json`，公钥已交付部署者；
 - 包中没有私钥、源映射、测试数据、日志和临时文件；
@@ -216,7 +216,7 @@ SUB2API_TEST_PLUGIN_PACKAGE=plugins/my-openai-plugin/dist/my-openai-plugin.s2plu
 | 现象 | 排查方向 |
 | --- | --- |
 | 安装提示签名不受信任 | 检查 `signature.json.key_id`、Base64 公钥和配置键是否完全一致。 |
-| 插件显示不兼容 | 检查 `requires.sub2api`、`plugin_protocol`、`transport_api` 和 `ui_bridge`。 |
+| 插件显示不兼容 | 检查 `requires.sub4api`、`plugin_protocol`、`transport_api` 和 `ui_bridge`。 |
 | 插件进程无法启动 | 检查目标系统和架构对应的运行时路径、可执行权限和运行用户权限。 |
 | 配置页无法加载 | 检查 `ui.entrypoint`、UI 文件哈希、Bridge Token 校验和 iframe 消息来源。 |
 | 保存后配置未生效 | 查看 `ValidateConfig`、`ApplyConfig` 返回的规范化配置和诊断信息。 |
@@ -226,8 +226,8 @@ SUB2API_TEST_PLUGIN_PACKAGE=plugins/my-openai-plugin/dist/my-openai-plugin.s2plu
 
 如果新插件需要支持其他 Provider、其他账号类型或新的消息字段，应先扩展并版本化公开协议，再由宿主增加能力匹配和生命周期处理。不要仅通过清单声明一个宿主尚未实现的能力。这样可以让旧插件继续运行，也能让新宿主明确拒绝不兼容的插件。
 
-Sub2API 后续会持续补充更多 Provider 的插件适配说明，包括能力标识、请求和响应契约、配置字段、UI Bridge 使用方式、版本兼容要求以及测试清单。本文会随着这些能力的落地继续更新，Provider 专属章节会放在本节之后。
+Sub4API 后续会持续补充更多 Provider 的插件适配说明，包括能力标识、请求和响应契约、配置字段、UI Bridge 使用方式、版本兼容要求以及测试清单。本文会随着这些能力的落地继续更新，Provider 专属章节会放在本节之后。
 
 ## 12. 示例仓库预留
 
-后续计划提供独立的插件示例仓库，用于存放可复用的运行时骨架、UI 组件、打包工具和各 Provider 的最小实现。目前示例仓库尚未准备完成，因此暂不提供地址；正式发布后会在这里补充仓库地址、适用的 Sub2API 版本、示例插件版本和构建说明。
+后续计划提供独立的插件示例仓库，用于存放可复用的运行时骨架、UI 组件、打包工具和各 Provider 的最小实现。目前示例仓库尚未准备完成，因此暂不提供地址；正式发布后会在这里补充仓库地址、适用的 Sub4API 版本、示例插件版本和构建说明。

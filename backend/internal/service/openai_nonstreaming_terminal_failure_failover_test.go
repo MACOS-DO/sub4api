@@ -10,10 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/config"
 )
 
-// issue #5281：stream=false 时上游仍可能回 SSE（其他 sub2api 实例、部分 OpenAI 兼容
+// issue #5281：stream=false 时上游仍可能回 SSE（其他 sub4api 实例、部分 OpenAI 兼容
 // 上游），容量/限流错误经 HTTP 200 的终止事件回传。handleSSEToJSON 与
 // handlePassthroughSSEToJSON 把所有终止事件塞进固定 502，而几百行外的流式读取器对
 // 同一帧走 openAIStreamFailedEventShouldFailover / openAIStreamErrorEventShouldFailover

@@ -1,0 +1,207 @@
+name: Main release
+
+on:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      release-ref:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+# Shared by main, tag and manual releases. Queue, rather than interrupt a push.
+concurrency:
+  group: sub4api-publish
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release-ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Skip superseded main commits
+        id: current
+        uses: actions/github-script@v8
+        with:
+          script: |
+            let publish = true;
+            if (context.eventName === 'push' && context.ref === 'refs/heads/main') {
+              const {data} = await github.rest.git.getRef({...context.repo, ref: 'heads/main'});
+              publish = data.object.sha === context.sha;
+            }
+            core.setOutput('publish', String(publish));
+            if (!publish) core.notice('Skipping a main commit superseded by a newer push.');
+
+      - name: Resolve version and validate configuration
+        if: steps.current.outputs.publish == 'true'
+        id: meta
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: bash scripts/release/prepare.sh
+
+      - name: Check release mutability
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        with:
+          script: |
+            try {
+              const {data} = await github.rest.repos.getReleaseByTag({...context.repo, tag: process.env.RELEASE_TAG});
+              if (data.immutable) core.setFailed('This release is immutable; its tag and assets cannot be replaced.');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              // A failed first upload may leave a draft, which getReleaseByTag can omit.
+              const releases = await github.paginate(github.rest.repos.listReleases, {...context.repo, per_page: 100});
+              const draft = releases.find(r => r.tag_name === process.env.RELEASE_TAG);
+              if (draft?.immutable) core.setFailed('Release is immutable.');
+            }
+
+      - uses: pnpm/action-setup@v6
+        if: steps.current.outputs.publish == 'true'
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        if: steps.current.outputs.publish == 'true'
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: actions/setup-go@v6
+        if: steps.current.outputs.publish == 'true'
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Build frontend
+        if: steps.current.outputs.publish == 'true'
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+      - name: Build release archives
+        if: steps.current.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+          BUILD_DATE: ${{ steps.meta.outputs.date }}
+        run: bash scripts/release/build-archives.sh
+
+      - uses: docker/setup-qemu-action@v3
+        if: steps.current.outputs.publish == 'true'
+      - uses: docker/setup-buildx-action@v3
+        if: steps.current.outputs.publish == 'true'
+      - uses: docker/login-action@v3
+        if: steps.current.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/login-action@v3
+        if: steps.current.outputs.publish == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push both registries
+        if: steps.current.outputs.publish == 'true'
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.ghcr }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.ghcr }}:latest
+            ${{ steps.meta.outputs.dockerhub }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.dockerhub }}:latest
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            DATE=${{ steps.meta.outputs.date }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.commit }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Render release notes
+        if: steps.current.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+          GHCR_IMAGE: ${{ steps.meta.outputs.ghcr }}
+          DOCKERHUB_IMAGE: ${{ steps.meta.outputs.dockerhub }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: python3 scripts/release/notes.py
+
+      - name: Update tag and prepare release
+        if: steps.current.outputs.publish == 'true'
+        id: release
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          RELEASE_COMMIT: ${{ steps.meta.outputs.commit }}
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = process.env.RELEASE_TAG;
+            const sha = process.env.RELEASE_COMMIT;
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              const releases = await github.paginate(github.rest.repos.listReleases, {...context.repo, per_page: 100});
+              release = releases.find(r => r.tag_name === tag);
+            }
+            if (release?.immutable) throw new Error('Release became immutable during the build.');
+            let exists = false;
+            try {
+              await github.rest.git.getRef({...context.repo, ref: `tags/${tag}`});
+              exists = true;
+            } catch (error) { if (error.status !== 404) throw error; }
+            try {
+              if (exists) await github.rest.git.updateRef({...context.repo, ref: `tags/${tag}`, sha, force: true});
+              else await github.rest.git.createRef({...context.repo, ref: `refs/tags/${tag}`, sha});
+            } catch (error) {
+              throw new Error(`Cannot update ${tag}; check tag rules and contents permission: ${error.message}`);
+            }
+            const params = {...context.repo, tag_name: tag, target_commitish: sha,
+              name: `Sub4API ${process.env.RELEASE_VERSION}`,
+              body: fs.readFileSync('dist/release-notes.md', 'utf8'),
+              prerelease: process.env.RELEASE_VERSION.includes('-')};
+            if (release) await github.rest.repos.updateRelease({...params, release_id: release.id});
+            else release = (await github.rest.repos.createRelease({...params, draft: true})).data;
+            core.setOutput('id', release.id);
+
+      - name: Upload all archives and checksums
+        if: steps.current.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/release/* --clobber
+
+      - name: Publish release
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/github-script@v8
+        env:
+          RELEASE_ID: ${{ steps.release.outputs.id }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+        with:
+          script: |
+            await github.rest.repos.updateRelease({...context.repo,
+              release_id: Number(process.env.RELEASE_ID), draft: false,
+              make_latest: process.env.RELEASE_VERSION.includes('-') ? 'false' : 'true'});

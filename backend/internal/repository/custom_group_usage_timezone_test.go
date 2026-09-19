@@ -3,7 +3,7 @@ package repository
 import (
 	"testing"
 
-	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	appTimezone "github.com/MACOS-DO/sub4api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
