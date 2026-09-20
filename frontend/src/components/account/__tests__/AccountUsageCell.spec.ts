@@ -106,7 +106,7 @@ describe('AccountUsageCell', () => {
     })
   })
 
-  it.each(['oauth', 'setup-token'] as const)('renders Codex ticket status for OpenAI %s accounts', async (type) => {
+  it.each(['oauth', 'setup-token'] as const)('keeps Codex ticket status out of the usage cell for OpenAI %s accounts', async (type) => {
     getUsage.mockResolvedValue({})
     const wrapper = mount(AccountUsageCell, {
       props: {
@@ -128,9 +128,8 @@ describe('AccountUsageCell', () => {
       } },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('42m00s')
-    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketPaused')
-    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketMissing')
+    expect(wrapper.text()).not.toContain('42m00s')
+    expect(wrapper.text()).not.toContain('codexTurnTicket')
     if (type === 'setup-token') {
       expect(getUsage).not.toHaveBeenCalled()
       expect(wrapper.find('[data-test="quota-reset"]').exists()).toBe(false)

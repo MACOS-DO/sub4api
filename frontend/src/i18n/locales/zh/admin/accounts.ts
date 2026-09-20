@@ -1,5 +1,17 @@
 export default {
     accounts: {
+      codexTicket: {
+        column: '292 打票', title: '打票详情', current: '当前票据', valid: '有效', missing: '暂无有效票据', inactive: '未参与',
+        autoPaused: '自动打票暂停至', lastSuccess: '最近成功', retry: '重新打票', retrying: '打票中…',
+        accountEnabled: '账号参与打票', modelEnabled: '该模型参与打票', policySaved: '参与设置已保存',
+        attempts: '请求流水', successes: '成功记录', loading: '加载中…', empty: '暂无记录',
+        success: '获取成功', miss: '未命中', error: '请求失败', manual: '手动',
+        length: '票据长度', proxy: '代理', reason: '原因', total: '共 {count} 条',
+        disabled: '打票未启用或当前账号、模型未参与', noProxy: '代理池中没有可用代理',
+        historyFailed: '流水记录写入失败', poolTitle: '292 打票代理池',
+        poolHint: '打票轮换使用代理管理中启用且未过期的代理；全部模式也会包含以后新增的代理。',
+        allProxies: '全部可用代理', selectedProxies: '指定代理', saving: '保存中…'
+      },
       ticketPolicy: '无票请求策略',
       ticketInherit: '跟随全局',
       ticketAllow: '允许无票',
@@ -757,11 +769,11 @@ export default {
         codexFingerprintDevice: '仅设备',
         codexFingerprintSession: '设备+会话',
         codexFingerprintFull: '完全收敛',
-        codexTurnTicket: 'Codex 292 门票',
+        codexTurnTicket: 'Codex 门票',
         codexTurnTicketDesc: '显示已配置模型的门票状态。仅在启用缺票拦截时，没有有效门票的模型才会暂停调度。',
         codexTurnTicketMissing: '暂无有效门票，仍允许请求',
         codexTurnTicketReady: '剩余 {time}',
-        codexTurnTicketPaused: '未打到 292，该模型已暂停',
+        codexTurnTicketPaused: '未取得有效门票，该模型已暂停',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',
