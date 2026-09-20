@@ -291,6 +291,17 @@
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
             </div>
           </template>
+          <template #cell-codex_ticket="{ row }">
+            <div v-if="row.platform === 'openai' && (row.type === 'oauth' || row.type === 'setup-token')" class="flex min-w-36 flex-col gap-1">
+              <button v-for="model in ['gpt-6-astra', 'gpt-5.6-sol']" :key="model" type="button" class="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-xs transition-colors hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-primary-900/20" @click="ticketAccount = row; ticketModel = model">
+                <span class="font-medium text-gray-700 dark:text-gray-200">{{ model === 'gpt-6-astra' ? '6 Astra' : '5.6 Sol' }}</span>
+                <span :class="isCodexTicketHarvestEnabled(row, model) && getCodexTicket(row, model)?.ready ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'">
+                  {{ !isCodexTicketHarvestEnabled(row, model) ? t('admin.accounts.codexTicket.inactive') : getCodexTicket(row, model)?.ready ? `${Math.ceil((getCodexTicket(row, model)?.remaining_seconds ?? 0) / 60)}m` : '—' }}
+                </span>
+              </button>
+            </div>
+            <span v-else class="text-gray-400">—</span>
+          </template>
           <template #cell-schedulable="{ row }">
             <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
               <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
@@ -452,6 +463,7 @@
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <CodexTicketDialog :show="!!ticketAccount" :account="ticketAccount" :model="ticketModel" @close="ticketAccount = null" @refreshed="reload" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
@@ -516,6 +528,7 @@ import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
+import CodexTicketDialog from '@/components/account/CodexTicketDialog.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
@@ -589,6 +602,14 @@ const selTypes = computed<AccountType[]>(() => {
 })
 const showCreate = ref(false)
 const showEdit = ref(false)
+const ticketAccount = ref<AccountListItem | null>(null)
+const ticketModel = ref('gpt-6-astra')
+const getCodexTicket = (account: AccountListItem, model: string) => account.codex_turn_tickets?.find(ticket => ticket.model === model)
+const isCodexTicketHarvestEnabled = (account: AccountListItem, model: string) => {
+  const status = getCodexTicket(account, model)
+  if (status?.harvest_enabled === false || account.extra?.codex_ticket_harvest_enabled === false) return false
+  return account.extra?.codex_ticket_harvest_models?.[model] !== false
+}
 const showSync = ref(false)
 const showImportData = ref(false)
 const showExportDataDialog = ref(false)
@@ -1787,6 +1808,7 @@ const allColumns = computed(() => {
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
+    { key: 'codex_ticket', label: t('admin.accounts.codexTicket.column'), sortable: false },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]

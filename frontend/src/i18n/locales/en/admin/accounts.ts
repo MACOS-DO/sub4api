@@ -1,5 +1,17 @@
 export default {
     accounts: {
+      codexTicket: {
+        column: '292 tickets', title: 'Ticket details', current: 'Current ticket', valid: 'Valid', missing: 'No valid ticket', inactive: 'Off',
+        autoPaused: 'Automatic attempts paused until', lastSuccess: 'Last success', retry: 'Try again', retrying: 'Trying…',
+        accountEnabled: 'Account participates', modelEnabled: 'Model participates', policySaved: 'Participation saved',
+        attempts: 'Requests', successes: 'Successful tickets', loading: 'Loading…', empty: 'No records yet',
+        success: 'Obtained', miss: 'No ticket', error: 'Request failed', manual: 'Manual',
+        length: 'Ticket length', proxy: 'Proxy', reason: 'Reason', total: '{count} records',
+        disabled: 'Harvesting disabled for this account or model', noProxy: 'No available proxy in the pool',
+        historyFailed: 'Could not save the request history', poolTitle: '292 ticket proxy pool',
+        poolHint: 'Rotate among enabled, unexpired managed proxies. All mode also includes newly added proxies.',
+        allProxies: 'All available proxies', selectedProxies: 'Selected proxies', saving: 'Saving…'
+      },
       ticketPolicy: 'Requests without a ticket',
       ticketInherit: 'Follow global default',
       ticketAllow: 'Allow without ticket',
@@ -679,11 +691,11 @@ export default {
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',
-        codexTurnTicket: 'Codex 292 ticket',
+        codexTurnTicket: 'Codex ticket',
         codexTurnTicketDesc: 'Ticket status for the configured models. Requests are paused without a valid ticket only when fail-closed is enabled.',
         codexTurnTicketMissing: 'No valid ticket; requests remain allowed',
         codexTurnTicketReady: '{time} left',
-        codexTurnTicketPaused: 'No 292 ticket; this model is paused',
+        codexTurnTicketPaused: 'No valid ticket; this model is paused',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',

@@ -15,7 +15,12 @@ import (
 
 // ProxyHandler handles admin proxy management
 type ProxyHandler struct {
-	adminService service.AdminService
+	adminService        service.AdminService
+	codexTicketSettings *service.SettingService
+}
+
+func (h *ProxyHandler) SetCodexTicketSettings(settings *service.SettingService) {
+	h.codexTicketSettings = settings
 }
 
 // NewProxyHandler creates a new admin proxy handler

@@ -147,8 +147,9 @@ RUN printf 'sub2api:x:1000:1000::/home/sub4api:/bin/sh\n' >> /etc/passwd && \
 COPY --from=backend-builder --chown=sub4api:sub4api /app/sub4api /app/sub4api
 COPY --from=backend-builder --chown=sub4api:sub4api /app/backend/resources /app/resources
 
-# Create data directory
-RUN mkdir -p /app/data && chown sub4api:sub4api /app/data
+# The updater creates temporary files, backups, and replacement binaries beside
+# /app/sub4api, so the runtime user needs write access to /app itself.
+RUN mkdir -p /app/data && chown sub4api:sub4api /app /app/data
 
 # Copy entrypoint script (fixes volume permissions then drops to sub4api)
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh

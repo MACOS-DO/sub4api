@@ -2971,15 +2971,24 @@ type openAICanonicalQuotaWindow struct {
 	usedPercent float64
 	hasUsed     bool
 	reset       bool
+	resetAt     *time.Time
 }
 
 // 规范字段优先；历史原始字段复用写入端 Normalize 的窗口分类，不能固定把 primary 当作 7d。
 func openAICanonicalQuotaWindows(extra map[string]any, now time.Time) (window5h, window7d openAICanonicalQuotaWindow) {
+	fromWindow := func(window string, used float64) openAICanonicalQuotaWindow {
+		result := openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true}
+		if resetAt, ok := openAICodexWindowResetAt(extra, window); ok {
+			result.resetAt = &resetAt
+			result.reset = !now.Before(resetAt)
+		}
+		return result
+	}
 	if used, ok := resolveAccountExtraNumber(extra, "codex_5h_used_percent"); ok {
-		window5h = openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true, reset: openAIQuotaWindowReset(extra, "5h", now)}
+		window5h = fromWindow("5h", used)
 	}
 	if used, ok := resolveAccountExtraNumber(extra, "codex_7d_used_percent"); ok {
-		window7d = openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true, reset: openAIQuotaWindowReset(extra, "7d", now)}
+		window7d = fromWindow("7d", used)
 	}
 	if window5h.hasUsed && window7d.hasUsed {
 		return window5h, window7d
@@ -3011,7 +3020,7 @@ func openAICanonicalQuotaWindows(extra map[string]any, now time.Time) (window5h,
 		if used == snapshot.PrimaryUsedPercent {
 			window = "primary"
 		}
-		return openAICanonicalQuotaWindow{usedPercent: *used, hasUsed: true, reset: openAIQuotaWindowReset(extra, window, now)}
+		return fromWindow(window, *used)
 	}
 	if !window5h.hasUsed {
 		window5h = fromRaw(normalized.Used5hPercent)
