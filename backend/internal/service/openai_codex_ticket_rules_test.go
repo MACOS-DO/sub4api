@@ -17,6 +17,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCodexTicketTargetLengthByPlan(t *testing.T) {
+	for _, plan := range []string{"team", "self_serve_business_prolite", "selfservebusinessprolite", " SELF_SERVE_BUSINESS_PROLITE ", "self-serve-business-pro-lite", "self serve business pro lite"} {
+		t.Run(plan, func(t *testing.T) {
+			account := ticketTestAccount(41)
+			account.Credentials["plan_type"] = plan
+			for _, configured := range []int{0, 292, 312} {
+				require.Equal(t, 332, openAICodexTicketTargetLength(account, configured))
+			}
+		})
+	}
+	for _, plan := range []string{"pro", "prolite", "plus", "free", "", "unknown", "self_serve_business_usage_based"} {
+		t.Run(plan, func(t *testing.T) {
+			account := ticketTestAccount(41)
+			account.Credentials["plan_type"] = plan
+			require.Equal(t, 292, openAICodexTicketTargetLength(account, 0))
+			require.True(t, openAICodexTicketResponseValid(account, 312, http.StatusOK, fakeCodexTicketState(312)))
+			require.False(t, openAICodexTicketResponseValid(account, 312, http.StatusOK, fakeCodexTicketState(292)))
+		})
+	}
+}
+
 func TestCodexTicketQuotaResumeBoundary(t *testing.T) {
 	now := time.Date(2026, 9, 20, 1, 0, 0, 0, time.UTC)
 	at := func(d time.Duration) *time.Time { v := now.Add(d); return &v }
@@ -51,36 +72,56 @@ func TestCodexTicketResponseRulesApplyToHarvestAndForwarding(t *testing.T) {
 			for _, tc := range []struct {
 				plan   string
 				length int
-			}{{"pro", 292}, {" TEAM ", 332}} {
+			}{{"pro", 292}, {"prolite", 292}, {" TEAM ", 332}, {"self_serve_business_prolite", 332}} {
 				for _, status := range []int{http.StatusOK, http.StatusTooManyRequests} {
-					t.Run(fmt.Sprintf("%s/%s/%s/%d", model, accountType, tc.plan, status), func(t *testing.T) {
-						account := ticketTestAccount(41)
-						account.Type = accountType
-						account.Credentials["plan_type"] = tc.plan
-						headers := http.Header{}
-						headers.Set(openAICodexTurnStateHeader, fakeCodexTicketState(tc.length))
-						upstream := &httpUpstreamRecorder{responses: []*http.Response{{StatusCode: status, Header: headers, Body: io.NopCloser(strings.NewReader(""))}}}
-						cfg := config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, HarvestProxyURL: "http://proxy.example:8080"}
-						svc := ticketTestService(t, cfg, upstream)
-						svc.probeOnceOpenAICodexTicket(context.Background(), account, model)
-						ticket := svc.lookupOpenAICodexTicket(account, model)
-						require.NotNil(t, ticket)
-						require.Equal(t, status, ticket.HTTPStatus)
-						require.Equal(t, tc.length, ticket.Length)
-						require.False(t, svc.openAICodexTicketBlocksAccount(account, model))
-						forwardHeaders := http.Header{}
-						require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, model, forwardHeaders))
-						require.Equal(t, ticket.State, forwardHeaders.Get(openAICodexTurnStateHeader))
-						// Hydration and the admin summary must agree after a restart.
-						account.Extra = map[string]any{openAICodexTicketExtraKey(model): ticket}
-						restarted := ticketTestService(t, cfg, nil)
-						require.False(t, restarted.openAICodexTicketBlocksAccount(account, model))
-						cfg.Models = []string{model}
-						summary := OpenAICodexTicketStatuses(account, cfg, time.Now())
-						require.Len(t, summary, 1)
-						require.True(t, summary[0].Ready)
-						require.Equal(t, tc.length, summary[0].ExpectedTicketLength)
-					})
+					for _, trigger := range []string{"automatic", "manual"} {
+						t.Run(fmt.Sprintf("%s/%s/%s/%d/%s", model, accountType, tc.plan, status, trigger), func(t *testing.T) {
+							account := ticketTestAccount(41)
+							account.Type = accountType
+							account.Status = StatusActive
+							account.Credentials["plan_type"] = tc.plan
+							headers := http.Header{}
+							headers.Set(openAICodexTurnStateHeader, fakeCodexTicketState(tc.length))
+							upstream := &httpUpstreamRecorder{responses: []*http.Response{{StatusCode: status, Header: headers, Body: io.NopCloser(strings.NewReader(""))}}}
+							cfg := config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, HarvestProxyURL: "http://proxy.example:8080"}
+							svc := ticketTestService(t, cfg, upstream)
+							repo := &codexTicketQuotaRepo{account: *account}
+							history := &codexTicketAttemptMemoryRepo{}
+							svc.accountRepo, svc.openaiCodexTicketHistory = repo, history
+							if trigger == "manual" {
+								result, err := svc.ManualCodexTicketHarvest(context.Background(), account.ID, model)
+								require.NoError(t, err)
+								require.Equal(t, "success", result.Outcome)
+								require.True(t, result.HistoryRecorded)
+								require.True(t, result.TicketStatus.Ready)
+								require.Equal(t, tc.length, result.TicketStatus.ExpectedTicketLength)
+							} else {
+								svc.probeOnceOpenAICodexTicket(context.Background(), account, model)
+							}
+							require.Len(t, history.inserted, 1)
+							require.Equal(t, "success", history.inserted[0].Outcome)
+							require.Equal(t, trigger, history.inserted[0].Trigger)
+							require.Equal(t, tc.length, *history.inserted[0].TicketLength)
+							ticket := svc.lookupOpenAICodexTicket(account, model)
+							require.NotNil(t, ticket)
+							require.Equal(t, status, ticket.HTTPStatus)
+							require.Equal(t, tc.length, ticket.Length)
+							require.False(t, svc.openAICodexTicketBlocksAccount(account, model))
+							forwardHeaders := http.Header{}
+							require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, model, forwardHeaders))
+							require.Equal(t, ticket.State, forwardHeaders.Get(openAICodexTurnStateHeader))
+							// Hydration and the admin summary must agree after a restart.
+							account.Extra = maps.Clone(repo.account.Extra)
+							require.Contains(t, account.Extra, openAICodexTicketExtraKey(model))
+							restarted := ticketTestService(t, cfg, nil)
+							require.False(t, restarted.openAICodexTicketBlocksAccount(account, model))
+							cfg.Models = []string{model}
+							summary := OpenAICodexTicketStatuses(account, cfg, time.Now())
+							require.Len(t, summary, 1)
+							require.True(t, summary[0].Ready)
+							require.Equal(t, tc.length, summary[0].ExpectedTicketLength)
+						})
+					}
 				}
 			}
 		}
@@ -97,6 +138,11 @@ func TestCodexTicketRejectsInvalidHeadersEvenOn429(t *testing.T) {
 		{"wrong prefix", "pro", strings.Repeat("X", 292), 429},
 		{"team requires 332", "team", fakeCodexTicketState(292), 429},
 		{"personal requires 292", "pro", fakeCodexTicketState(332), 429},
+		{"personal prolite requires 292", "prolite", fakeCodexTicketState(332), 429},
+		{"business premium requires 332", "self_serve_business_prolite", fakeCodexTicketState(292), 429},
+		{"business premium wrong prefix", "self_serve_business_prolite", strings.Repeat("X", 332), 429},
+		{"business premium unauthorized", "self_serve_business_prolite", fakeCodexTicketState(332), 401},
+		{"business premium server error", "self_serve_business_prolite", fakeCodexTicketState(332), 503},
 		{"unauthorized", "pro", fakeCodexTicketState(292), 401},
 		{"server error", "pro", fakeCodexTicketState(292), 503},
 	} {

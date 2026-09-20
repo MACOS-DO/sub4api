@@ -18,7 +18,8 @@ func openAICodexTicketTargetLength(account *Account, configured int) int {
 			}
 			return unicode.ToLower(r)
 		}, account.GetCredential("plan_type"))
-		if plan == "team" {
+		// Business Standard and Business Premium both issue 332-byte tickets.
+		if plan == "team" || plan == "selfservebusinessprolite" {
 			return 332
 		}
 	}
