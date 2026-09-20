@@ -391,7 +391,9 @@ func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *te
 }
 func TestOpenAICodexTicketStatuses_RespectRuntimeConfiguration(t *testing.T) {
 	account := ticketTestAccount(41)
-	require.Empty(t, OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{}, time.Now()))
+	disabled := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{}, time.Now())
+	require.Len(t, disabled, 2)
+	require.False(t, disabled[0].HarvestEnabled)
 	cfg := config.OpenAICodexTicketConfig{Enabled: true, Models: []string{"custom-model"}}
 	status := OpenAICodexTicketStatuses(account, cfg, time.Now())
 	require.Len(t, status, 1)

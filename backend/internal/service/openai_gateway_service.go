@@ -24,7 +24,6 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -508,9 +507,12 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
-	// openaiCodexTickets: accountID\x00model → *openAICodexTicket，292 长度门票。
+	// openaiCodexTickets: accountID\x00model → *openAICodexTicket，长度按账号套餐规则校验。
 	openaiCodexTickets           sync.Map
-	openaiCodexTicketFlight      singleflight.Group
+	openaiCodexTicketInFlight    sync.Map
+	openaiCodexTicketProxyTurns  sync.Map
+	openaiCodexTicketNextAttempt sync.Map
+	openaiCodexTicketHistory     CodexTicketAttemptRepository
 	openaiCodexTicketLifecycleMu sync.Mutex
 	openaiCodexTicketCancel      context.CancelFunc
 	openaiCodexTicketDone        chan struct{}
@@ -592,8 +594,12 @@ func NewOpenAIGatewayService(
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
 	svc.logOpenAIWSModeBootstrap()
-	svc.StartOpenAICodexTicketHarvester()
 	return svc
+}
+
+// SetCodexTicketHistory must run before StartOpenAICodexTicketHarvester.
+func (s *OpenAIGatewayService) SetCodexTicketHistory(repo CodexTicketAttemptRepository) {
+	s.openaiCodexTicketHistory = repo
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
