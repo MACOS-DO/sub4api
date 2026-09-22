@@ -309,7 +309,7 @@ func TestCodexTicketAcceptsHeaderWhen429BodyTimesOut(t *testing.T) {
 		return response, nil
 	}})
 	account := ticketTestAccount(41)
-	state, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "test-token", "gpt-6-astra", "", 20*time.Millisecond)
+	state, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "test-token", "gpt-6-astra", "", 20*time.Millisecond)
 	require.NoError(t, err)
 	require.True(t, body.closed)
 	require.True(t, openAICodexTicketResponseValid(account, 292, status, state))

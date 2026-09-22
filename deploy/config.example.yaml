@@ -325,8 +325,12 @@ gateway:
   openai_codex_ticket:
     enabled: false
     target_length: 292
-    ttl_seconds: 3600
+    # 票据有效期（秒），最小 60；后台「系统设置 → 网关 → Codex 设置 → 票据过期时间」可覆盖，默认 200。
+    ttl_seconds: 200
+    # 到期前提前重打；跟随 TTL 夹取在 [30s, TTL/2]，并受 5-8 分钟上限约束。
     refresh_before_seconds: 600
+    # 票据过期后是否仍沿用上次票据；后台「过期仍沿用上次票据」可覆盖，默认 true。
+    reuse_expired: true
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
     harvest_proxy_url: ""

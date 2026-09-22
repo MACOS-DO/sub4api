@@ -735,6 +735,37 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex ticket TTL and reuse policy", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_ttl_seconds: 200,
+      openai_codex_ticket_reuse_expired: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-ttl").setValue("120");
+    await wrapper.get("#codex-ticket-reuse-expired").setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_ttl_seconds).toBe(120);
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_reuse_expired).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("clamps the Codex ticket TTL to the 60-second minimum on submit", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_ttl_seconds: 200,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-ttl").setValue("5");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_ttl_seconds).toBe(60);
+    wrapper.unmount();
+  });
+
   it("does not expose the retired standalone Codex harvest proxy", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

@@ -2,6 +2,7 @@ export default {
     accounts: {
       codexTicket: {
         column: '292 打票', title: '打票详情', current: '当前票据', valid: '有效', missing: '暂无有效票据', inactive: '未参与',
+        reusedExpired: '已过期沿用', reusedExpiredHint: '票据已于 {time} 过期，正在沿用上次票据',
         autoPaused: '自动打票暂停至', lastSuccess: '最近成功', retry: '重新打票', retrying: '打票中…',
         accountEnabled: '账号参与打票', modelEnabled: '该模型参与打票', policySaved: '参与设置已保存',
         attempts: '请求流水', successes: '成功记录', loading: '加载中…', empty: '暂无记录',
@@ -773,6 +774,7 @@ export default {
         codexTurnTicketDesc: '显示已配置模型的门票状态。仅在启用缺票拦截时，没有有效门票的模型才会暂停调度。',
         codexTurnTicketMissing: '暂无有效门票，仍允许请求',
         codexTurnTicketReady: '剩余 {time}',
+        codexTurnTicketReusedExpired: '票据已过期，沿用上次票据',
         codexTurnTicketPaused: '未取得有效门票，该模型已暂停',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:

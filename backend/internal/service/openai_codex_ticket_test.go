@@ -421,6 +421,80 @@ func TestOpenAICodexTicket_RequiresActualLengthAndExpiry(t *testing.T) {
 	require.False(t, ticket.valid(time.Now(), 292))
 }
 
+func TestApplyOpenAICodexTicket_ReusesExpiredTicketAndCookieWhenEnabled(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled:      true,
+		TargetLength: 292,
+		TTLSeconds:   60,
+		ReuseExpired: true,
+		FailClosed:   true,
+	}, nil)
+	account := ticketTestAccount(41)
+	state := fakeCodexTicketState(292)
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		AccountID: 41, Model: "gpt-6-astra", State: state, Length: 292,
+		Cookie:     "__cf_bm=abc; oai-did=xyz",
+		CapturedAt: time.Now().Add(-10 * time.Minute),
+		ExpiresAt:  time.Now().Add(-time.Minute),
+	})
+
+	h := http.Header{}
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, state, h.Get(openAICodexTurnStateHeader))
+	require.Equal(t, "__cf_bm=abc; oai-did=xyz", h.Get("Cookie"))
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+}
+
+func TestApplyOpenAICodexTicket_AppendsToExistingCookie(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled: true, TargetLength: 292, TTLSeconds: 200, FailClosed: true,
+	}, nil)
+	account := ticketTestAccount(41)
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		AccountID: 41, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+		Cookie: "upstream=1", CapturedAt: time.Now(), ExpiresAt: time.Now().Add(200 * time.Second),
+	})
+	h := http.Header{}
+	h.Set("Cookie", "client=1")
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, "client=1; upstream=1", h.Get("Cookie"))
+}
+
+func TestExtractOpenAICodexResponseCookies(t *testing.T) {
+	h := http.Header{}
+	h.Add("Set-Cookie", "__cf_bm=abc; Path=/; Secure; HttpOnly")
+	h.Add("Set-Cookie", "oai-did=xyz; Path=/")
+	h.Add("Set-Cookie", "oai-did=dup; Path=/")
+	require.Equal(t, "__cf_bm=abc; oai-did=xyz", extractOpenAICodexResponseCookies(h))
+	require.Empty(t, extractOpenAICodexResponseCookies(http.Header{}))
+}
+
+func TestOpenAICodexTicketStatuses_MarksReusedExpiredTicket(t *testing.T) {
+	account := ticketTestAccount(41)
+	account.Extra = map[string]any{
+		openAICodexTicketExtraKey("gpt-6-astra"): &openAICodexTicket{
+			AccountID: 41, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+			CapturedAt: time.Now().Add(-10 * time.Minute), ExpiresAt: time.Now().Add(-time.Minute),
+		},
+	}
+	cfg := config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, ReuseExpired: true, Models: []string{"gpt-6-astra"}, TargetLength: 292}
+	now := time.Now()
+
+	statuses := OpenAICodexTicketStatuses(account, cfg, now)
+	require.Len(t, statuses, 1)
+	require.True(t, statuses[0].Ready)
+	require.True(t, statuses[0].ReusingExpired)
+	require.Zero(t, statuses[0].RemainingSeconds)
+	require.False(t, statuses[0].Blocked)
+	require.NotNil(t, statuses[0].ExpiresAt)
+
+	cfg.ReuseExpired = false
+	statuses = OpenAICodexTicketStatuses(account, cfg, now)
+	require.False(t, statuses[0].Ready)
+	require.False(t, statuses[0].ReusingExpired)
+	require.True(t, statuses[0].Blocked)
+}
+
 // /responses/compact 的出站模型被 Forward 改写为 gateway.openai_compact_model
 // （默认非空），门票门控必须按该出站模型判定。否则对门控模型发 compact 请求时，
 // 所有无票账号都会被 fail_closed 误判为不可调度，而这些请求实际不需要票。

@@ -538,6 +538,10 @@ export default {
         codexHardeningTitle: 'Codex 设置',
         codexTicketAllowWithoutTicket: '默认允许无票请求',
         codexTicketAllowWithoutTicketDesc: '账号未单独设置时使用此策略；关闭表示需要有效票据，账号可以单独设置例外。',
+        codexTicketTTL: '票据过期时间（秒）',
+        codexTicketTTLDesc: '打票成功后票据的有效期，默认 200 秒，最小 60 秒；会在过期前自动重新打票。',
+        codexTicketReuseExpired: '过期仍沿用上次票据',
+        codexTicketReuseExpiredDesc: '开启后，票据过期但新票尚未打到时继续沿用上次票据；账号票据状态会标注为已过期沿用。',
         codexTicketEnabled: '292 打票',
         codexTicketEnabledDesc:
           '关闭后不打票、不注入 x-codex-turn-state，按原链路转发。开启后后台打票，并在业务请求中覆盖该头。',

@@ -61,6 +61,28 @@ func TestManualCodexTicketHarvestBypassesRateLimitAndKeepsItReadOnly(t *testing.
 	require.Equal(t, "manual", history.inserted[0].Trigger)
 }
 
+func TestManualCodexTicketHarvestStoresResponseCookies(t *testing.T) {
+	account := ticketTestAccount(41)
+	account.Status = StatusActive
+	repo := &codexTicketQuotaRepo{account: *account}
+	response := codexTicketResponse()
+	response.Header.Add("Set-Cookie", "__cf_bm=abc; Path=/; Secure")
+	response.Header.Add("Set-Cookie", "oai-did=xyz; Path=/")
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled: true, HarvestProxyURL: "http://proxy.example:8080",
+		Models: []string{"gpt-6-astra"}, TargetLength: 292, TTLSeconds: 60,
+	}, &httpUpstreamRecorder{responses: []*http.Response{response}})
+	svc.accountRepo = repo
+
+	result, err := svc.ManualCodexTicketHarvest(context.Background(), account.ID, "gpt-6-astra")
+	require.NoError(t, err)
+	require.Equal(t, "success", result.Outcome)
+	stored := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
+	require.NotNil(t, stored)
+	require.Equal(t, "__cf_bm=abc; oai-did=xyz", stored.Cookie)
+	require.WithinDuration(t, time.Now().Add(60*time.Second), stored.ExpiresAt, 5*time.Second)
+}
+
 func TestManualCodexTicketFailurePreservesExistingTicketAndReportsHistoryFailure(t *testing.T) {
 	account := ticketTestAccount(41)
 	account.Status = StatusActive
@@ -78,23 +100,70 @@ func TestManualCodexTicketFailurePreservesExistingTicketAndReportsHistoryFailure
 	require.Equal(t, existing.State, svc.lookupOpenAICodexTicket(account, "gpt-6-astra").State)
 }
 
-func TestCodexTicketAutomaticScheduleUsesRequestedRanges(t *testing.T) {
-	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)
+func scheduledCodexTicketNext(t *testing.T, svc *OpenAIGatewayService, accountID int64, model string) time.Time {
+	t.Helper()
+	value, ok := svc.openaiCodexTicketNextAttempt.Load(openAICodexTicketKey(accountID, model))
+	require.True(t, ok)
+	next, ok := value.(time.Time)
+	require.True(t, ok)
+	return next
+}
+
+func TestCodexTicketAutomaticScheduleFollowsTTLWithFloorAndCeiling(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
-	ticket := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now}
+
+	// 默认 TTL 200s：提前量 refresh_before=600s 被夹到 TTL/2=100s。
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 200, RefreshBeforeSeconds: 600}, nil)
+	ticket := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now, ExpiresAt: now.Add(200 * time.Second)}
 	svc.scheduleCodexTicketAfterSuccess(ticket)
-	next := func() time.Time {
-		value, _ := svc.openaiCodexTicketNextAttempt.Load(openAICodexTicketKey(41, "gpt-6-astra"))
-		return value.(time.Time)
-	}()
-	require.GreaterOrEqual(t, next.Sub(now), codexTicketValidFirstRetryMin)
-	require.LessOrEqual(t, next.Sub(now), codexTicketValidFirstRetryMax)
-	require.Equal(t, 10*time.Second, codexTicketMissingRetry)
+	next := scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
+	require.GreaterOrEqual(t, next.Sub(now), 100*time.Second)
+	require.LessOrEqual(t, next.Sub(now), 150*time.Second)
+
+	// 最小 TTL 60s：跟随 TTL 提前重打，且不早于全局 30s 最短间隔。
+	svc = ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 60}, nil)
+	ticket = &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now, ExpiresAt: now.Add(60 * time.Second)}
+	svc.scheduleCodexTicketAfterSuccess(ticket)
+	next = scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
+	require.GreaterOrEqual(t, next.Sub(now), codexTicketMinAttemptInterval)
+	require.LessOrEqual(t, next.Sub(now), codexTicketMinAttemptInterval+15*time.Second)
+
+	// 大 TTL 时仍受 5-8 分钟上限约束，不会推迟到 TTL 末尾。
+	svc = ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 3600, RefreshBeforeSeconds: 600}, nil)
+	ticket = &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now, ExpiresAt: now.Add(time.Hour)}
+	svc.scheduleCodexTicketAfterSuccess(ticket)
+	next = scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
+	require.GreaterOrEqual(t, next.Sub(now), codexTicketRefreshCeilingMin)
+	require.LessOrEqual(t, next.Sub(now), codexTicketRefreshCeilingMax)
+
+	require.Equal(t, 30*time.Second, codexTicketMissingRetry)
+	require.Equal(t, 30*time.Second, codexTicketValidRetryMin)
 	retry := codexTicketJitter("41\x00gpt-6-astra", now, codexTicketValidRetryMin, codexTicketValidRetryMax)
-	require.GreaterOrEqual(t, retry, 20*time.Second)
+	require.GreaterOrEqual(t, retry, 30*time.Second)
 	require.LessOrEqual(t, retry, 40*time.Second)
 	svc.openaiCodexTicketNextAttempt.Store(openAICodexTicketKey(42, "gpt-5.6-sol"), now.Add(3*time.Second))
 	require.Equal(t, 3*time.Second, svc.openAICodexTicketNextScanDelay(now))
+}
+
+func TestCodexTicketAutomaticDueUsesTTLSchedule(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 200, RefreshBeforeSeconds: 600}, nil)
+	account := ticketTestAccount(41)
+	now := time.Now().Truncate(time.Second)
+
+	require.True(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now), "无票据时应立即打票")
+
+	fresh := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+		CapturedAt: now, ExpiresAt: now.Add(200 * time.Second)}
+	svc.storeOpenAICodexTicket(context.Background(), account, fresh)
+	svc.openaiCodexTicketNextAttempt.Delete(openAICodexTicketKey(41, "gpt-6-astra"))
+	require.False(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now))
+	require.True(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now.Add(3*time.Minute)))
+
+	expired := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+		CapturedAt: now.Add(-time.Hour), ExpiresAt: now.Add(-time.Minute)}
+	svc.storeOpenAICodexTicket(context.Background(), account, expired)
+	svc.openaiCodexTicketNextAttempt.Delete(openAICodexTicketKey(41, "gpt-6-astra"))
+	require.True(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now), "过期票据应立即触发重打")
 }
 
 func TestManualCodexTicketHarvestHonorsParticipationAndAvailability(t *testing.T) {

@@ -2268,7 +2268,10 @@
         <div class="mt-3 space-y-1.5">
           <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="flex items-center justify-between text-sm">
             <span class="font-medium">{{ ticket.model }}</span>
-            <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
+            <span v-if="ticket.ready && ticket.reusing_expired" class="text-amber-600 dark:text-amber-400">
+              {{ t('admin.accounts.openai.codexTurnTicketReusedExpired') }}
+            </span>
+            <span v-else-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
               {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
             </span>
             <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">

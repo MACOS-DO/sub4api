@@ -487,6 +487,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
 	updates[SettingKeyOpenAICodexTicketAllowWithoutTicket] = strconv.FormatBool(settings.OpenAICodexTicketAllowWithoutTicket)
+	if settings.OpenAICodexTicketTTLSeconds != 0 &&
+		(settings.OpenAICodexTicketTTLSeconds < openAICodexTicketMinTTLSeconds || settings.OpenAICodexTicketTTLSeconds > openAICodexTicketMaxTTLSeconds) {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TTL",
+			fmt.Sprintf("ticket TTL must be between %d and %d seconds", openAICodexTicketMinTTLSeconds, openAICodexTicketMaxTTLSeconds))
+	}
+	updates[SettingKeyOpenAICodexTicketTTLSeconds] = strconv.Itoa(normalizeOpenAICodexTicketTTLSeconds(settings.OpenAICodexTicketTTLSeconds))
+	updates[SettingKeyOpenAICodexTicketReuseExpired] = strconv.FormatBool(settings.OpenAICodexTicketReuseExpired)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
@@ -747,6 +754,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexClientVersionCache()
 	s.InvalidateOpenAICodexTicketEnabledCache()
 	s.InvalidateOpenAICodexTicketAllowWithoutTicketCache()
+	s.InvalidateOpenAICodexTicketTTLCache()
+	s.InvalidateOpenAICodexTicketReuseExpiredCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

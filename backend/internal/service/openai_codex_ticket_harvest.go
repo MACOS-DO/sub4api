@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MACOS-DO/sub4api/internal/config"
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
@@ -25,11 +26,14 @@ const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
 const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
 
 const (
-	codexTicketValidFirstRetryMin = 5 * time.Minute
-	codexTicketValidFirstRetryMax = 8 * time.Minute
-	codexTicketValidRetryMin      = 20 * time.Second
-	codexTicketValidRetryMax      = 40 * time.Second
-	codexTicketMissingRetry       = 10 * time.Second
+	// 任意两次自动打票之间的全局最短间隔，防止 TTL 配置过小造成热循环。
+	codexTicketMinAttemptInterval = 30 * time.Second
+	// 成功捕获后的重打上限窗口：跟随 TTL 提前重打之外，最迟也要在 5-8 分钟内刷新一次。
+	codexTicketRefreshCeilingMin = 5 * time.Minute
+	codexTicketRefreshCeilingMax = 8 * time.Minute
+	codexTicketValidRetryMin     = 30 * time.Second
+	codexTicketValidRetryMax     = 40 * time.Second
+	codexTicketMissingRetry      = 30 * time.Second
 )
 
 func CodexTicketHarvestEnabled(account *Account, model string) bool {
@@ -101,13 +105,51 @@ func codexTicketJitter(key string, at time.Time, min, max time.Duration) time.Du
 	return min + time.Duration(h.Sum64()%uint64(max-min+1))
 }
 
+// codexTicketRefreshDueAt 计算成功捕获后的下一次自动打票时间：跟随 TTL 提前
+// refresh_before_seconds 重打（提前量夹取在 [30s, TTL/2]），且不晚于 5-8 分钟的
+// 上限窗口；同时保证与本次捕获至少间隔 30 秒。
+func codexTicketRefreshDueAt(ticket *openAICodexTicket, cfg config.OpenAICodexTicketConfig) time.Time {
+	if ticket == nil || ticket.CapturedAt.IsZero() {
+		return time.Time{}
+	}
+	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
+	ttl := time.Duration(normalizeOpenAICodexTicketTTLSeconds(cfg.TTLSeconds)) * time.Second
+	lead := time.Duration(cfg.RefreshBeforeSeconds) * time.Second
+	if lead <= 0 {
+		lead = ttl / 5
+	}
+	if half := ttl / 2; lead > half {
+		lead = half
+	}
+	if floorLead := min(codexTicketMinAttemptInterval, ttl/2); lead < floorLead {
+		lead = floorLead
+	}
+	expires := ticket.ExpiresAt
+	if expires.IsZero() {
+		expires = ticket.CapturedAt.Add(ttl)
+	}
+	next := expires.Add(-lead)
+	if lead > 0 {
+		next = next.Add(codexTicketJitter(key, ticket.CapturedAt, 0, lead/2))
+	}
+	if ceiling := ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketRefreshCeilingMin, codexTicketRefreshCeilingMax)); next.After(ceiling) {
+		next = ceiling
+	}
+	if floor := ticket.CapturedAt.Add(codexTicketMinAttemptInterval); next.Before(floor) {
+		next = floor
+	}
+	return next
+}
+
 func (s *OpenAIGatewayService) scheduleCodexTicketAfterSuccess(ticket *openAICodexTicket) {
 	if ticket == nil {
 		return
 	}
-	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
-	next := ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketValidFirstRetryMin, codexTicketValidFirstRetryMax))
-	s.openaiCodexTicketNextAttempt.Store(key, next)
+	next := codexTicketRefreshDueAt(ticket, s.openAICodexTicketConfig())
+	if next.IsZero() {
+		return
+	}
+	s.openaiCodexTicketNextAttempt.Store(openAICodexTicketKey(ticket.AccountID, ticket.Model), next)
 }
 
 func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model string, now time.Time) bool {
@@ -119,10 +161,9 @@ func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model s
 		return true
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	if ticket.valid(now, openAICodexTicketTargetLength(account, s.openAICodexTicketConfig().TargetLength)) {
-		next := ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketValidFirstRetryMin, codexTicketValidFirstRetryMax))
-		s.openaiCodexTicketNextAttempt.Store(key, next)
-		return !now.Before(next)
+	if due := codexTicketRefreshDueAt(ticket, s.openAICodexTicketConfig()); !due.IsZero() {
+		s.openaiCodexTicketNextAttempt.Store(key, due)
+		return !now.Before(due)
 	}
 	return true
 }
@@ -150,8 +191,9 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 	if s.httpUpstream == nil {
 		return result, ErrCodexTicketUnavailable
 	}
+	cfg := s.openAICodexTicketConfig()
 	start := time.Now()
-	hadValidTicket := s.lookupOpenAICodexTicket(account, model).valid(start, openAICodexTicketTargetLength(account, s.openAICodexTicketConfig().TargetLength))
+	hadValidTicket := s.lookupOpenAICodexTicket(account, model).usable(start, openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired)
 	a := &result.CodexTicketAttempt
 	a.AccountID, a.Model, a.Trigger = account.ID, model, trigger
 	if proxy != nil {
@@ -182,8 +224,8 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		a.Outcome, a.ReasonCode = "error", "credentials"
 		return result, nil
 	}
-	state, status, probeErr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL,
-		time.Duration(s.openAICodexTicketConfig().HarvestAttemptTimeoutSeconds)*time.Second)
+	state, cookie, status, probeErr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL,
+		time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
 	if status != 0 {
 		a.HTTPStatus = &status
 	}
@@ -198,7 +240,7 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		}
 		return result, nil
 	}
-	if !openAICodexTicketResponseValid(account, s.openAICodexTicketConfig().TargetLength, status, state) {
+	if !openAICodexTicketResponseValid(account, cfg.TargetLength, status, state) {
 		a.Outcome, a.ReasonCode = "miss", "invalid_ticket"
 		if status != http.StatusOK && status != http.StatusTooManyRequests {
 			a.ReasonCode = "http_status"
@@ -207,8 +249,8 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 	}
 	now := time.Now()
 	ticket := &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state),
-		CapturedAt: now, ExpiresAt: now.Add(time.Duration(s.openAICodexTicketConfig().TTLSeconds) * time.Second),
-		Attempts: 1, HTTPStatus: status}
+		CapturedAt: now, ExpiresAt: now.Add(time.Duration(cfg.TTLSeconds) * time.Second),
+		Attempts: 1, HTTPStatus: status, Cookie: cookie}
 	s.storeOpenAICodexTicket(ctx, account, ticket)
 	s.scheduleCodexTicketAfterSuccess(ticket)
 	account.Extra = maps.Clone(account.Extra)

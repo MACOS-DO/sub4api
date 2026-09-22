@@ -4,7 +4,7 @@
       <div class="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800">
         <div class="space-y-1">
           <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ account.name }} <span class="font-normal text-gray-500">#{{ account.id }}</span></p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.codexTicket.current') }}: <span :class="status?.ready ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">{{ status?.ready ? t('admin.accounts.codexTicket.valid') : t('admin.accounts.codexTicket.missing') }}</span><span v-if="status?.expires_at"> · {{ formatDateTime(status.expires_at) }} {{ timezone }}</span></p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.codexTicket.current') }}: <span :class="status?.ready && !status?.reusing_expired ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">{{ status?.ready ? (status?.reusing_expired ? t('admin.accounts.codexTicket.reusedExpired') : t('admin.accounts.codexTicket.valid')) : t('admin.accounts.codexTicket.missing') }}</span><span v-if="status?.expires_at"> · {{ formatDateTime(status.expires_at) }} {{ timezone }}</span></p>
           <p v-if="status?.harvest_paused" class="text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.codexTicket.autoPaused') }} {{ status.harvest_resume_at ? formatDateTime(status.harvest_resume_at) : '' }}</p>
           <p v-if="lastSuccess" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.codexTicket.lastSuccess') }}: {{ formatDateTime(lastSuccess.occurred_at) }} {{ timezone }}</p>
         </div>
