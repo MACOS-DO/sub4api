@@ -1225,13 +1225,15 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 // 打票走 harvest_proxy_url（SOCKS），业务出站仍用账号住宅 proxy_id，只替换该头与打票
 // 响应中捕获的 Cookie。
 // 门票默认有效 200 秒（最小 60 秒），并在过期前 refresh_before_seconds 重新打票；
-// 到期仍可沿用上次票据由 reuse_expired 控制（后台设置为准）。
+// 到期仍可沿用上次票据由 reuse_expired 控制，reuse_expired_max_seconds 限制过期后
+// 最长复用时长（0 表示不限制，默认 600 秒）（后台设置为准）。
 type OpenAICodexTicketConfig struct {
 	Enabled                      bool     `mapstructure:"enabled"`
 	TargetLength                 int      `mapstructure:"target_length"`
 	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
 	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"`
 	ReuseExpired                 bool     `mapstructure:"reuse_expired"`
+	ReuseExpiredMaxSeconds       int      `mapstructure:"reuse_expired_max_seconds"`
 	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
 	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
 	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
@@ -2410,6 +2412,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.ttl_seconds", 200)
 	viper.SetDefault("gateway.openai_codex_ticket.refresh_before_seconds", 600)
 	viper.SetDefault("gateway.openai_codex_ticket.reuse_expired", true)
+	viper.SetDefault("gateway.openai_codex_ticket.reuse_expired_max_seconds", 600)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)

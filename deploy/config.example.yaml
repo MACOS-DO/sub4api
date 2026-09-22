@@ -331,6 +331,8 @@ gateway:
     refresh_before_seconds: 600
     # 票据过期后是否仍沿用上次票据；后台「过期仍沿用上次票据」可覆盖，默认 true。
     reuse_expired: true
+    # 过期后最长复用时长（秒），默认 600；0 表示不限制。后台「过期后最长复用时长」可覆盖。
+    reuse_expired_max_seconds: 600
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
     harvest_proxy_url: ""

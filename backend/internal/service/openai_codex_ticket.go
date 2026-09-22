@@ -33,6 +33,9 @@ const (
 	openAICodexTicketMinTTLSeconds     = 60
 	openAICodexTicketMaxTTLSeconds     = 86400
 	openAICodexTicketDefaultTTLSeconds = 200
+
+	// 票据过期后最长复用时长：0 表示不限制，默认 600 秒。
+	openAICodexTicketDefaultReuseWindowSeconds = 600
 )
 
 // normalizeOpenAICodexTicketTTLSeconds 归一化票据有效期：非正数回落默认值，
@@ -43,6 +46,18 @@ func normalizeOpenAICodexTicketTTLSeconds(seconds int) int {
 	}
 	if seconds < openAICodexTicketMinTTLSeconds {
 		return openAICodexTicketMinTTLSeconds
+	}
+	if seconds > openAICodexTicketMaxTTLSeconds {
+		return openAICodexTicketMaxTTLSeconds
+	}
+	return seconds
+}
+
+// normalizeOpenAICodexTicketReuseWindowSeconds 归一化过期后最长复用时长：
+// 负数回退默认值，越界夹取到 [0, 86400]；0 表示不限制。
+func normalizeOpenAICodexTicketReuseWindowSeconds(seconds int) int {
+	if seconds < 0 {
+		return openAICodexTicketDefaultReuseWindowSeconds
 	}
 	if seconds > openAICodexTicketMaxTTLSeconds {
 		return openAICodexTicketMaxTTLSeconds
@@ -111,10 +126,18 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 		cfg.TTLSeconds = normalizeOpenAICodexTicketTTLSeconds(
 			s.settingService.GetOpenAICodexTicketTTLSeconds(context.Background(), cfg.TTLSeconds))
 		cfg.ReuseExpired = s.settingService.GetOpenAICodexTicketReuseExpired(context.Background(), cfg.ReuseExpired)
+		cfg.ReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(
+			s.settingService.GetOpenAICodexTicketReuseExpiredMaxSeconds(context.Background(), cfg.ReuseExpiredMaxSeconds))
 	} else {
 		cfg.TTLSeconds = normalizeOpenAICodexTicketTTLSeconds(cfg.TTLSeconds)
+		cfg.ReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(cfg.ReuseExpiredMaxSeconds)
 	}
 	return cfg
+}
+
+// openAICodexTicketReuseWindow 返回过期后最长复用时长；0 表示不限制。
+func openAICodexTicketReuseWindow(cfg config.OpenAICodexTicketConfig) time.Duration {
+	return time.Duration(cfg.ReuseExpiredMaxSeconds) * time.Second
 }
 
 func (s *OpenAIGatewayService) openAICodexTicketGatedModel(model string) bool {
@@ -171,7 +194,7 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if account != nil && account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
 		}
-		if ticket.usable(now, targetLen, cfg.ReuseExpired) {
+		if ticket.usable(now, targetLen, cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg)) {
 			status.Ready = true
 			status.Length = ticket.Length
 			status.ReusingExpired = ticket.expired(now)
@@ -221,16 +244,26 @@ func (t *openAICodexTicket) expired(now time.Time) bool {
 	return !now.Before(t.ExpiresAt)
 }
 
-// usable 报告票据当下能否注入：形状合法、有到期时间，且未过期或允许沿用过期票据。
-func (t *openAICodexTicket) usable(now time.Time, targetLen int, allowExpired bool) bool {
+// usable 报告票据当下能否注入：形状合法、有到期时间，且未过期，或允许沿用
+// 过期票据且仍在最长复用时长内（reuseWindow<=0 表示不限制）。
+func (t *openAICodexTicket) usable(now time.Time, targetLen int, allowExpired bool, reuseWindow time.Duration) bool {
 	if !t.structurallyValid(targetLen) {
 		return false
 	}
-	return allowExpired || !t.expired(now)
+	if !t.expired(now) {
+		return true
+	}
+	if !allowExpired {
+		return false
+	}
+	if reuseWindow <= 0 {
+		return true
+	}
+	return now.Before(t.ExpiresAt.Add(reuseWindow))
 }
 
 func (t *openAICodexTicket) valid(now time.Time, targetLen int) bool {
-	return t.usable(now, targetLen, false)
+	return t.usable(now, targetLen, false, 0)
 }
 
 func (t *openAICodexTicket) needsRefresh(now time.Time, refreshBefore time.Duration) bool {
@@ -340,7 +373,7 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 	}
 	cfg := s.openAICodexTicketConfig()
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	if ticket.usable(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired) {
+	if ticket.usable(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg)) {
 		h.Set(openAICodexTurnStateHeader, ticket.State)
 		applyOpenAICodexTicketCookie(h, ticket)
 		return nil
@@ -413,7 +446,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 		return false
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	return !ticket.usable(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired)
+	return !ticket.usable(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg))
 }
 
 func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, attemptTimeout time.Duration) (state string, cookie string, status int, err error) {

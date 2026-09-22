@@ -922,6 +922,19 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.OpenAICodexTicketReuseExpired = true
 	}
+	if v, ok := settings[SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds]; ok && v != "" {
+		if seconds, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && seconds >= 0 {
+			result.OpenAICodexTicketReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(seconds)
+		} else if s != nil && s.cfg != nil {
+			result.OpenAICodexTicketReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(s.cfg.Gateway.OpenAICodexTicket.ReuseExpiredMaxSeconds)
+		} else {
+			result.OpenAICodexTicketReuseExpiredMaxSeconds = openAICodexTicketDefaultReuseWindowSeconds
+		}
+	} else if s != nil && s.cfg != nil {
+		result.OpenAICodexTicketReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(s.cfg.Gateway.OpenAICodexTicket.ReuseExpiredMaxSeconds)
+	} else {
+		result.OpenAICodexTicketReuseExpiredMaxSeconds = openAICodexTicketDefaultReuseWindowSeconds
+	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]

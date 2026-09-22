@@ -494,6 +494,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyOpenAICodexTicketTTLSeconds] = strconv.Itoa(normalizeOpenAICodexTicketTTLSeconds(settings.OpenAICodexTicketTTLSeconds))
 	updates[SettingKeyOpenAICodexTicketReuseExpired] = strconv.FormatBool(settings.OpenAICodexTicketReuseExpired)
+	if settings.OpenAICodexTicketReuseExpiredMaxSeconds < 0 || settings.OpenAICodexTicketReuseExpiredMaxSeconds > openAICodexTicketMaxTTLSeconds {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_REUSE_WINDOW",
+			fmt.Sprintf("ticket reuse window must be between 0 and %d seconds", openAICodexTicketMaxTTLSeconds))
+	}
+	updates[SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds] = strconv.Itoa(settings.OpenAICodexTicketReuseExpiredMaxSeconds)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
@@ -756,6 +761,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexTicketAllowWithoutTicketCache()
 	s.InvalidateOpenAICodexTicketTTLCache()
 	s.InvalidateOpenAICodexTicketReuseExpiredCache()
+	s.InvalidateOpenAICodexTicketReuseExpiredMaxSecondsCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

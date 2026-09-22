@@ -67,6 +67,25 @@ func TestSettingsCodexTicketTTLAndReuseRoundTrip(t *testing.T) {
 	require.Equal(t, "120", repo.values[ttlKey])
 }
 
+func TestSettingsCodexTicketReuseWindowRoundTrip(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{key: "600"})
+	require.Equal(t, 600, h.settingService.GetOpenAICodexTicketReuseExpiredMaxSeconds(context.Background(), 0))
+
+	rec := doUpdateSettings(t, h, map[string]any{key: 0}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "0", repo.values[key])
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_reuse_expired_max_seconds":0`)
+
+	rec = doUpdateSettings(t, h, map[string]any{key: -1}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "0", repo.values[key])
+
+	rec = doUpdateSettings(t, h, map[string]any{key: 999999}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "0", repo.values[key])
+}
+
 func TestSettingsCodexTicketAllowWithoutTicketRoundTrip(t *testing.T) {
 	key := service.SettingKeyOpenAICodexTicketAllowWithoutTicket
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{key: "false"})

@@ -193,7 +193,7 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 	}
 	cfg := s.openAICodexTicketConfig()
 	start := time.Now()
-	hadValidTicket := s.lookupOpenAICodexTicket(account, model).usable(start, openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired)
+	hadValidTicket := s.lookupOpenAICodexTicket(account, model).usable(start, openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg))
 	a := &result.CodexTicketAttempt
 	a.AccountID, a.Model, a.Trigger = account.ID, model, trigger
 	if proxy != nil {

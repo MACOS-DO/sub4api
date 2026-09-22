@@ -716,6 +716,9 @@ const (
 	SettingKeyOpenAICodexTicketTTLSeconds = "openai_codex_ticket_ttl_seconds"
 	// SettingKeyOpenAICodexTicketReuseExpired 票据过期后是否仍沿用上次票据，后台可改、热更新。
 	SettingKeyOpenAICodexTicketReuseExpired = "openai_codex_ticket_reuse_expired"
+	// SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds 票据过期后最长复用时长（秒），
+	// 0 表示不限制，默认 600；后台可改、热更新。
+	SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds = "openai_codex_ticket_reuse_expired_max_seconds"
 	// SettingKeyOpenAICodexTicketHarvestProxyURL Codex 292 打票出口（socks5h/http），后台可改、热更新。
 	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。

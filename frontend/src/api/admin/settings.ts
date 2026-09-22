@@ -643,6 +643,7 @@ export interface SystemSettings {
   openai_codex_ticket_allow_without_ticket: boolean;
   openai_codex_ticket_ttl_seconds: number;
   openai_codex_ticket_reuse_expired: boolean;
+  openai_codex_ticket_reuse_expired_max_seconds: number;
   openai_codex_ticket_harvest_proxy_url: string;
   openai_codex_ticket_harvest_proxy_configured: boolean;
   // codex_cli_only 加固
@@ -968,6 +969,7 @@ export interface UpdateSettingsRequest {
   openai_codex_ticket_allow_without_ticket?: boolean;
   openai_codex_ticket_ttl_seconds?: number;
   openai_codex_ticket_reuse_expired?: boolean;
+  openai_codex_ticket_reuse_expired_max_seconds?: number;
   openai_codex_ticket_harvest_proxy_url?: string;
   // codex_cli_only 加固
   min_codex_version?: string;

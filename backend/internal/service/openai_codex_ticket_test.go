@@ -445,6 +445,37 @@ func TestApplyOpenAICodexTicket_ReusesExpiredTicketAndCookieWhenEnabled(t *testi
 	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 }
 
+func TestApplyOpenAICodexTicket_StopsReusingAfterMaxWindow(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled: true, TargetLength: 292, TTLSeconds: 60, ReuseExpired: true,
+		ReuseExpiredMaxSeconds: 600, FailClosed: true,
+	}, nil)
+	account := ticketTestAccount(41)
+	state := fakeCodexTicketState(292)
+	now := time.Now()
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		AccountID: account.ID, Model: "gpt-6-astra", State: state, Length: 292,
+		CapturedAt: now.Add(-40 * time.Minute),
+		ExpiresAt:  now.Add(-20 * time.Minute),
+	})
+
+	h := http.Header{}
+	require.ErrorIs(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h), ErrOpenAICodexTicketUnavailable)
+	require.Empty(t, h.Get(openAICodexTurnStateHeader))
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+
+	// 过期 5 分钟仍在 600 秒窗口内，继续沿用。
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		AccountID: account.ID, Model: "gpt-6-astra", State: state, Length: 292,
+		CapturedAt: now.Add(-10 * time.Minute),
+		ExpiresAt:  now.Add(-5 * time.Minute),
+	})
+	h = http.Header{}
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, state, h.Get(openAICodexTurnStateHeader))
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+}
+
 func TestApplyOpenAICodexTicket_AppendsToExistingCookie(t *testing.T) {
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
 		Enabled: true, TargetLength: 292, TTLSeconds: 200, FailClosed: true,
@@ -490,6 +521,25 @@ func TestOpenAICodexTicketStatuses_MarksReusedExpiredTicket(t *testing.T) {
 
 	cfg.ReuseExpired = false
 	statuses = OpenAICodexTicketStatuses(account, cfg, now)
+	require.False(t, statuses[0].Ready)
+	require.False(t, statuses[0].ReusingExpired)
+	require.True(t, statuses[0].Blocked)
+}
+
+func TestOpenAICodexTicketStatuses_StopsReusingAfterMaxWindow(t *testing.T) {
+	account := ticketTestAccount(41)
+	account.Extra = map[string]any{
+		openAICodexTicketExtraKey("gpt-6-astra"): &openAICodexTicket{
+			AccountID: account.ID, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+			CapturedAt: time.Now().Add(-30 * time.Minute), ExpiresAt: time.Now().Add(-20 * time.Minute),
+		},
+	}
+	cfg := config.OpenAICodexTicketConfig{
+		Enabled: true, FailClosed: true, ReuseExpired: true, ReuseExpiredMaxSeconds: 600,
+		Models: []string{"gpt-6-astra"}, TargetLength: 292,
+	}
+	statuses := OpenAICodexTicketStatuses(account, cfg, time.Now())
+	require.Len(t, statuses, 1)
 	require.False(t, statuses[0].Ready)
 	require.False(t, statuses[0].ReusingExpired)
 	require.True(t, statuses[0].Blocked)
