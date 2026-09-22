@@ -295,8 +295,8 @@
             <div v-if="row.platform === 'openai' && (row.type === 'oauth' || row.type === 'setup-token')" class="flex min-w-36 flex-col gap-1">
               <button v-for="model in ['gpt-6-astra', 'gpt-5.6-sol']" :key="model" type="button" class="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-xs transition-colors hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-primary-900/20" @click="ticketAccount = row; ticketModel = model">
                 <span class="font-medium text-gray-700 dark:text-gray-200">{{ model === 'gpt-6-astra' ? '6 Astra' : '5.6 Sol' }}</span>
-                <span :class="isCodexTicketHarvestEnabled(row, model) && getCodexTicket(row, model)?.ready ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'">
-                  {{ !isCodexTicketHarvestEnabled(row, model) ? t('admin.accounts.codexTicket.inactive') : getCodexTicket(row, model)?.ready ? `${Math.ceil((getCodexTicket(row, model)?.remaining_seconds ?? 0) / 60)}m` : '—' }}
+                <span :class="codexTicketStatusClass(row, model)" :title="codexTicketStatusTitle(row, model)">
+                  {{ codexTicketStatusText(row, model) }}
                 </span>
               </button>
             </div>
@@ -609,6 +609,25 @@ const isCodexTicketHarvestEnabled = (account: AccountListItem, model: string) =>
   const status = getCodexTicket(account, model)
   if (status?.harvest_enabled === false || account.extra?.codex_ticket_harvest_enabled === false) return false
   return account.extra?.codex_ticket_harvest_models?.[model] !== false
+}
+const codexTicketStatusText = (account: AccountListItem, model: string) => {
+  if (!isCodexTicketHarvestEnabled(account, model)) return t('admin.accounts.codexTicket.inactive')
+  const ticket = getCodexTicket(account, model)
+  if (!ticket?.ready) return '—'
+  if (ticket.reusing_expired) return t('admin.accounts.codexTicket.reusedExpired')
+  return `${Math.ceil((ticket.remaining_seconds ?? 0) / 60)}m`
+}
+const codexTicketStatusClass = (account: AccountListItem, model: string) => {
+  const ticket = getCodexTicket(account, model)
+  if (!isCodexTicketHarvestEnabled(account, model) || !ticket?.ready) return 'text-gray-500 dark:text-gray-400'
+  return ticket.reusing_expired ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+}
+const codexTicketStatusTitle = (account: AccountListItem, model: string) => {
+  const ticket = getCodexTicket(account, model)
+  if (!ticket?.reusing_expired) return undefined
+  return ticket.expires_at
+    ? t('admin.accounts.codexTicket.reusedExpiredHint', { time: formatDateTime(ticket.expires_at) })
+    : t('admin.accounts.codexTicket.reusedExpired')
 }
 const showSync = ref(false)
 const showImportData = ref(false)

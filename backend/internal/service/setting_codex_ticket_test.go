@@ -84,6 +84,78 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	require.Equal(t, "client-state", h.Get(openAICodexTurnStateHeader))
 }
 
+func TestCodexTicketTTLAndReuseRuntimeSettingsOverrideYaml(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{
+		SettingKeyOpenAICodexTicketTTLSeconds:   "120",
+		SettingKeyOpenAICodexTicketReuseExpired: "true",
+	}}}
+	settings := NewSettingService(repo, &config.Config{})
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled: true, TargetLength: 292, TTLSeconds: 3600, ReuseExpired: false, FailClosed: true,
+	}, nil)
+	svc.settingService = settings
+
+	cfg := svc.openAICodexTicketConfig()
+	require.Equal(t, 120, cfg.TTLSeconds)
+	require.True(t, cfg.ReuseExpired)
+
+	account := ticketTestAccount(41)
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		AccountID: account.ID, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+		CapturedAt: time.Now().Add(-10 * time.Minute), ExpiresAt: time.Now().Add(-time.Minute),
+	})
+	h := http.Header{}
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, fakeCodexTicketState(292), h.Get(openAICodexTurnStateHeader))
+
+	// 运行时可热更新：关闭沿用后过期票据立即失效。
+	repo.values[SettingKeyOpenAICodexTicketReuseExpired] = "false"
+	settings.InvalidateOpenAICodexTicketReuseExpiredCache()
+	require.False(t, svc.openAICodexTicketConfig().ReuseExpired)
+	h = http.Header{}
+	require.ErrorIs(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h), ErrOpenAICodexTicketUnavailable)
+}
+
+func TestNormalizeOpenAICodexTicketTTLSecondsClamps(t *testing.T) {
+	require.Equal(t, openAICodexTicketMinTTLSeconds, normalizeOpenAICodexTicketTTLSeconds(30))
+	require.Equal(t, openAICodexTicketDefaultTTLSeconds, normalizeOpenAICodexTicketTTLSeconds(0))
+	require.Equal(t, openAICodexTicketMaxTTLSeconds, normalizeOpenAICodexTicketTTLSeconds(openAICodexTicketMaxTTLSeconds+1))
+	require.Equal(t, 200, normalizeOpenAICodexTicketTTLSeconds(200))
+	require.Equal(t, 0, normalizeOpenAICodexTicketReuseWindowSeconds(0))
+	require.Equal(t, openAICodexTicketDefaultReuseWindowSeconds, normalizeOpenAICodexTicketReuseWindowSeconds(-1))
+	require.Equal(t, openAICodexTicketMaxTTLSeconds, normalizeOpenAICodexTicketReuseWindowSeconds(openAICodexTicketMaxTTLSeconds+1))
+	require.Equal(t, 600, normalizeOpenAICodexTicketReuseWindowSeconds(600))
+}
+
+func TestCodexTicketReuseWindowRuntimeSettingOverridesYaml(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{
+		SettingKeyOpenAICodexTicketReuseExpired:           "true",
+		SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds: "60",
+	}}}
+	settings := NewSettingService(repo, &config.Config{})
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled: true, TargetLength: 292, TTLSeconds: 60, ReuseExpired: true,
+		ReuseExpiredMaxSeconds: 3600, FailClosed: true,
+	}, nil)
+	svc.settingService = settings
+	require.Equal(t, 60, svc.openAICodexTicketConfig().ReuseExpiredMaxSeconds)
+
+	account := ticketTestAccount(41)
+	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+		AccountID: account.ID, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
+		CapturedAt: time.Now().Add(-10 * time.Minute), ExpiresAt: time.Now().Add(-5 * time.Minute),
+	})
+	h := http.Header{}
+	require.ErrorIs(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h), ErrOpenAICodexTicketUnavailable)
+
+	// 0 = 不限制，热更新后立即恢复沿用。
+	repo.values[SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds] = "0"
+	settings.InvalidateOpenAICodexTicketReuseExpiredMaxSecondsCache()
+	h = http.Header{}
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, fakeCodexTicketState(292), h.Get(openAICodexTurnStateHeader))
+}
+
 func TestRefreshOpenAICodexTickets_DisabledSkipsHarvest(t *testing.T) {
 	upstream := &httpUpstreamRecorder{}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{

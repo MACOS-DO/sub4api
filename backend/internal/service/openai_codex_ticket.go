@@ -28,7 +28,42 @@ const (
 	openAICodexTicketStatePrefix     = "gAAAAA"
 	openAICodexTicketDefaultModel    = "gpt-6-astra"
 	openAICodexTicketDefaultSolModel = "gpt-5.6-sol"
+
+	// 票据有效期设置边界：最少 1 分钟，避免产生剧烈的打票循环。
+	openAICodexTicketMinTTLSeconds     = 60
+	openAICodexTicketMaxTTLSeconds     = 86400
+	openAICodexTicketDefaultTTLSeconds = 200
+
+	// 票据过期后最长复用时长：0 表示不限制，默认 600 秒。
+	openAICodexTicketDefaultReuseWindowSeconds = 600
 )
+
+// normalizeOpenAICodexTicketTTLSeconds 归一化票据有效期：非正数回落默认值，
+// 越界夹取到 [60, 86400]。
+func normalizeOpenAICodexTicketTTLSeconds(seconds int) int {
+	if seconds <= 0 {
+		return openAICodexTicketDefaultTTLSeconds
+	}
+	if seconds < openAICodexTicketMinTTLSeconds {
+		return openAICodexTicketMinTTLSeconds
+	}
+	if seconds > openAICodexTicketMaxTTLSeconds {
+		return openAICodexTicketMaxTTLSeconds
+	}
+	return seconds
+}
+
+// normalizeOpenAICodexTicketReuseWindowSeconds 归一化过期后最长复用时长：
+// 负数回退默认值，越界夹取到 [0, 86400]；0 表示不限制。
+func normalizeOpenAICodexTicketReuseWindowSeconds(seconds int) int {
+	if seconds < 0 {
+		return openAICodexTicketDefaultReuseWindowSeconds
+	}
+	if seconds > openAICodexTicketMaxTTLSeconds {
+		return openAICodexTicketMaxTTLSeconds
+	}
+	return seconds
+}
 
 // ErrOpenAICodexTicketUnavailable 表示该号该模型没有符合账号规则的有效门票，
 // 且 fail_closed 禁止裸打业务请求。
@@ -43,6 +78,9 @@ type openAICodexTicket struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 	Attempts   int       `json:"attempts"`
 	HTTPStatus int       `json:"http_status,omitempty"`
+	// Cookie 是打票成功时上游 Set-Cookie 的 name=value 拼装结果，
+	// 与 turn-state 同生命周期存取并在注入票据时一并复用。
+	Cookie string `json:"cookie,omitempty"`
 }
 
 func openAICodexTicketKey(accountID int64, model string) string {
@@ -70,7 +108,7 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 		cfg.TargetLength = 292
 	}
 	if cfg.TTLSeconds <= 0 {
-		cfg.TTLSeconds = 3600
+		cfg.TTLSeconds = openAICodexTicketDefaultTTLSeconds
 	}
 	if cfg.RefreshBeforeSeconds <= 0 {
 		cfg.RefreshBeforeSeconds = 600
@@ -84,7 +122,22 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 	if len(cfg.Models) == 0 {
 		cfg.Models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
+	if s != nil && s.settingService != nil {
+		cfg.TTLSeconds = normalizeOpenAICodexTicketTTLSeconds(
+			s.settingService.GetOpenAICodexTicketTTLSeconds(context.Background(), cfg.TTLSeconds))
+		cfg.ReuseExpired = s.settingService.GetOpenAICodexTicketReuseExpired(context.Background(), cfg.ReuseExpired)
+		cfg.ReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(
+			s.settingService.GetOpenAICodexTicketReuseExpiredMaxSeconds(context.Background(), cfg.ReuseExpiredMaxSeconds))
+	} else {
+		cfg.TTLSeconds = normalizeOpenAICodexTicketTTLSeconds(cfg.TTLSeconds)
+		cfg.ReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(cfg.ReuseExpiredMaxSeconds)
+	}
 	return cfg
+}
+
+// openAICodexTicketReuseWindow 返回过期后最长复用时长；0 表示不限制。
+func openAICodexTicketReuseWindow(cfg config.OpenAICodexTicketConfig) time.Duration {
+	return time.Duration(cfg.ReuseExpiredMaxSeconds) * time.Second
 }
 
 func (s *OpenAIGatewayService) openAICodexTicketGatedModel(model string) bool {
@@ -113,6 +166,8 @@ type OpenAICodexTicketStatus struct {
 	HarvestEnabled       bool       `json:"harvest_enabled"`
 	QuotaResetAt         *time.Time `json:"quota_reset_at,omitempty"`
 	HarvestResumeAt      *time.Time `json:"harvest_resume_at,omitempty"`
+	// ReusingExpired 为 true 表示当前请求正沿用已过期的上次票据（有效期已过但策略允许兜底）。
+	ReusingExpired bool `json:"reusing_expired,omitempty"`
 }
 
 func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketConfig, now time.Time) []OpenAICodexTicketStatus {
@@ -139,9 +194,10 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if account != nil && account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
 		}
-		if ticket.valid(now, targetLen) {
+		if ticket.usable(now, targetLen, cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg)) {
 			status.Ready = true
 			status.Length = ticket.Length
+			status.ReusingExpired = ticket.expired(now)
 			remaining := int64(ticket.ExpiresAt.Sub(now) / time.Second)
 			if remaining < 0 {
 				remaining = 0
@@ -171,18 +227,43 @@ func (s *OpenAIGatewayService) openAICodexTicketEnabledContext(ctx context.Conte
 	return fallback
 }
 
-func (t *openAICodexTicket) valid(now time.Time, targetLen int) bool {
+// structurallyValid 只校验票据形状（长度规则与 gAAAAA 前缀），不看有效期。
+func (t *openAICodexTicket) structurallyValid(targetLen int) bool {
 	if t == nil {
 		return false
 	}
 	state := strings.TrimSpace(t.State)
-	if len(state) != targetLen || t.Length != targetLen || !strings.HasPrefix(state, openAICodexTicketStatePrefix) {
+	return len(state) == targetLen && t.Length == targetLen && strings.HasPrefix(state, openAICodexTicketStatePrefix)
+}
+
+// expired 报告票据是否已过有效期（零到期时间视为已过期）。
+func (t *openAICodexTicket) expired(now time.Time) bool {
+	if t == nil || t.ExpiresAt.IsZero() {
+		return true
+	}
+	return !now.Before(t.ExpiresAt)
+}
+
+// usable 报告票据当下能否注入：形状合法、有到期时间，且未过期，或允许沿用
+// 过期票据且仍在最长复用时长内（reuseWindow<=0 表示不限制）。
+func (t *openAICodexTicket) usable(now time.Time, targetLen int, allowExpired bool, reuseWindow time.Duration) bool {
+	if !t.structurallyValid(targetLen) {
 		return false
 	}
-	if t.ExpiresAt.IsZero() || !now.Before(t.ExpiresAt) {
+	if !t.expired(now) {
+		return true
+	}
+	if !allowExpired {
 		return false
 	}
-	return true
+	if reuseWindow <= 0 {
+		return true
+	}
+	return now.Before(t.ExpiresAt.Add(reuseWindow))
+}
+
+func (t *openAICodexTicket) valid(now time.Time, targetLen int) bool {
+	return t.usable(now, targetLen, false, 0)
 }
 
 func (t *openAICodexTicket) needsRefresh(now time.Time, refreshBefore time.Duration) bool {
@@ -202,7 +283,6 @@ func (s *OpenAIGatewayService) lookupOpenAICodexTicket(account *Account, model s
 	}
 	key := openAICodexTicketKey(account.ID, model)
 	targetLen := openAICodexTicketTargetLength(account, s.openAICodexTicketConfig().TargetLength)
-	now := time.Now()
 	var mem *openAICodexTicket
 	if raw, ok := s.openaiCodexTickets.Load(key); ok {
 		mem, _ = raw.(*openAICodexTicket)
@@ -211,11 +291,13 @@ func (s *OpenAIGatewayService) lookupOpenAICodexTicket(account *Account, model s
 	if account.Extra != nil {
 		extra = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
 	}
-	if extra.valid(now, targetLen) && (mem == nil || extra.CapturedAt.After(mem.CapturedAt)) {
+	// 过期票据也要保留：reuse_expired 开启时调用方会继续沿用最近一次成功捕获的票据，
+	// 因此这里按「形状合法」选最新的一份，是否可用由调用方按 usable 判定。
+	if extra.structurallyValid(targetLen) && (mem == nil || extra.CapturedAt.After(mem.CapturedAt)) {
 		s.openaiCodexTickets.Store(key, extra)
 		return extra
 	}
-	if mem.valid(now, targetLen) {
+	if mem.structurallyValid(targetLen) {
 		return mem
 	}
 	if extra != nil {
@@ -291,14 +373,32 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 	}
 	cfg := s.openAICodexTicketConfig()
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	if ticket.valid(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength)) {
+	if ticket.usable(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg)) {
 		h.Set(openAICodexTurnStateHeader, ticket.State)
+		applyOpenAICodexTicketCookie(h, ticket)
 		return nil
 	}
 	if s.openAICodexAllowsWithoutTicket(ctx, account) {
 		return nil
 	}
 	return ErrOpenAICodexTicketUnavailable
+}
+
+// applyOpenAICodexTicketCookie 把打票成功时捕获的 Cookie 与票据一并复用。
+// 已有 Cookie（当前出站路径默认不透传客户端 Cookie）按追加处理，避免覆盖其他来源。
+func applyOpenAICodexTicketCookie(h http.Header, ticket *openAICodexTicket) {
+	if h == nil || ticket == nil {
+		return
+	}
+	cookie := strings.TrimSpace(ticket.Cookie)
+	if cookie == "" {
+		return
+	}
+	if existing := strings.TrimSpace(h.Get("Cookie")); existing != "" {
+		h.Set("Cookie", existing+"; "+cookie)
+		return
+	}
+	h.Set("Cookie", cookie)
 }
 
 // openAICodexTicketOutboundModel 预测本请求真正出站的模型名，也就是
@@ -346,17 +446,17 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 		return false
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	return !ticket.valid(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength))
+	return !ticket.usable(time.Now(), openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg))
 }
 
-func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, attemptTimeout time.Duration) (state string, status int, err error) {
+func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, attemptTimeout time.Duration) (state string, cookie string, status int, err error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
 	defer cancel()
 
 	body := []byte(`{"model":` + jsonString(model) + `,"store":false,"stream":true,"instructions":"Reply with exactly: pong","input":[{"role":"user","content":[{"type":"input_text","text":"ping"}]}]}`)
 	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAIHarvest))
 	req.Close = true
@@ -367,7 +467,7 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("session_id", uuid.NewString())
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(attemptCtx, s.accountRepo, req.Header, account); err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	applyOpenAICodexTicketHarvestIdentity(req.Header, model)
 
@@ -376,10 +476,10 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	// while handlers are still wiring it during gateway construction.
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	if resp == nil {
-		return "", 0, errors.New("nil upstream response")
+		return "", "", 0, errors.New("nil upstream response")
 	}
 	// Close without draining streams. Ticket harvesting never changes account
 	// rate-limit state, even if this response is HTTP 429.
@@ -388,7 +488,29 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 			_ = resp.Body.Close()
 		}
 	}()
-	return extractOpenAICodexTurnState(resp.Header), resp.StatusCode, nil
+	return extractOpenAICodexTurnState(resp.Header), extractOpenAICodexResponseCookies(resp.Header), resp.StatusCode, nil
+}
+
+// extractOpenAICodexResponseCookies 把上游 Set-Cookie 归一化成 Cookie 请求头形态
+// （仅 name=value，丢弃属性；同名 cookie 保留首个）。票据只有成功时才会携带它出站。
+func extractOpenAICodexResponseCookies(h http.Header) string {
+	if h == nil || len(h.Values("Set-Cookie")) == 0 {
+		return ""
+	}
+	parsed := (&http.Response{Header: h}).Cookies()
+	if len(parsed) == 0 {
+		return ""
+	}
+	pairs := make([]string, 0, len(parsed))
+	seen := make(map[string]bool, len(parsed))
+	for _, item := range parsed {
+		if item == nil || item.Name == "" || seen[item.Name] {
+			continue
+		}
+		seen[item.Name] = true
+		pairs = append(pairs, item.Name+"="+item.Value)
+	}
+	return strings.Join(pairs, "; ")
 }
 
 func jsonString(v string) string {

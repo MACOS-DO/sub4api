@@ -545,6 +545,12 @@ export default {
         codexHardeningTitle: "Codex Settings",
         codexTicketAllowWithoutTicket: 'Allow requests without tickets by default',
         codexTicketAllowWithoutTicketDesc: 'Used when an account has no override. When disabled, a valid ticket is required. Accounts can override this default.',
+        codexTicketTTL: 'Ticket TTL (seconds)',
+        codexTicketTTLDesc: 'How long a harvested ticket stays valid. Defaults to 200 seconds with a 60-second minimum. The gateway re-harvests before it expires.',
+        codexTicketReuseExpired: 'Reuse the last ticket after expiry',
+        codexTicketReuseExpiredDesc: 'When enabled, requests keep using the last ticket after it expires until a fresh one is harvested. Account ticket status is marked as expired but reused.',
+        codexTicketReuseExpiredMax: 'Max reuse time after expiry (seconds)',
+        codexTicketReuseExpiredMaxDesc: 'How long the last ticket may keep being reused after it expires. Defaults to 600 seconds; 0 means unlimited. Beyond that window requests are treated as having no ticket. Only applies when reusing expired tickets is enabled.',
         codexTicketEnabled: "292 ticket harvest",
         codexTicketEnabledDesc:
           "When off, the gateway neither harvests nor injects x-codex-turn-state and forwards traffic as usual. When on, it harvests tickets in the background and overwrites that header on production requests.",
