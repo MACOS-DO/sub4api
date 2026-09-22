@@ -36,6 +36,12 @@ const (
 
 	// 票据过期后最长复用时长：0 表示不限制，默认 600 秒。
 	openAICodexTicketDefaultReuseWindowSeconds = 600
+
+	// 打票间隔区间（秒）：成功、失败-有效票、失败-无票三种下一次打票都在该区间内随机。
+	openAICodexTicketDefaultHarvestIntervalMinSeconds = 10
+	openAICodexTicketDefaultHarvestIntervalMaxSeconds = 30
+	openAICodexTicketMinHarvestIntervalSeconds        = 1
+	openAICodexTicketMaxHarvestIntervalSeconds        = 86400
 )
 
 // normalizeOpenAICodexTicketTTLSeconds 归一化票据有效期：非正数回落默认值，
@@ -61,6 +67,33 @@ func normalizeOpenAICodexTicketReuseWindowSeconds(seconds int) int {
 	}
 	if seconds > openAICodexTicketMaxTTLSeconds {
 		return openAICodexTicketMaxTTLSeconds
+	}
+	return seconds
+}
+
+// normalizeOpenAICodexTicketHarvestInterval 归一化打票间隔区间：
+// 非正数回落到默认值，各自夹取到 [1, 86400]，并保证 min <= max。
+func normalizeOpenAICodexTicketHarvestInterval(minSeconds, maxSeconds int) (int, int) {
+	if minSeconds <= 0 {
+		minSeconds = openAICodexTicketDefaultHarvestIntervalMinSeconds
+	}
+	if maxSeconds <= 0 {
+		maxSeconds = openAICodexTicketDefaultHarvestIntervalMaxSeconds
+	}
+	minSeconds = clampOpenAICodexTicketHarvestIntervalSeconds(minSeconds)
+	maxSeconds = clampOpenAICodexTicketHarvestIntervalSeconds(maxSeconds)
+	if maxSeconds < minSeconds {
+		maxSeconds = minSeconds
+	}
+	return minSeconds, maxSeconds
+}
+
+func clampOpenAICodexTicketHarvestIntervalSeconds(seconds int) int {
+	if seconds < openAICodexTicketMinHarvestIntervalSeconds {
+		return openAICodexTicketMinHarvestIntervalSeconds
+	}
+	if seconds > openAICodexTicketMaxHarvestIntervalSeconds {
+		return openAICodexTicketMaxHarvestIntervalSeconds
 	}
 	return seconds
 }
@@ -128,9 +161,14 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 		cfg.ReuseExpired = s.settingService.GetOpenAICodexTicketReuseExpired(context.Background(), cfg.ReuseExpired)
 		cfg.ReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(
 			s.settingService.GetOpenAICodexTicketReuseExpiredMaxSeconds(context.Background(), cfg.ReuseExpiredMaxSeconds))
+		minSeconds, maxSeconds := s.settingService.GetOpenAICodexTicketHarvestInterval(
+			context.Background(), cfg.HarvestIntervalMinSeconds, cfg.HarvestIntervalMaxSeconds)
+		cfg.HarvestIntervalMinSeconds, cfg.HarvestIntervalMaxSeconds = normalizeOpenAICodexTicketHarvestInterval(minSeconds, maxSeconds)
 	} else {
 		cfg.TTLSeconds = normalizeOpenAICodexTicketTTLSeconds(cfg.TTLSeconds)
 		cfg.ReuseExpiredMaxSeconds = normalizeOpenAICodexTicketReuseWindowSeconds(cfg.ReuseExpiredMaxSeconds)
+		cfg.HarvestIntervalMinSeconds, cfg.HarvestIntervalMaxSeconds = normalizeOpenAICodexTicketHarvestInterval(
+			cfg.HarvestIntervalMinSeconds, cfg.HarvestIntervalMaxSeconds)
 	}
 	return cfg
 }
@@ -138,6 +176,24 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 // openAICodexTicketReuseWindow 返回过期后最长复用时长；0 表示不限制。
 func openAICodexTicketReuseWindow(cfg config.OpenAICodexTicketConfig) time.Duration {
 	return time.Duration(cfg.ReuseExpiredMaxSeconds) * time.Second
+}
+
+// codexTicketHarvestInterval 返回当前生效的打票间隔区间（已归一化）。
+func (s *OpenAIGatewayService) codexTicketHarvestInterval() (time.Duration, time.Duration) {
+	cfg := s.openAICodexTicketConfig()
+	return time.Duration(cfg.HarvestIntervalMinSeconds) * time.Second,
+		time.Duration(cfg.HarvestIntervalMaxSeconds) * time.Second
+}
+
+// codexTicketHarvestScanInterval 返回扫描周期：严格取 max(1s, 打票间隔最小值-1s)，
+// 保证轮询节奏不慢于最小打票间隔；已排定的到期时间仍会精确唤醒。
+func (s *OpenAIGatewayService) codexTicketHarvestScanInterval() time.Duration {
+	minInterval, _ := s.codexTicketHarvestInterval()
+	scan := minInterval - time.Second
+	if scan < time.Second {
+		return time.Second
+	}
+	return scan
 }
 
 func (s *OpenAIGatewayService) openAICodexTicketGatedModel(model string) bool {
@@ -264,13 +320,6 @@ func (t *openAICodexTicket) usable(now time.Time, targetLen int, allowExpired bo
 
 func (t *openAICodexTicket) valid(now time.Time, targetLen int) bool {
 	return t.usable(now, targetLen, false, 0)
-}
-
-func (t *openAICodexTicket) needsRefresh(now time.Time, refreshBefore time.Duration) bool {
-	if t == nil || t.ExpiresAt.IsZero() {
-		return true
-	}
-	return !t.ExpiresAt.After(now.Add(refreshBefore))
 }
 
 func (s *OpenAIGatewayService) lookupOpenAICodexTicket(account *Account, model string) *openAICodexTicket {
@@ -474,7 +523,15 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	// Synthetic probes must use the dedicated no-reuse transport even when the
 	// production account is bound to a plugin. This also avoids reading pluginManager
 	// while handlers are still wiring it during gateway construction.
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	//
+	// 打票同样打到 /responses，需要与官方 Codex HTTP 链路一致的 TLS 指纹（OpenSSL，无 ALPN，h1）。
+	profile := s.openAITLSFingerprintProfile(account, TLSFingerprintTransportHTTP)
+	var resp *http.Response
+	if profile != nil {
+		resp, err = s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, profile)
+	} else {
+		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	}
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -598,11 +655,10 @@ func (s *OpenAIGatewayService) openAICodexTicketHarvestLoop(ctx context.Context)
 	}
 }
 
-// Keep the configured scan cadence for account/config changes, but wake exactly
-// when a scheduled retry falls inside that interval. This prevents the scanner
-// cadence from stretching a requested 20-40 second retry beyond its upper bound.
+// 扫描周期严格取 max(1s, 打票间隔最小值-1s)：保证轮询节奏快于最小打票间隔，
+// 同时仍会在已排定的到期时间点精确唤醒，避免重试被扫描周期拖后。
 func (s *OpenAIGatewayService) openAICodexTicketNextScanDelay(now time.Time) time.Duration {
-	delay := time.Duration(s.openAICodexTicketConfig().HarvestProbeIntervalSeconds) * time.Second
+	delay := s.codexTicketHarvestScanInterval()
 	s.openaiCodexTicketNextAttempt.Range(func(_, value any) bool {
 		next, ok := value.(time.Time)
 		if !ok {

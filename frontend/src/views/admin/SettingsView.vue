@@ -4532,6 +4532,18 @@
                 </div>
                 <div class="flex items-center justify-between gap-4">
                   <div class="min-w-0">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestInterval') }}</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestIntervalDesc') }}</p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <input id="codex-ticket-harvest-interval-min" v-model.number="form.openai_codex_ticket_harvest_interval_min_seconds" type="number" min="1" max="86400" step="1" class="input w-24 text-sm" />
+                    <span class="text-sm text-gray-400">~</span>
+                    <input id="codex-ticket-harvest-interval-max" v-model.number="form.openai_codex_ticket_harvest_interval_max_seconds" type="number" min="1" max="86400" step="1" class="input w-24 text-sm" />
+                    <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketHarvestIntervalUnit') }}</span>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.gatewayForwarding.codexTicketReuseExpired') }}</h3>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.gatewayForwarding.codexTicketReuseExpiredDesc') }}</p>
                   </div>
@@ -9888,6 +9900,8 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_ttl_seconds: 200,
   openai_codex_ticket_reuse_expired: true,
   openai_codex_ticket_reuse_expired_max_seconds: 600,
+  openai_codex_ticket_harvest_interval_min_seconds: 10,
+  openai_codex_ticket_harvest_interval_max_seconds: 30,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   // codex_cli_only 加固
@@ -11512,6 +11526,24 @@ async function saveSettings() {
         const parsed = Math.round(Number(raw));
         if (!Number.isFinite(parsed)) return 600;
         return Math.min(86400, Math.max(0, parsed));
+      })(),
+      ...(() => {
+        const rawMin = Math.round(
+          Number(form.openai_codex_ticket_harvest_interval_min_seconds),
+        );
+        const rawMax = Math.round(
+          Number(form.openai_codex_ticket_harvest_interval_max_seconds),
+        );
+        const min = Number.isFinite(rawMin)
+          ? Math.min(86400, Math.max(1, rawMin))
+          : 10;
+        const max = Number.isFinite(rawMax)
+          ? Math.min(86400, Math.max(1, rawMax))
+          : 30;
+        return {
+          openai_codex_ticket_harvest_interval_min_seconds: min,
+          openai_codex_ticket_harvest_interval_max_seconds: Math.max(min, max),
+        };
       })(),
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",

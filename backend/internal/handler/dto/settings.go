@@ -224,6 +224,9 @@ type SystemSettings struct {
 	OpenAICodexTicketReuseExpiredMaxSeconds int    `json:"openai_codex_ticket_reuse_expired_max_seconds"`
 	OpenAICodexTicketHarvestProxyURL        string `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketHarvestProxyConfigured bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
+	// 打票间隔区间（秒）：所有下一次打票在 [min,max] 内随机，默认 10~30。
+	OpenAICodexTicketHarvestIntervalMinSeconds int `json:"openai_codex_ticket_harvest_interval_min_seconds"`
+	OpenAICodexTicketHarvestIntervalMaxSeconds int `json:"openai_codex_ticket_harvest_interval_max_seconds"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`

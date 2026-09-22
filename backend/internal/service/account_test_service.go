@@ -901,6 +901,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
 	}
 
+	// 与真实转发一致：注入已捕获的 Codex 票据与 Cookie；策略禁止无票时仅告警，
+	// 测试继续验证凭据连通性。
+	s.applyOpenAICodexTicketForTest(ctx, c, account, upstreamTestModelID, req.Header)
+
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	credentialAccount.ApplyHeaderOverrides(req.Header)
 
@@ -2225,6 +2229,8 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	applyOpenAICodexProbeHeaders(req.Header)
 	if isOAuth {
 		enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
+		// 与真实转发一致：compact 走普通 /responses 线，同样注入已捕获的票据与 Cookie。
+		s.applyOpenAICodexTicketForTest(ctx, c, account, testModelID, req.Header)
 	}
 	probeSessionID := compactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)

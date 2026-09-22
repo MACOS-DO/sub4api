@@ -310,6 +310,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexTicketReuseExpiredMaxSeconds:                settings.OpenAICodexTicketReuseExpiredMaxSeconds,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
+		OpenAICodexTicketHarvestIntervalMinSeconds:             settings.OpenAICodexTicketHarvestIntervalMinSeconds,
+		OpenAICodexTicketHarvestIntervalMaxSeconds:             settings.OpenAICodexTicketHarvestIntervalMaxSeconds,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,

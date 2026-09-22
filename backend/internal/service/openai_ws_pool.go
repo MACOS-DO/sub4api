@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/MACOS-DO/sub4api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/pkg/tlsfingerprint"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -77,6 +78,8 @@ type openAIWSAcquireRequest struct {
 	HeadersFactory  func(context.Context, http.Header) (http.Header, error)
 	ProxyURL        string
 	PreferredConnID string
+	// TLSProfile 非 nil 时使用指定 TLS 指纹建连（Codex OAuth 的 rustls 形态）。
+	TLSProfile *tlsfingerprint.Profile
 	// ForceNewConn: 强制本次获取新连接（避免复用导致连接内续链状态互相污染）。
 	ForceNewConn bool
 	// ForcePreferredConn: 强制本次只使用 PreferredConnID，禁止漂移到其它连接。
@@ -2126,7 +2129,20 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 			return nil, err
 		}
 	}
-	conn, status, handshakeHeaders, err := p.clientDialer.Dial(ctx, req.WSURL, headers, req.ProxyURL)
+	var (
+		conn             openAIWSClientConn
+		status           int
+		handshakeHeaders http.Header
+	)
+	if req.TLSProfile != nil {
+		if tlsDialer, ok := p.clientDialer.(openAIWSTLSClientDialer); ok {
+			conn, status, handshakeHeaders, err = tlsDialer.DialWithTLS(ctx, req.WSURL, headers, req.ProxyURL, req.TLSProfile)
+		} else {
+			conn, status, handshakeHeaders, err = p.clientDialer.Dial(ctx, req.WSURL, headers, req.ProxyURL)
+		}
+	} else {
+		conn, status, handshakeHeaders, err = p.clientDialer.Dial(ctx, req.WSURL, headers, req.ProxyURL)
+	}
 	if err != nil {
 		var handshakeErr *openAIWSHandshakeError
 		var responseBody []byte

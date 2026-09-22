@@ -277,6 +277,51 @@ gateway:
   # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
   # 仍会在分组允许图片生成的情况下正常转发。
   codex_image_generation_bridge_enabled: false
+  # Codex location/timezone alignment (default enabled).
+  # Codex 出口时区/地点对齐（默认开启）。
+  #
+  # Rewrites the Codex-injected <environment_context> <timezone>/<current_date>,
+  # the <current_time_reminder> local time, and existing web_search user_location
+  # fields to match the account egress location (proxy exit IP; the server's
+  # direct egress IP when no proxy is bound). This prevents upstreams from seeing
+  # an IP/timezone mismatch. Falls back to Asia/Tokyo (never China) when the exit
+  # location cannot be detected or resolves to mainland China.
+  # 将 Codex 注入的 environment_context 时区/日期、current_time_reminder 本地时间，
+  # 以及已存在的 web_search user_location 改写为账号出口地理（代理出口 IP；无代理时
+  # 为服务器直连出口 IP），避免上游看到 IP 与时区不一致。探测失败或出口在中国大陆时
+  # 回退日本东京（绝不写中国）。账号级可用 extra.codex_location_align_enabled 覆盖。
+  codex_location:
+    enabled: true
+    # Fallback location when probing fails or is rejected (never use China).
+    # 探测失败/命中拒绝名单时的兜底地理（禁止中国）。
+    fallback_timezone: Asia/Tokyo
+    fallback_country: JP
+    fallback_region: Tokyo
+    fallback_city: Tokyo
+    # Single egress geo probe timeout (seconds).
+    # 单次出口地理探测超时（秒）。
+    probe_timeout_seconds: 5
+    # Per-account egress geo cache TTL (hours).
+    # 按账号维度的出口地理缓存 TTL（小时）。
+    cache_ttl_hours: 24
+    # Negative cache TTL after a failed probe (seconds).
+    # 探测失败后的负缓存 TTL（秒）。
+    failure_cache_ttl_seconds: 60
+    # Probe the server's own direct egress for accounts without a proxy.
+    # 无代理账号是否探测服务器直连出口。
+    direct_probe_enabled: true
+    # Legacy clients without content_item_kinds may be rewritten heuristically
+    # only when the text is exactly one complete Codex block.
+    # 无标记老客户端仅当整段恰为一个完整 Codex 块时才启发式改写。
+    marker_absent_heuristic: true
+    # Reject these exit countries/timezones and use the fallback instead.
+    # 命中即回退兜底的出口国家/时区名单。
+    denied_countries: [CN]
+    denied_timezones: [Asia/Shanghai, Asia/Urumqi, Asia/Chongqing, Asia/Harbin, Asia/Kashgar, PRC]
+    # Direct lookup used when the configured probe endpoint does not return a
+    # timezone; {ip} is replaced with the exit IP. Set empty to disable.
+    # 探测端点不返回时区时按出口 IP 直连补查的 URL 模板；置空禁用。
+    ip_timezone_lookup_url: "http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,regionName,city,timezone"
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #
@@ -327,15 +372,21 @@ gateway:
     target_length: 292
     # 票据有效期（秒），最小 60；后台「系统设置 → 网关 → Codex 设置 → 票据过期时间」可覆盖，默认 200。
     ttl_seconds: 200
-    # 兼容保留字段：取得新票据后固定等待 30~60 秒的随机间隔开始下一轮打票，本字段不再参与调度。
+    # 已废弃：打票间隔由 harvest_interval_min/max_seconds（或后台「打票间隔范围」）控制，本字段不参与调度。
     refresh_before_seconds: 600
     # 票据过期后是否仍沿用上次票据；后台「过期仍沿用上次票据」可覆盖，默认 true。
     reuse_expired: true
     # 过期后最长复用时长（秒），默认 600；0 表示不限制。后台「过期后最长复用时长」可覆盖。
     reuse_expired_max_seconds: 600
+    # 打票间隔范围（秒）：新票成功后、票据有效期内、票据无效时，下一次打票都在
+    # [min,max] 内随机（每次调度事件重新随机）。默认 10~30，边界 [1,86400] 且 min<=max。
+    # 后台「系统设置 → 网关 → Codex 设置 → 打票间隔范围」可覆盖，无需重启。
+    harvest_interval_min_seconds: 10
+    harvest_interval_max_seconds: 30
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
     harvest_proxy_url: ""
+    # 已废弃：扫描周期改为 max(1s, 打票间隔最小值-1s)，本字段不参与调度。
     harvest_probe_interval_seconds: 6
     harvest_attempt_timeout_seconds: 25
     fail_closed: true

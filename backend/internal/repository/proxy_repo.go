@@ -21,12 +21,17 @@ import (
 type proxyRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+	// codexLocationCache 保存按账号维度的 Codex 出口地理缓存；代理身份变化或
+	// 到期改投后必须清除关联账号的缓存，避免继续使用旧出口的时区/地区。
+	codexLocationCache service.CodexLocationCache
 }
 
 const proxyProbeOutboxAccountChunkSize = 500
 
-func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyRepository {
-	return newProxyRepositoryWithSQL(client, sqlDB)
+func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB, codexLocationCache service.CodexLocationCache) service.ProxyRepository {
+	repo := newProxyRepositoryWithSQL(client, sqlDB)
+	repo.codexLocationCache = codexLocationCache
+	return repo
 }
 
 func newProxyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *proxyRepository {
@@ -120,7 +125,42 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 		}
 	}
 	applyProxyEntityToService(proxyIn, updated)
+	// 编辑代理设置（host/port/账号密码/状态等）可能改变出口 IP，清除其下所有
+	// 关联账号的出口地理缓存。外部事务（contextTx）场景跳过，读取时的绑定指纹
+	// 自校验会兜底。
+	if tx != nil {
+		r.deleteCodexLocationCachesForProxy(context.WithoutCancel(ctx), proxyIn.ID)
+	}
 	return nil
+}
+
+// deleteCodexLocationCachesForProxy 清除绑定到指定代理的全部账号的出口地理缓存。
+func (r *proxyRepository) deleteCodexLocationCachesForProxy(ctx context.Context, proxyID int64) {
+	if r == nil || r.codexLocationCache == nil {
+		return
+	}
+	summaries, err := r.ListAccountSummariesByProxyID(ctx, proxyID)
+	if err != nil {
+		logger.LegacyPrintf("repository.proxy", "[CodexLocation] list proxy accounts failed proxy=%d err=%v", proxyID, err)
+		return
+	}
+	if len(summaries) == 0 {
+		return
+	}
+	accountIDs := make([]int64, 0, len(summaries))
+	for _, summary := range summaries {
+		accountIDs = append(accountIDs, summary.ID)
+	}
+	r.deleteCodexLocationCaches(ctx, accountIDs)
+}
+
+func (r *proxyRepository) deleteCodexLocationCaches(ctx context.Context, accountIDs []int64) {
+	if r == nil || r.codexLocationCache == nil || len(accountIDs) == 0 {
+		return
+	}
+	if err := r.codexLocationCache.DeleteAccountLocations(ctx, accountIDs); err != nil {
+		logger.LegacyPrintf("repository.proxy", "[CodexLocation] cache invalidate failed accounts=%v err=%v", accountIDs, err)
+	}
 }
 
 type proxyProbeIdentity struct {
@@ -668,6 +708,8 @@ func (r *proxyRepository) SweepExpiredProxies(ctx context.Context, now time.Time
 
 	changedAccountIDs := sortedUniqueAccountIDs(allChangedAccountIDs)
 	if len(changedAccountIDs) > 0 {
+		// 代理到期改投改变了出口 IP，清除这些账号的出口地理缓存。
+		r.deleteCodexLocationCaches(context.WithoutCancel(ctx), changedAccountIDs)
 		// 各代理的改投事务已经提交；这里仅汇总真实被 UPDATE 命中的账号，
 		// 避免代理到期时用全量重建刷新所有调度分桶。
 		payload := map[string]any{"account_ids": changedAccountIDs}

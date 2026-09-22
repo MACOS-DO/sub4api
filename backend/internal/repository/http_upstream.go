@@ -512,9 +512,12 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
-	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀；模板身份与上游 profile
+	// 也必须入键，否则切换指纹/打票 no-reuse 会复用旧连接。
+	profileKey := tlsfingerprint.ProfileIdentity(profile)
+	profileScope := profileKey + ":" + string(upstreamProfile)
+	cacheKey := "tls:" + profileScope + ":" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
+	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls:" + profileScope
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -569,6 +572,17 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
+	}
+	if upstreamProfile == service.HTTPUpstreamProfileOpenAIHarvest {
+		// 打票必须每次新建 CONNECT，让打票代理轮换出口 IP；h1 无复用与官方
+		// `/responses` 线型一致。
+		transport.ForceAttemptHTTP2 = false
+		transport.DisableKeepAlives = true
+		transport.MaxIdleConns = 0
+		transport.MaxIdleConnsPerHost = 0
+		if transport.TLSNextProto == nil {
+			transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+		}
 	}
 
 	client := &http.Client{Transport: transport}

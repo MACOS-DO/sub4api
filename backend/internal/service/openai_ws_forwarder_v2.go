@@ -206,6 +206,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		Account: account,
 		WSURL:   wsURL,
 		Headers: wsHeaders,
+		// Codex OAuth 账号默认使用官方 rustls 指纹（无 ALPN，h1）。
+		TLSProfile: s.openAITLSFingerprintProfile(account, TLSFingerprintTransportWebSocket),
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},

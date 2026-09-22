@@ -667,6 +667,90 @@ func (s *SettingService) InvalidateOpenAICodexTicketHarvestProxyCache() {
 	s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{expiresAt: 0})
 }
 
+type cachedOpenAICodexTicketHarvestInterval struct {
+	minSeconds int
+	maxSeconds int
+	expiresAt  int64
+}
+
+// GetOpenAICodexTicketHarvestInterval 返回后台配置的打票间隔区间（秒）。
+// 设置键存在时以后台为准；缺失/非法则回退 yaml/env，并归一化到 [1, 86400] 且 min<=max。
+func (s *SettingService) GetOpenAICodexTicketHarvestInterval(ctx context.Context, fallbackMin, fallbackMax int) (int, int) {
+	fallbackMin, fallbackMax = normalizeOpenAICodexTicketHarvestInterval(fallbackMin, fallbackMax)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallbackMin, fallbackMax
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallbackMin, fallbackMax
+	}
+	if cached, ok := s.openAICodexTicketHarvestIntervalCache.Load().(*cachedOpenAICodexTicketHarvestInterval); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.minSeconds, cached.maxSeconds
+		}
+	}
+	resultCh := s.openAICodexTicketHarvestIntervalSF.DoChan(SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds, func() (any, error) {
+		if cached, ok := s.openAICodexTicketHarvestIntervalCache.Load().(*cachedOpenAICodexTicketHarvestInterval); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return *cached, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		minValue, minErr := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds)
+		maxValue, maxErr := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if (minErr != nil && !errors.Is(minErr, ErrSettingNotFound)) ||
+			(maxErr != nil && !errors.Is(maxErr, ErrSettingNotFound)) {
+			// 存储瞬时故障：沿用旧缓存或回退，避免打票节奏被抖动。
+			if cached, ok := s.openAICodexTicketHarvestIntervalCache.Load().(*cachedOpenAICodexTicketHarvestInterval); ok && cached != nil {
+				return *cached, nil
+			}
+			return cachedOpenAICodexTicketHarvestInterval{minSeconds: fallbackMin, maxSeconds: fallbackMax}, nil
+		}
+		minSeconds, maxSeconds := fallbackMin, fallbackMax
+		if minErr == nil {
+			if parsed, parseErr := strconv.Atoi(strings.TrimSpace(minValue)); parseErr == nil {
+				minSeconds = parsed
+			}
+		}
+		if maxErr == nil {
+			if parsed, parseErr := strconv.Atoi(strings.TrimSpace(maxValue)); parseErr == nil {
+				maxSeconds = parsed
+			}
+		}
+		minSeconds, maxSeconds = normalizeOpenAICodexTicketHarvestInterval(minSeconds, maxSeconds)
+		cached := cachedOpenAICodexTicketHarvestInterval{minSeconds: minSeconds, maxSeconds: maxSeconds}
+		s.openAICodexTicketHarvestIntervalCache.Store(&cachedOpenAICodexTicketHarvestInterval{
+			minSeconds: minSeconds,
+			maxSeconds: maxSeconds,
+			expiresAt:  time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
+		})
+		return cached, nil
+	})
+	select {
+	case <-ctx.Done():
+		return fallbackMin, fallbackMax
+	case result := <-resultCh:
+		if v, ok := result.Val.(cachedOpenAICodexTicketHarvestInterval); ok && result.Err == nil {
+			return v.minSeconds, v.maxSeconds
+		}
+		return fallbackMin, fallbackMax
+	}
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketHarvestIntervalCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketHarvestIntervalSF.Forget(SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds)
+	s.openAICodexTicketHarvestIntervalCache.Store(&cachedOpenAICodexTicketHarvestInterval{expiresAt: 0})
+}
+
 // GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。
 // 后台设置优先；为空时回退到内置默认值。
 func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {

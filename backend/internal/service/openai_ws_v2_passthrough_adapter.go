@@ -746,6 +746,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstClientMessage = s.ReplaceModelInBody(firstClientMessage, capturedSessionModel)
 	}
 	firstMessageResponsesLite := isOpenAIResponsesLiteWebSocketPayload(firstClientMessage)
+	// 出口地理对齐必须早于 compatibility normalization（会删除
+	// internal_chat_message_metadata_passthrough 标记）。
+	if alignedBody, aligned := s.alignCodexLocationInRequestBody(ctx, account, firstClientMessage); aligned {
+		firstClientMessage = alignedBody
+	}
 	if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(firstClientMessage, account, firstMessageResponsesLite); normalizeErr != nil {
 		return fmt.Errorf("normalize first websocket response.create: %w", normalizeErr)
 	} else if compatibilityChanged {
@@ -876,7 +881,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			return fmt.Errorf("refresh ws authentication headers: %w", err)
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
-		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+		if tlsProfile := s.openAITLSFingerprintProfile(account, TLSFingerprintTransportWebSocket); tlsProfile != nil {
+			if tlsDialer, ok := dialer.(openAIWSTLSClientDialer); ok {
+				upstreamConn, statusCode, handshakeHeaders, err = tlsDialer.DialWithTLS(dialCtx, wsURL, headers, proxyURL, tlsProfile)
+			} else {
+				upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+			}
+		} else {
+			upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+		}
 		cancelDial()
 		if err == nil {
 			break
@@ -997,6 +1010,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}()
 			}
 			responsesLite := isResponseCreate && isOpenAIResponsesLiteWebSocketPayload(payload)
+			// session.update 的会话级工具（Realtime 风格客户端）同样需要对齐出口地理。
+			// 对齐必须早于 compatibility normalization：后者会删除
+			// internal_chat_message_metadata_passthrough 标记（仅 response.create）。
+			if isResponseCreate || eventType == "session.update" {
+				if alignedBody, aligned := s.alignCodexLocationInRequestBody(ctx, account, payload); aligned {
+					payload = alignedBody
+				}
+			}
 			if isResponseCreate {
 				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account, responsesLite); normalizeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)

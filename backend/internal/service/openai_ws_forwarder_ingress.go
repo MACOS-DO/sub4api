@@ -269,6 +269,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = next
 		}
 		responsesLite := isOpenAIResponsesLiteWebSocketPayload(normalized)
+		// 出口地理对齐必须早于 compatibility normalization：后者会删除
+		// internal_chat_message_metadata_passthrough（含 content_item_kinds 标记），
+		// 标记丢失后只能靠启发式，关闭启发式时精确改写会静默失效。
+		if alignedBody, aligned := s.alignCodexLocationInRequestBody(ctx, account, normalized); aligned {
+			normalized = alignedBody
+		}
 		if compatibilityBody, compatibilityChanged, compatibilityErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, account, responsesLite); compatibilityErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", compatibilityErr)
 		} else if compatibilityChanged {
@@ -792,6 +798,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		Account: account,
 		WSURL:   wsURL,
 		Headers: wsHeaders,
+		// Codex OAuth 账号默认使用官方 rustls 指纹（无 ALPN，h1）。
+		TLSProfile: s.openAITLSFingerprintProfile(account, TLSFingerprintTransportWebSocket),
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},

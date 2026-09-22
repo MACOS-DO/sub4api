@@ -256,12 +256,15 @@ type SystemSettings struct {
 	OpenAICodexTicketReuseExpired           bool   // 票据过期后是否仍沿用上次票据，默认开启
 	OpenAICodexTicketReuseExpiredMaxSeconds int    // 过期后最长复用时长（秒），0=不限制，默认 600
 	OpenAICodexTicketHarvestProxyURL        string // Codex 292 打票代理 URL；空则回退 yaml/env
-	MinCodexVersion                         string // codex_cli_only 最低 Codex 引擎版本；空=不检查
-	MaxCodexVersion                         string // codex_cli_only 最高 Codex 引擎版本；空=不检查
-	CodexCLIOnlyBlacklist                   string // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）
-	CodexCLIOnlyWhitelist                   string // codex_cli_only 全局白名单 JSON（[]AllowedClientEntry，AND allow）
-	CodexCLIOnlyAllowAppServerClients       bool   // codex_cli_only App Server 开关：对未列名客户端开闸（默认 false）
-	CodexCLIOnlyEngineFingerprintSignals    string // codex_cli_only 引擎指纹门信号列表 JSON（[]EngineFingerprintSignal）
+	// 打票间隔区间（秒）：所有下一次打票在 [min,max] 内随机，默认 10~30，边界 [1,86400]。
+	OpenAICodexTicketHarvestIntervalMinSeconds int
+	OpenAICodexTicketHarvestIntervalMaxSeconds int
+	MinCodexVersion                            string // codex_cli_only 最低 Codex 引擎版本；空=不检查
+	MaxCodexVersion                            string // codex_cli_only 最高 Codex 引擎版本；空=不检查
+	CodexCLIOnlyBlacklist                      string // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）
+	CodexCLIOnlyWhitelist                      string // codex_cli_only 全局白名单 JSON（[]AllowedClientEntry，AND allow）
+	CodexCLIOnlyAllowAppServerClients          bool   // codex_cli_only App Server 开关：对未列名客户端开闸（默认 false）
+	CodexCLIOnlyEngineFingerprintSignals       string // codex_cli_only 引擎指纹门信号列表 JSON（[]EngineFingerprintSignal）
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟

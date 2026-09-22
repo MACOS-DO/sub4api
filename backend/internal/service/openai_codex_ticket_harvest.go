@@ -5,6 +5,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"maps"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -23,16 +24,6 @@ var (
 
 const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
 const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
-
-const (
-	// 取得新票据后，固定等待 30~60 秒的随机间隔开始下一轮自动打票。
-	codexTicketHarvestIntervalMin = 30 * time.Second
-	codexTicketHarvestIntervalMax = 60 * time.Second
-	// 打票失败后的重试节奏（未命中 / 仍持有有效票据）。
-	codexTicketValidRetryMin = 30 * time.Second
-	codexTicketValidRetryMax = 40 * time.Second
-	codexTicketMissingRetry  = 30 * time.Second
-)
 
 func CodexTicketHarvestEnabled(account *Account, model string) bool {
 	if account == nil || !isOpenAICodexTicketAccount(account) {
@@ -93,32 +84,30 @@ type CodexTicketHarvestResult struct {
 	HistoryRecorded bool                    `json:"history_recorded"`
 }
 
-func codexTicketJitter(key string, at time.Time, min, max time.Duration) time.Duration {
+// codexTicketRandomHarvestDelay 在 [min, max] 内均匀随机一个打票延迟。
+// 每次调度事件（成功 / 失败重试）都会重新掷一次。
+func codexTicketRandomHarvestDelay(min, max time.Duration) time.Duration {
 	if max <= min {
 		return min
 	}
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(key))
-	_, _ = h.Write([]byte(at.UTC().Format(time.RFC3339Nano)))
-	return min + time.Duration(h.Sum64()%uint64(max-min+1))
+	return min + time.Duration(rand.Int64N(int64(max-min)+1))
 }
 
-// codexTicketNextHarvestAt 返回成功捕获票据后的下一次自动打票时间：固定为捕获后
-// 30~60 秒的随机时刻（按 账号+模型+捕获时间 确定性哈希，同一张票只产生一个值）。
-// 无捕获时间时返回零值，调用方视为立即到期。
-func codexTicketNextHarvestAt(ticket *openAICodexTicket) time.Time {
+// codexTicketNextHarvestAt 返回成功捕获票据后的下一次自动打票时间：
+// 捕获时间 + [min,max] 内随机延迟。无捕获时间时返回零值，调用方视为立即到期。
+func codexTicketNextHarvestAt(ticket *openAICodexTicket, min, max time.Duration) time.Time {
 	if ticket == nil || ticket.CapturedAt.IsZero() {
 		return time.Time{}
 	}
-	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
-	return ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketHarvestIntervalMin, codexTicketHarvestIntervalMax))
+	return ticket.CapturedAt.Add(codexTicketRandomHarvestDelay(min, max))
 }
 
 func (s *OpenAIGatewayService) scheduleCodexTicketAfterSuccess(ticket *openAICodexTicket) {
 	if ticket == nil {
 		return
 	}
-	next := codexTicketNextHarvestAt(ticket)
+	minInterval, maxInterval := s.codexTicketHarvestInterval()
+	next := codexTicketNextHarvestAt(ticket, minInterval, maxInterval)
 	if next.IsZero() {
 		return
 	}
@@ -134,7 +123,8 @@ func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model s
 		return true
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	if due := codexTicketNextHarvestAt(ticket); !due.IsZero() {
+	minInterval, maxInterval := s.codexTicketHarvestInterval()
+	if due := codexTicketNextHarvestAt(ticket, minInterval, maxInterval); !due.IsZero() {
 		s.openaiCodexTicketNextAttempt.Store(key, due)
 		return !now.Before(due)
 	}
@@ -166,7 +156,6 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 	}
 	cfg := s.openAICodexTicketConfig()
 	start := time.Now()
-	hadValidTicket := s.lookupOpenAICodexTicket(account, model).usable(start, openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg))
 	a := &result.CodexTicketAttempt
 	a.AccountID, a.Model, a.Trigger = account.ID, model, trigger
 	if proxy != nil {
@@ -185,11 +174,10 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 			}
 		}
 		if trigger == "automatic" && a.Outcome != "success" {
-			delay := codexTicketMissingRetry
-			if hadValidTicket {
-				delay = codexTicketJitter(key, a.OccurredAt, codexTicketValidRetryMin, codexTicketValidRetryMax)
-			}
-			s.openaiCodexTicketNextAttempt.Store(key, a.OccurredAt.Add(delay))
+			// 失败重试与成功路径共用同一区间：无论手上是否有有效票据，
+			// 下一次打票都在 [min,max] 内重新随机。
+			minInterval, maxInterval := s.codexTicketHarvestInterval()
+			s.openaiCodexTicketNextAttempt.Store(key, a.OccurredAt.Add(codexTicketRandomHarvestDelay(minInterval, maxInterval)))
 		}
 	}()
 	token, _, tokenErr := s.GetAccessToken(ctx, account)

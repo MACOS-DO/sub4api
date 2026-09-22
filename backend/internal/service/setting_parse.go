@@ -247,6 +247,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
 		SettingKeyOpenAICodexTicketHarvestProxyURL:                   "",
+		SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds:         strconv.Itoa(openAICodexTicketDefaultHarvestIntervalMinSeconds),
+		SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds:         strconv.Itoa(openAICodexTicketDefaultHarvestIntervalMaxSeconds),
 		SettingPaymentVisibleMethodAlipaySource:                      "",
 		SettingPaymentVisibleMethodWxpaySource:                       "",
 		SettingPaymentVisibleMethodAlipayEnabled:                     "false",
@@ -936,6 +938,25 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.OpenAICodexTicketReuseExpiredMaxSeconds = openAICodexTicketDefaultReuseWindowSeconds
 	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
+	harvestMin := openAICodexTicketDefaultHarvestIntervalMinSeconds
+	harvestMax := openAICodexTicketDefaultHarvestIntervalMaxSeconds
+	if s != nil && s.cfg != nil {
+		harvestMin, harvestMax = normalizeOpenAICodexTicketHarvestInterval(
+			s.cfg.Gateway.OpenAICodexTicket.HarvestIntervalMinSeconds,
+			s.cfg.Gateway.OpenAICodexTicket.HarvestIntervalMaxSeconds)
+	}
+	if v, ok := settings[SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds]; ok && v != "" {
+		if seconds, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			harvestMin = seconds
+		}
+	}
+	if v, ok := settings[SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds]; ok && v != "" {
+		if seconds, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			harvestMax = seconds
+		}
+	}
+	result.OpenAICodexTicketHarvestIntervalMinSeconds, result.OpenAICodexTicketHarvestIntervalMaxSeconds =
+		normalizeOpenAICodexTicketHarvestInterval(harvestMin, harvestMax)
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
 	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]

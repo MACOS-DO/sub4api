@@ -168,30 +168,70 @@ func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profil
 	return profiles[rand.IntN(len(profiles))].ToTLSProfile()
 }
 
-// ResolveTLSProfile 根据 Account 的配置解析出运行时 TLS Profile
+// TLSFingerprintTransport 标识出站传输，Codex 两条链路的官方指纹不同：
+// HTTP(/responses)=OpenSSL，WebSocket=rustls。
+type TLSFingerprintTransport int
+
+const (
+	TLSFingerprintTransportHTTP TLSFingerprintTransport = iota
+	TLSFingerprintTransportWebSocket
+)
+
+// ResolveTLSProfile 根据 Account 的配置解析出运行时 TLS Profile（HTTP 语义）。
 //
 // 逻辑：
 //  1. 未启用 TLS 指纹 → 返回 nil（不伪装）
 //  2. 启用 + 绑定了 profile_id → 从缓存查找对应 profile
 //  3. 启用 + 未绑定或找不到 → 返回空 Profile（使用代码内置默认值）
 func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsfingerprint.Profile {
-	if account == nil || !account.IsTLSFingerprintEnabled() {
+	return s.ResolveTLSProfileForTransport(account, TLSFingerprintTransportHTTP)
+}
+
+// ResolveTLSProfileForTransport 解析账号在指定传输上应使用的 TLS 指纹。
+//
+// OpenAI OAuth/SetupToken 账号默认对齐官方 Codex CLI：HTTP 用内置 OpenSSL 指纹，
+// WebSocket 用内置 rustls 指纹；显式关闭或绑定自定义模板时以后者为准。
+// 其他平台沿用原有的 Anthropic 逻辑。
+func (s *TLSFingerprintProfileService) ResolveTLSProfileForTransport(account *Account, transport TLSFingerprintTransport) *tlsfingerprint.Profile {
+	if account == nil {
+		return nil
+	}
+	if account.IsOpenAIOAuthLike() {
+		if !account.IsOpenAICodexTLSFingerprintEnabled() {
+			return nil
+		}
+		if p := s.resolveBoundProfile(account); p != nil {
+			return p
+		}
+		if transport == TLSFingerprintTransportWebSocket {
+			return tlsfingerprint.CodexRustlsProfile()
+		}
+		return tlsfingerprint.CodexOpenSSLProfile()
+	}
+
+	if !account.IsTLSFingerprintEnabled() {
+		return nil
+	}
+	if p := s.resolveBoundProfile(account); p != nil {
+		return p
+	}
+	// TLS 启用但无绑定 profile → 空 Profile → dialer 使用内置默认值
+	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
+}
+
+// resolveBoundProfile 返回账号显式绑定的模板（id>0 指定，id=-1 随机）；未绑定返回 nil。
+func (s *TLSFingerprintProfileService) resolveBoundProfile(account *Account) *tlsfingerprint.Profile {
+	if s == nil {
 		return nil
 	}
 	id := account.GetTLSFingerprintProfileID()
 	if id > 0 {
-		if p := s.GetProfileByID(id); p != nil {
-			return p
-		}
+		return s.GetProfileByID(id)
 	}
 	if id == -1 {
-		// 随机选择一个 profile
-		if p := s.getRandomProfile(); p != nil {
-			return p
-		}
+		return s.getRandomProfile()
 	}
-	// TLS 启用但无绑定 profile → 空 Profile → dialer 使用内置默认值
-	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}
+	return nil
 }
 
 // --- 缓存管理 ---

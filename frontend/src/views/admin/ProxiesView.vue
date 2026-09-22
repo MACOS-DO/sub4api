@@ -192,10 +192,15 @@
                 :alt="row.country || row.country_code"
                 class="h-4 w-6 rounded-sm"
               />
-              <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
-                {{ formatLocation(row) }}
-              </span>
-              <span v-else class="text-sm text-gray-400">-</span>
+              <div class="flex flex-col">
+                <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ formatLocation(row) }}
+                </span>
+                <span v-if="row.timezone" class="text-xs text-gray-400 dark:text-gray-500">
+                  {{ row.timezone }}
+                </span>
+                <span v-if="!formatLocation(row) && !row.timezone" class="text-sm text-gray-400">-</span>
+              </div>
             </div>
           </template>
 
@@ -1501,6 +1506,7 @@ const applyLatencyResult = (
     country_code?: string
     region?: string
     city?: string
+    timezone?: string
   }
 ) => {
   const target = proxies.value.find((proxy) => proxy.id === proxyId)
@@ -1513,6 +1519,8 @@ const applyLatencyResult = (
     target.country_code = result.country_code
     target.region = result.region
     target.city = result.city
+    // 质量检查等调用方不返回时区，缺省时保留行内已有值，避免时区列被清空。
+    if (result.timezone !== undefined) target.timezone = result.timezone
   } else {
     target.latency_status = 'failed'
     target.latency_ms = undefined
@@ -1521,6 +1529,7 @@ const applyLatencyResult = (
     target.country_code = undefined
     target.region = undefined
     target.city = undefined
+    target.timezone = undefined
   }
   target.latency_message = result.message
 }

@@ -540,6 +540,10 @@ export default {
         codexTicketAllowWithoutTicketDesc: '账号未单独设置时使用此策略；关闭表示需要有效票据，账号可以单独设置例外。',
         codexTicketTTL: '票据过期时间（秒）',
         codexTicketTTLDesc: '打票成功后票据的有效期，默认 200 秒，最小 60 秒；会在过期前自动重新打票。',
+        codexTicketHarvestInterval: '打票间隔范围（秒）',
+        codexTicketHarvestIntervalDesc:
+          '新票成功后、票据有效期内、票据无效时，下一次打票都在该范围内随机，默认 10~30 秒；最小 1 秒、最大 86400 秒。轮询周期 = 最小值 - 1 秒（最低 1 秒）。',
+        codexTicketHarvestIntervalUnit: '秒',
         codexTicketReuseExpired: '过期仍沿用上次票据',
         codexTicketReuseExpiredDesc: '开启后，票据过期但新票尚未打到时继续沿用上次票据；账号票据状态会标注为已过期沿用。',
         codexTicketReuseExpiredMax: '过期后最长复用时长（秒）',

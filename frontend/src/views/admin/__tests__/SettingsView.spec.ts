@@ -766,6 +766,47 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex ticket harvest interval range", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_interval_min_seconds: 10,
+      openai_codex_ticket_harvest_interval_max_seconds: 30,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-harvest-interval-min").setValue("20");
+    await wrapper.get("#codex-ticket-harvest-interval-max").setValue("45");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_interval_min_seconds).toBe(20);
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_interval_max_seconds).toBe(45);
+    wrapper.unmount();
+  });
+
+  it("clamps the Codex ticket harvest interval and keeps min<=max", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_interval_min_seconds: 10,
+      openai_codex_ticket_harvest_interval_max_seconds: 30,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-harvest-interval-min").setValue("0");
+    await wrapper.get("#codex-ticket-harvest-interval-max").setValue("999999");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_interval_min_seconds).toBe(1);
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_interval_max_seconds).toBe(86400);
+
+    await wrapper.get("#codex-ticket-harvest-interval-min").setValue("60");
+    await wrapper.get("#codex-ticket-harvest-interval-max").setValue("5");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[1]?.[0].openai_codex_ticket_harvest_interval_min_seconds).toBe(60);
+    expect(updateSettings.mock.calls[1]?.[0].openai_codex_ticket_harvest_interval_max_seconds).toBe(60);
+    wrapper.unmount();
+  });
+
   it("submits the Codex ticket reuse window", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

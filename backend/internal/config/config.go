@@ -992,6 +992,9 @@ type GatewayConfig struct {
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
+	// CodexLocation: 将 Codex 请求中的时区/地点提示对齐到账号出口地理（代理出口 IP；
+	// 无代理时用服务器直连出口 IP），避免上游看到 IP 与时区不一致而降智。默认开启。
+	CodexLocation GatewayCodexLocationConfig `mapstructure:"codex_location"`
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
@@ -1102,6 +1105,40 @@ type GatewayConfig struct {
 	// CNProviders: 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
 	// 仅作用于 payg（按量付费）账号：周期探测余额，低于阈值则临时停调。
 	CNProviders GatewayCNProvidersConfig `mapstructure:"cn_providers"`
+}
+
+// GatewayCodexLocationConfig 控制 Codex 请求时区/地点对齐（environment_context +
+// web_search user_location）。出口地理来源：账号代理出口 IP；无代理时用服务器
+// 直连出口 IP。探测失败或命中拒绝名单（默认中国大陆）时回退到 fallback_*。
+type GatewayCodexLocationConfig struct {
+	// Enabled 总开关，默认开启；账号级可用 extra.codex_location_align_enabled 覆盖。
+	Enabled bool `mapstructure:"enabled"`
+	// FallbackTimezone 探测失败/命中拒绝名单时的兜底 IANA 时区（默认 Asia/Tokyo，禁止中国）。
+	FallbackTimezone string `mapstructure:"fallback_timezone"`
+	// FallbackCountry ISO-2 国家码（默认 JP）。
+	FallbackCountry string `mapstructure:"fallback_country"`
+	// FallbackRegion 兜底地区名（默认 Tokyo）。
+	FallbackRegion string `mapstructure:"fallback_region"`
+	// FallbackCity 兜底城市名（默认 Tokyo）。
+	FallbackCity string `mapstructure:"fallback_city"`
+	// ProbeTimeoutSeconds 单次出口地理探测超时（秒，默认 5）。
+	ProbeTimeoutSeconds int `mapstructure:"probe_timeout_seconds"`
+	// CacheTTLHours 按账号维度的出口地理缓存 TTL（小时，默认 24）。
+	CacheTTLHours int `mapstructure:"cache_ttl_hours"`
+	// FailureCacheTTLSeconds 探测失败的负缓存 TTL（秒，默认 60）。
+	FailureCacheTTLSeconds int `mapstructure:"failure_cache_ttl_seconds"`
+	// DirectProbeEnabled 无代理账号是否探测服务器直连出口（默认开启）。
+	DirectProbeEnabled bool `mapstructure:"direct_probe_enabled"`
+	// MarkerAbsentHeuristic 缺少 content_item_kinds 标记时，是否按“整段恰为完整
+	// environment_context 块”启发式改写（默认开启）。
+	MarkerAbsentHeuristic bool `mapstructure:"marker_absent_heuristic"`
+	// DeniedCountries 命中即回退兜底的 ISO-2 国家码列表（默认 CN）。
+	DeniedCountries []string `mapstructure:"denied_countries"`
+	// DeniedTimezones 命中即回退兜底的 IANA 时区列表（默认中国大陆时区）。
+	DeniedTimezones []string `mapstructure:"denied_timezones"`
+	// IPTimezoneLookupURL 当探测端点不返回时区时，按出口 IP 补查时区的 URL 模板，
+	// {ip} 会被替换为出口 IP；置空禁用。
+	IPTimezoneLookupURL string `mapstructure:"ip_timezone_lookup_url"`
 }
 
 // GatewayGrokConfig holds Grok-specific gateway scheduling knobs.
@@ -1229,13 +1266,19 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 // reuse_expired_max_seconds 限制过期后最长复用时长（0 表示不限制，默认 600 秒）
 // （后台设置为准）。
 type OpenAICodexTicketConfig struct {
-	Enabled                      bool     `mapstructure:"enabled"`
-	TargetLength                 int      `mapstructure:"target_length"`
-	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
-	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"` // 兼容保留：固定 30~60 秒随机间隔重打，本字段不再参与调度
-	ReuseExpired                 bool     `mapstructure:"reuse_expired"`
-	ReuseExpiredMaxSeconds       int      `mapstructure:"reuse_expired_max_seconds"`
-	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
+	Enabled                bool   `mapstructure:"enabled"`
+	TargetLength           int    `mapstructure:"target_length"`
+	TTLSeconds             int    `mapstructure:"ttl_seconds"`
+	RefreshBeforeSeconds   int    `mapstructure:"refresh_before_seconds"` // 已废弃：打票间隔由 harvest_interval_* 控制，本字段不参与调度
+	ReuseExpired           bool   `mapstructure:"reuse_expired"`
+	ReuseExpiredMaxSeconds int    `mapstructure:"reuse_expired_max_seconds"`
+	HarvestProxyURL        string `mapstructure:"harvest_proxy_url"`
+	// HarvestIntervalMinSeconds / HarvestIntervalMaxSeconds: 下一次打票在
+	// [min, max] 秒内随机（成功、失败重试均适用）。后台「打票间隔范围」可覆盖。
+	HarvestIntervalMinSeconds int `mapstructure:"harvest_interval_min_seconds"`
+	HarvestIntervalMaxSeconds int `mapstructure:"harvest_interval_max_seconds"`
+	// HarvestProbeIntervalSeconds 已废弃：扫描周期改为 max(1s, 打票间隔最小值-1s)，
+	// 本字段仅为兼容既有配置文件保留，不再参与调度。
 	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
 	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
 	FailClosed                   bool     `mapstructure:"fail_closed"`
@@ -2406,6 +2449,21 @@ func setDefaults() {
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.codex_location.enabled", true)
+	viper.SetDefault("gateway.codex_location.fallback_timezone", "Asia/Tokyo")
+	viper.SetDefault("gateway.codex_location.fallback_country", "JP")
+	viper.SetDefault("gateway.codex_location.fallback_region", "Tokyo")
+	viper.SetDefault("gateway.codex_location.fallback_city", "Tokyo")
+	viper.SetDefault("gateway.codex_location.probe_timeout_seconds", 5)
+	viper.SetDefault("gateway.codex_location.cache_ttl_hours", 24)
+	viper.SetDefault("gateway.codex_location.failure_cache_ttl_seconds", 60)
+	viper.SetDefault("gateway.codex_location.direct_probe_enabled", true)
+	viper.SetDefault("gateway.codex_location.marker_absent_heuristic", true)
+	viper.SetDefault("gateway.codex_location.denied_countries", []string{"CN"})
+	viper.SetDefault("gateway.codex_location.denied_timezones", []string{
+		"Asia/Shanghai", "Asia/Urumqi", "Asia/Chongqing", "Asia/Harbin", "Asia/Kashgar", "PRC",
+	})
+	viper.SetDefault("gateway.codex_location.ip_timezone_lookup_url", "http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,regionName,city,timezone")
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")
 	viper.SetDefault("gateway.openai_codex_ticket.enabled", false)
@@ -2415,6 +2473,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.reuse_expired", true)
 	viper.SetDefault("gateway.openai_codex_ticket.reuse_expired_max_seconds", 600)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_interval_min_seconds", 10)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_interval_max_seconds", 30)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)

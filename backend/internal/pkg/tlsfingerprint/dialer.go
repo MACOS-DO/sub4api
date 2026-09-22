@@ -5,12 +5,16 @@ package tlsfingerprint
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
@@ -30,6 +34,12 @@ type Profile struct {
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
 	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+	// TLSVersMin/TLSVersMax 显式声明握手版本区间；0 表示沿用历史默认 TLS1.0 ~ TLS1.3。
+	TLSVersMin uint16
+	TLSVersMax uint16
+	// RandomizeExtensionOrder 复刻 rustls 0.23 的扩展顺序随机化（按 order_seed 稳定排序），
+	// OpenSSL 指纹保持固定顺序，置 false。
+	RandomizeExtensionOrder bool
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -115,6 +125,146 @@ var (
 		0x0201, // rsa_pkcs1_sha1
 	}
 )
+
+// 官方 Codex CLI 的 TLS 指纹基线（由官方 x86_64-unknown-linux-musl 发布二进制实测采集）。
+//
+// 官方客户端有两条传输链路，指纹不同：
+//   - HTTP /responses：reqwest + native-tls + 静态内置 OpenSSL 3.6.3（musl 发布版），
+//     HTTPS 未启用 native-tls-alpn，因此不带 ALPN、只跑 HTTP/1.1；
+//   - Responses WebSocket：rustls 0.23（aws-lc-rs provider）且扩展顺序每连接随机化。
+//
+// 两类指纹都无 GREASE、无 ECH、无 ALPN。修改前请重新用采集器核对官方发布包。
+var (
+	// codexOpenSSLCipherSuites 是 OpenSSL 3.6.3 默认 cipher list（30 项，固定顺序）。
+	codexOpenSSLCipherSuites = []uint16{
+		0x1302, 0x1303, 0x1301, // TLS1.3: AES256-GCM / CHACHA20 / AES128-GCM
+		0xc02c, 0xc030, 0x009f, // ECDHE ECDSA/RSA AES256-GCM, DHE RSA AES256-GCM
+		0xcca9, 0xcca8, 0xccaa, // ECDHE/DHE CHACHA20-POLY1305
+		0xc02b, 0xc02f, 0x009e, // AES128-GCM 同族
+		0xc024, 0xc028, 0x006b, // SHA384 家族
+		0xc023, 0xc027, 0x0067, // SHA256 家族
+		0xc00a, 0xc014, 0x0039, // AES256-SHA
+		0xc009, 0xc013, 0x0033, // AES128-SHA
+		0x009d, 0x009c, 0x003d, 0x003c, 0x0035, 0x002f, // RSA AES-GCM / SHA256 / SHA
+	}
+
+	codexOpenSSLGroups = []uint16{
+		0x11ec, // X25519MLKEM768
+		0x001d, // X25519
+		0x0017, // secp256r1
+		0x001e, // X448
+		0x0018, // secp384r1
+		0x0019, // secp521r1
+		0x0100, // ffdhe2048
+		0x0101, // ffdhe3072
+	}
+
+	codexOpenSSLSigAlgs = []uint16{
+		0x0905, 0x0906, 0x0904, // ML-DSA-65/87/44
+		0x0403, 0x0503, 0x0603, // ECDSA P-256/P-384/P-521
+		0x0807, 0x0808, // Ed25519, Ed448
+		0x081a, 0x081b, 0x081c, // brainpool TLS1.3
+		0x0809, 0x080a, 0x080b, // rsa_pss_pss
+		0x0804, 0x0805, 0x0806, // rsa_pss_rsae
+		0x0401, 0x0501, 0x0601, // rsa_pkcs1
+		0x0303, 0x0301, 0x0302, // SHA1 时代家族
+		0x0402, 0x0502, 0x0602,
+	}
+
+	codexOpenSSLExtensions = []uint16{
+		0xff01, // renegotiation_info
+		0,      // server_name
+		11,     // ec_point_formats
+		10,     // supported_groups
+		35,     // session_ticket
+		22,     // encrypt_then_mac
+		23,     // extended_master_secret
+		13,     // signature_algorithms
+		43,     // supported_versions
+		45,     // psk_key_exchange_modes
+		51,     // key_share
+	}
+
+	// codexRustlsCipherSuites 是 rustls 0.23.45 aws-lc-rs 默认 cipher list，
+	// 末尾 0x00ff 是 TLS1.2 兼容的 renegotiation SCSV。
+	codexRustlsCipherSuites = []uint16{
+		0x1302, 0x1301, 0x1303,
+		0xc02c, 0xc02b, 0xcca9,
+		0xc030, 0xc02f, 0xcca8,
+		0x00ff,
+	}
+
+	codexRustlsGroups = []uint16{0x11ec, 0x001d, 0x0017, 0x0018}
+
+	codexRustlsSigAlgs = []uint16{
+		0x0503, 0x0403, 0x0603, 0x0807,
+		0x0806, 0x0805, 0x0804,
+		0x0601, 0x0501, 0x0401,
+	}
+
+	// codexRustlsExtensions 是 rustls ClientExtensions 的字段顺序（随机化的起始顺序）。
+	codexRustlsExtensions = []uint16{0, 5, 10, 11, 13, 23, 35, 43, 45, 51}
+)
+
+// CodexOpenSSLProfile 返回官方 Codex CLI HTTP(/responses) 链路的 OpenSSL 指纹。
+// 无 ALPN，调用方必须使用 HTTP/1.1。
+func CodexOpenSSLProfile() *Profile {
+	return &Profile{
+		Name:                    "Codex CLI (OpenSSL 3.6.3 / Linux musl)",
+		CipherSuites:            codexOpenSSLCipherSuites,
+		Curves:                  codexOpenSSLGroups,
+		PointFormats:            []uint16{0},
+		EnableGREASE:            false,
+		SignatureAlgorithms:     codexOpenSSLSigAlgs,
+		ALPNProtocols:           nil,
+		SupportedVersions:       []uint16{utls.VersionTLS13, utls.VersionTLS12},
+		KeyShareGroups:          []uint16{0x11ec, 0x001d},
+		PSKModes:                []uint16{1},
+		Extensions:              codexOpenSSLExtensions,
+		TLSVersMin:              utls.VersionTLS12,
+		TLSVersMax:              utls.VersionTLS13,
+		RandomizeExtensionOrder: false,
+	}
+}
+
+// CodexRustlsProfile 返回官方 Codex CLI Responses WebSocket 链路的 rustls 指纹。
+// 无 ALPN；扩展顺序按 rustls 规则每连接随机化。
+func CodexRustlsProfile() *Profile {
+	return &Profile{
+		Name:                    "Codex CLI (rustls 0.23 / aws-lc-rs)",
+		CipherSuites:            codexRustlsCipherSuites,
+		Curves:                  codexRustlsGroups,
+		PointFormats:            []uint16{0},
+		EnableGREASE:            false,
+		SignatureAlgorithms:     codexRustlsSigAlgs,
+		ALPNProtocols:           nil,
+		SupportedVersions:       []uint16{utls.VersionTLS13, utls.VersionTLS12},
+		KeyShareGroups:          []uint16{0x11ec, 0x001d},
+		PSKModes:                []uint16{1},
+		Extensions:              codexRustlsExtensions,
+		TLSVersMin:              utls.VersionTLS12,
+		TLSVersMax:              utls.VersionTLS13,
+		RandomizeExtensionOrder: true,
+	}
+}
+
+// ProfileIdentity 返回 profile 的内容指纹，用于连接池缓存键：同一账号切换模板
+// （或随机模板）时必须换用不同连接。
+func ProfileIdentity(p *Profile) string {
+	if p == nil {
+		return ""
+	}
+	h := fnv.New64a()
+	writeIdentity := func(values ...any) {
+		for _, v := range values {
+			_, _ = fmt.Fprintf(h, "%v\x00", v)
+		}
+	}
+	writeIdentity(p.Name, p.EnableGREASE, p.RandomizeExtensionOrder, p.TLSVersMin, p.TLSVersMax)
+	writeIdentity(p.CipherSuites, p.Curves, p.PointFormats, p.SignatureAlgorithms)
+	writeIdentity(p.ALPNProtocols, p.SupportedVersions, p.KeyShareGroups, p.PSKModes, p.Extensions)
+	return fmt.Sprintf("%s/%016x", p.Name, h.Sum64())
+}
 
 // NewDialer creates a new TLS fingerprint dialer.
 // baseDialer is used for TCP connection establishment (supports proxy scenarios).
@@ -447,13 +597,64 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		extensions = append(extensions, &utls.UtlsGREASEExtension{})
 	}
 
+	// rustls 0.23 每连接按 order_seed 随机化“无顺序要求”的扩展；复刻同一算法与分布。
+	if profile != nil && profile.RandomizeExtensionOrder && len(extOrder) == len(extensions) {
+		extensions = randomizeRustlsExtensionOrder(extOrder, extensions)
+	}
+
+	tlsVersMin := uint16(utls.VersionTLS10)
+	tlsVersMax := uint16(utls.VersionTLS13)
+	if profile != nil && profile.TLSVersMin != 0 {
+		tlsVersMin = profile.TLSVersMin
+	}
+	if profile != nil && profile.TLSVersMax != 0 {
+		tlsVersMax = profile.TLSVersMax
+	}
+
 	return &utls.ClientHelloSpec{
 		CipherSuites:       cipherSuites,
 		CompressionMethods: []uint8{0}, // null compression only (standard)
 		Extensions:         extensions,
-		TLSVersMax:         utls.VersionTLS13,
-		TLSVersMin:         utls.VersionTLS10,
+		TLSVersMax:         tlsVersMax,
+		TLSVersMin:         tlsVersMin,
 	}
+}
+
+// randomizeRustlsExtensionOrder 复刻 rustls ClientExtensions::order_insensitive_extensions_in_random_order：
+// 以 (seed<<16 | extension_type) 的 low_quality_integer_hash 做稳定排序，seed 每连接随机。
+func randomizeRustlsExtensionOrder(ids []uint16, extensions []utls.TLSExtension) []utls.TLSExtension {
+	if len(extensions) < 2 {
+		return extensions
+	}
+	var seedBytes [2]byte
+	if _, err := rand.Read(seedBytes[:]); err != nil {
+		return extensions
+	}
+	seed := binary.BigEndian.Uint16(seedBytes[:])
+	order := make([]int, len(extensions))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return rustlsExtensionOrderHash(seed, ids[order[i]]) < rustlsExtensionOrderHash(seed, ids[order[j]])
+	})
+	shuffled := make([]utls.TLSExtension, len(extensions))
+	for i, idx := range order {
+		shuffled[i] = extensions[idx]
+	}
+	return shuffled
+}
+
+// rustlsExtensionOrderHash 是 rustls 的 low_quality_integer_hash（handshake.rs）。
+func rustlsExtensionOrderHash(seed, extension uint16) uint32 {
+	x := (uint32(seed) << 16) | uint32(extension)
+	x = x + 0x7ed55d16 + (x << 12)
+	x = (x ^ 0xc761c23c) ^ (x >> 19)
+	x = x + 0x165667b1 + (x << 5)
+	x = (x + 0xd3a2646c) ^ (x << 9)
+	x = x + 0xfd7046c5 + (x << 3)
+	x = (x ^ 0xb55a4f09) ^ (x >> 16)
+	return x
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

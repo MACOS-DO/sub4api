@@ -86,6 +86,38 @@ func TestSettingsCodexTicketReuseWindowRoundTrip(t *testing.T) {
 	require.Equal(t, "0", repo.values[key])
 }
 
+func TestSettingsCodexTicketHarvestIntervalRoundTrip(t *testing.T) {
+	minKey := service.SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds
+	maxKey := service.SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{minKey: "10", maxKey: "30"})
+	gotMin, gotMax := h.settingService.GetOpenAICodexTicketHarvestInterval(context.Background(), 0, 0)
+	require.Equal(t, 10, gotMin)
+	require.Equal(t, 30, gotMax)
+
+	rec := doUpdateSettings(t, h, map[string]any{minKey: 5, maxKey: 20}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "5", repo.values[minKey])
+	require.Equal(t, "20", repo.values[maxKey])
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_harvest_interval_min_seconds":5`)
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_harvest_interval_max_seconds":20`)
+	gotMin, gotMax = h.settingService.GetOpenAICodexTicketHarvestInterval(context.Background(), 0, 0)
+	require.Equal(t, 5, gotMin)
+	require.Equal(t, 20, gotMax)
+
+	// min > max、越界都必须拒绝且不覆盖已保存值。
+	for _, body := range []map[string]any{
+		{minKey: 30, maxKey: 10},
+		{minKey: 86401},
+		{maxKey: 999999},
+		{minKey: -1},
+	} {
+		rec = doUpdateSettings(t, h, body, nil)
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	require.Equal(t, "5", repo.values[minKey])
+	require.Equal(t, "20", repo.values[maxKey])
+}
+
 func TestSettingsCodexTicketAllowWithoutTicketRoundTrip(t *testing.T) {
 	key := service.SettingKeyOpenAICodexTicketAllowWithoutTicket
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{key: "false"})

@@ -263,6 +263,9 @@ type UpdateSettingsRequest struct {
 	OpenAICodexTicketReuseExpired           *bool   `json:"openai_codex_ticket_reuse_expired"`
 	OpenAICodexTicketReuseExpiredMaxSeconds *int    `json:"openai_codex_ticket_reuse_expired_max_seconds"`
 	OpenAICodexTicketHarvestProxyURL        string  `json:"openai_codex_ticket_harvest_proxy_url"`
+	// 打票间隔区间（秒）：所有下一次打票在 [min,max] 内随机。
+	OpenAICodexTicketHarvestIntervalMinSeconds *int `json:"openai_codex_ticket_harvest_interval_min_seconds"`
+	OpenAICodexTicketHarvestIntervalMaxSeconds *int `json:"openai_codex_ticket_harvest_interval_max_seconds"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1811,6 +1814,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return next
 		}(),
+		OpenAICodexTicketHarvestIntervalMinSeconds: func() int {
+			if req.OpenAICodexTicketHarvestIntervalMinSeconds != nil {
+				return *req.OpenAICodexTicketHarvestIntervalMinSeconds
+			}
+			return previousSettings.OpenAICodexTicketHarvestIntervalMinSeconds
+		}(),
+		OpenAICodexTicketHarvestIntervalMaxSeconds: func() int {
+			if req.OpenAICodexTicketHarvestIntervalMaxSeconds != nil {
+				return *req.OpenAICodexTicketHarvestIntervalMaxSeconds
+			}
+			return previousSettings.OpenAICodexTicketHarvestIntervalMaxSeconds
+		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
 		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
@@ -2360,6 +2375,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketReuseExpiredMaxSeconds:                updatedSettings.OpenAICodexTicketReuseExpiredMaxSeconds,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
+		OpenAICodexTicketHarvestIntervalMinSeconds:             updatedSettings.OpenAICodexTicketHarvestIntervalMinSeconds,
+		OpenAICodexTicketHarvestIntervalMaxSeconds:             updatedSettings.OpenAICodexTicketHarvestIntervalMaxSeconds,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

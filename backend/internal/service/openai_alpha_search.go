@@ -48,6 +48,11 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 		return nil, fmt.Errorf("sanitize alpha search request body: %w", err)
 	}
 	body = sanitizedBody
+	// 对齐 settings.user_location（仅当客户端已传时替换），保证搜索本地化与
+	// 出口 IP 一致；PAT 的 hosted web_search 兜底路径复用同一份 body。
+	if alignedBody, aligned := s.alignCodexAlphaSearchLocation(ctx, account, body); aligned {
+		body = alignedBody
+	}
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {

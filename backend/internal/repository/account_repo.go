@@ -49,6 +49,9 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+	// codexLocationCache 保存按账号维度的 Codex 出口地理缓存；账号代理绑定变化时
+	// 必须立即清除，避免请求继续使用旧出口的时区/地区。
+	codexLocationCache service.CodexLocationCache
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -110,14 +113,18 @@ func stripCodexFingerprintSeedFromExtraUpdate(extra map[string]any) map[string]a
 
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
-func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache, codexLocationCache service.CodexLocationCache) service.AccountRepository {
+	repo := newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+	repo.codexLocationCache = codexLocationCache
+	return repo
 }
 
 // NewAdminAccountRepository exposes the account repository's atomic duplication capability
 // as an explicit dependency of the admin service.
-func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache, codexLocationCache service.CodexLocationCache) service.AdminAccountRepository {
+	repo := newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+	repo.codexLocationCache = codexLocationCache
+	return repo
 }
 
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
@@ -513,7 +520,21 @@ func (r *accountRepository) updateAccount(
 	if contextTx == nil {
 		r.syncSchedulerAccountSnapshot(baseCtx, account.ID)
 	}
+	// 账号编辑可能改绑/清除代理（改变出口 IP），保守起见无条件清除该账号的
+	// 出口地理缓存：账号编辑不在热路径，多清一次的代价可忽略。
+	if contextTx == nil {
+		r.deleteCodexLocationCache(baseCtx, []int64{account.ID})
+	}
 	return nil
+}
+
+func (r *accountRepository) deleteCodexLocationCache(ctx context.Context, accountIDs []int64) {
+	if r == nil || r.codexLocationCache == nil || len(accountIDs) == 0 {
+		return
+	}
+	if err := r.codexLocationCache.DeleteAccountLocations(context.WithoutCancel(ctx), accountIDs); err != nil {
+		logger.LegacyPrintf("repository.account", "[CodexLocation] cache invalidate failed accounts=%v err=%v", accountIDs, err)
+	}
 }
 
 func (r *accountRepository) updateLockedAccount(
@@ -924,6 +945,7 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		}
 	}
 	r.deleteSchedulerAccountSnapshot(ctx, id)
+	r.deleteCodexLocationCache(ctx, []int64{id})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account delete failed: account=%d err=%v", id, err)
 	}
@@ -3139,6 +3161,10 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			return 0, err
 		}
 	}
+	// 批量改绑/清除代理会改变出口 IP，必须清除这些账号的出口地理缓存。
+	if rows > 0 && contextTx == nil && updates.ProxyID != nil {
+		r.deleteCodexLocationCache(baseCtx, ids)
+	}
 	if rows > 0 && contextTx == nil {
 		shouldSync := false
 		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
@@ -3918,6 +3944,8 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] revert fallback enqueue failed: account=%d err=%v", accountID, err)
 	}
+	// 回退代理会改变出口 IP，清除该账号的出口地理缓存。
+	r.deleteCodexLocationCache(ctx, []int64{accountID})
 	return nil
 }
 

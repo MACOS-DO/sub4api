@@ -242,6 +242,7 @@ func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestR
 		CountryCode: exitInfo.CountryCode,
 		Region:      exitInfo.Region,
 		City:        exitInfo.City,
+		Timezone:    exitInfo.Timezone,
 		UpdatedAt:   time.Now(),
 	})
 	return &ProxyTestResult{
@@ -253,6 +254,7 @@ func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestR
 		Region:      exitInfo.Region,
 		Country:     exitInfo.Country,
 		CountryCode: exitInfo.CountryCode,
+		Timezone:    exitInfo.Timezone,
 	}, nil
 }
 
@@ -517,6 +519,7 @@ func (s *adminServiceImpl) saveProxyQualitySnapshot(ctx context.Context, proxyID
 		info.CountryCode = exitInfo.CountryCode
 		info.Region = exitInfo.Region
 		info.City = exitInfo.City
+		info.Timezone = exitInfo.Timezone
 	}
 	s.saveProxyLatency(ctx, proxyID, info)
 }
@@ -545,6 +548,7 @@ func (s *adminServiceImpl) probeProxyLatency(ctx context.Context, proxy *Proxy) 
 		CountryCode: exitInfo.CountryCode,
 		Region:      exitInfo.Region,
 		City:        exitInfo.City,
+		Timezone:    exitInfo.Timezone,
 		UpdatedAt:   time.Now(),
 	})
 }
@@ -582,6 +586,7 @@ func (s *adminServiceImpl) attachProxyLatency(ctx context.Context, proxies []Pro
 		proxies[i].CountryCode = info.CountryCode
 		proxies[i].Region = info.Region
 		proxies[i].City = info.City
+		proxies[i].Timezone = info.Timezone
 		proxies[i].QualityStatus = info.QualityStatus
 		proxies[i].QualityScore = info.QualityScore
 		proxies[i].QualityGrade = info.QualityGrade

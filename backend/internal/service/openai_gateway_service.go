@@ -19,6 +19,7 @@ import (
 	"github.com/MACOS-DO/sub4api/internal/pkg/ip"
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/MACOS-DO/sub4api/internal/pkg/openai"
+	"github.com/MACOS-DO/sub4api/internal/pkg/tlsfingerprint"
 	"github.com/MACOS-DO/sub4api/internal/platform/liveattestation"
 	"github.com/MACOS-DO/sub4api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
@@ -467,6 +468,8 @@ type OpenAIGatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	codexLocation         CodexLocationResolver
+	tlsFPProfileService   *TLSFingerprintProfileService
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
 
@@ -600,6 +603,32 @@ func NewOpenAIGatewayService(
 // SetCodexTicketHistory must run before StartOpenAICodexTicketHarvester.
 func (s *OpenAIGatewayService) SetCodexTicketHistory(repo CodexTicketAttemptRepository) {
 	s.openaiCodexTicketHistory = repo
+}
+
+// SetCodexLocationResolver 注入出口地理解析器。未注入（nil）时对齐功能自动跳过，
+// 便于直接构造服务的测试保持零值安全。
+func (s *OpenAIGatewayService) SetCodexLocationResolver(resolver CodexLocationResolver) {
+	if s == nil {
+		return
+	}
+	s.codexLocation = resolver
+}
+
+// SetTLSFingerprintProfileService 注入 TLS 指纹模板服务。未注入（nil）时
+// Codex 出站退回 Go 标准 TLS，便于单测直接构造服务。
+func (s *OpenAIGatewayService) SetTLSFingerprintProfileService(service *TLSFingerprintProfileService) {
+	if s == nil {
+		return
+	}
+	s.tlsFPProfileService = service
+}
+
+// openAITLSFingerprintProfile 返回账号在指定传输上的 TLS 指纹；未配置时返回 nil。
+func (s *OpenAIGatewayService) openAITLSFingerprintProfile(account *Account, transport TLSFingerprintTransport) *tlsfingerprint.Profile {
+	if s == nil || s.tlsFPProfileService == nil {
+		return nil
+	}
+	return s.tlsFPProfileService.ResolveTLSProfileForTransport(account, transport)
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）

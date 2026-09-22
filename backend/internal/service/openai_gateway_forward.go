@@ -149,6 +149,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		setOpenAIResponsesClientToolMapping(c, mapping)
 	}
 
+	// 将 Codex 注入的时区/地点提示对齐到账号出口地理（代理出口 IP；无代理时用
+	// 服务器直连出口），避免上游看到 IP 与时区不一致。必须早于 OAuth transform：
+	// 后者会删除 internal_chat_message_metadata_passthrough 标记。
+	if alignedBody, aligned := s.alignCodexLocationInRequestBody(ctx, account, body); aligned {
+		body = alignedBody
+	}
+
 	originalBody := body
 	rememberOpenCodeInboundBody(c, originalBody)
 	requestView := newOpenAIRequestView(body)

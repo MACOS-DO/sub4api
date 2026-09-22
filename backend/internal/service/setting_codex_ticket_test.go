@@ -116,6 +116,58 @@ func TestCodexTicketTTLAndReuseRuntimeSettingsOverrideYaml(t *testing.T) {
 	require.ErrorIs(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h), ErrOpenAICodexTicketUnavailable)
 }
 
+func TestNormalizeOpenAICodexTicketHarvestIntervalClamps(t *testing.T) {
+	minSeconds, maxSeconds := normalizeOpenAICodexTicketHarvestInterval(0, 0)
+	require.Equal(t, openAICodexTicketDefaultHarvestIntervalMinSeconds, minSeconds)
+	require.Equal(t, openAICodexTicketDefaultHarvestIntervalMaxSeconds, maxSeconds)
+
+	// max 小于默认 min 时向 min 收敛。
+	minSeconds, maxSeconds = normalizeOpenAICodexTicketHarvestInterval(0, 5)
+	require.Equal(t, openAICodexTicketDefaultHarvestIntervalMinSeconds, minSeconds)
+	require.Equal(t, openAICodexTicketDefaultHarvestIntervalMinSeconds, maxSeconds)
+
+	minSeconds, maxSeconds = normalizeOpenAICodexTicketHarvestInterval(-1, 2)
+	require.Equal(t, openAICodexTicketDefaultHarvestIntervalMinSeconds, minSeconds)
+	require.Equal(t, openAICodexTicketDefaultHarvestIntervalMinSeconds, maxSeconds)
+
+	minSeconds, maxSeconds = normalizeOpenAICodexTicketHarvestInterval(1, 86400)
+	require.Equal(t, 1, minSeconds)
+	require.Equal(t, 86400, maxSeconds)
+
+	minSeconds, maxSeconds = normalizeOpenAICodexTicketHarvestInterval(999999, 999999)
+	require.Equal(t, openAICodexTicketMaxHarvestIntervalSeconds, minSeconds)
+	require.Equal(t, openAICodexTicketMaxHarvestIntervalSeconds, maxSeconds)
+
+	minSeconds, maxSeconds = normalizeOpenAICodexTicketHarvestInterval(60, 5)
+	require.Equal(t, 60, minSeconds)
+	require.Equal(t, 60, maxSeconds)
+}
+
+func TestCodexTicketHarvestIntervalRuntimeSettingOverridesYaml(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{
+		SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds: "3",
+		SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds: "9",
+	}}}
+	settings := NewSettingService(repo, &config.Config{})
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled: true, HarvestIntervalMinSeconds: 30, HarvestIntervalMaxSeconds: 60,
+	}, nil)
+	svc.settingService = settings
+
+	cfg := svc.openAICodexTicketConfig()
+	require.Equal(t, 3, cfg.HarvestIntervalMinSeconds)
+	require.Equal(t, 9, cfg.HarvestIntervalMaxSeconds)
+	// 扫描周期 = max(1s, min-1s)。
+	require.Equal(t, 2*time.Second, svc.openAICodexTicketNextScanDelay(time.Now()))
+
+	// 热更新：最小 1 秒时扫描周期必须为 1s 而不是 0s。
+	repo.values[SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds] = "1"
+	repo.values[SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds] = "1"
+	settings.InvalidateOpenAICodexTicketHarvestIntervalCache()
+	require.Equal(t, 1, svc.openAICodexTicketConfig().HarvestIntervalMinSeconds)
+	require.Equal(t, time.Second, svc.openAICodexTicketNextScanDelay(time.Now()))
+}
+
 func TestNormalizeOpenAICodexTicketTTLSecondsClamps(t *testing.T) {
 	require.Equal(t, openAICodexTicketMinTTLSeconds, normalizeOpenAICodexTicketTTLSeconds(30))
 	require.Equal(t, openAICodexTicketDefaultTTLSeconds, normalizeOpenAICodexTicketTTLSeconds(0))

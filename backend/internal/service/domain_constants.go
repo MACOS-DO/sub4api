@@ -721,6 +721,11 @@ const (
 	SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds = "openai_codex_ticket_reuse_expired_max_seconds"
 	// SettingKeyOpenAICodexTicketHarvestProxyURL Codex 292 打票出口（socks5h/http），后台可改、热更新。
 	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
+	// SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds/MaxSeconds 打票间隔区间（秒）：
+	// 成功、失败-有效票、失败-无票三种下一次打票都在 [min,max] 内随机，后台可改、热更新。
+	// 边界 [1, 86400] 且 min<=max；扫描周期 = max(1s, min-1s)。
+	SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds = "openai_codex_ticket_harvest_interval_min_seconds"
+	SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds = "openai_codex_ticket_harvest_interval_max_seconds"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

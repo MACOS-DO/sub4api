@@ -2402,6 +2402,23 @@ func (a *Account) IsTLSFingerprintEnabled() bool {
 	return false
 }
 
+// IsOpenAICodexTLSFingerprintEnabled 报告 OpenAI OAuth/SetupToken 账号是否使用
+// 内置 Codex TLS 指纹（HTTP=OpenSSL、WS=rustls）。
+//
+// 与官方 Codex CLI 对齐是默认行为：extra 未显式配置时返回 true；
+// 仅当管理员显式写入 enable_tls_fingerprint=false 时才关闭。
+func (a *Account) IsOpenAICodexTLSFingerprintEnabled() bool {
+	if a == nil || !a.IsOpenAIOAuthLike() {
+		return false
+	}
+	if a.Extra != nil {
+		if enabled, ok := a.Extra["enable_tls_fingerprint"].(bool); ok {
+			return enabled
+		}
+	}
+	return true
+}
+
 // GetTLSFingerprintProfileID 获取账号绑定的 TLS 指纹模板 ID
 // 返回 0 表示未绑定（使用内置默认 profile）
 func (a *Account) GetTLSFingerprintProfileID() int64 {

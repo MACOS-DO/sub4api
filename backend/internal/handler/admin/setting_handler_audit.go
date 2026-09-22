@@ -497,6 +497,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexTicketReuseExpiredMaxSeconds != after.OpenAICodexTicketReuseExpiredMaxSeconds {
 		changed = append(changed, "openai_codex_ticket_reuse_expired_max_seconds")
 	}
+	if before.OpenAICodexTicketHarvestIntervalMinSeconds != after.OpenAICodexTicketHarvestIntervalMinSeconds {
+		changed = append(changed, "openai_codex_ticket_harvest_interval_min_seconds")
+	}
+	if before.OpenAICodexTicketHarvestIntervalMaxSeconds != after.OpenAICodexTicketHarvestIntervalMaxSeconds {
+		changed = append(changed, "openai_codex_ticket_harvest_interval_max_seconds")
+	}
 	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
 		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
 	}

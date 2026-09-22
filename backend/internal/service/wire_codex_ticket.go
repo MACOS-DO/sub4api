@@ -26,6 +26,8 @@ func ProvideOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	codexLocationResolver CodexLocationResolver,
+	tlsFPProfileService *TLSFingerprintProfileService,
 	history CodexTicketAttemptRepository,
 ) *OpenAIGatewayService {
 	s := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo,
@@ -33,6 +35,8 @@ func ProvideOpenAIGatewayService(
 		billingService, rateLimitService, billingCacheService, httpUpstream, deferredService,
 		openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService,
 		settingService, userPlatformQuotaRepo)
+	s.SetCodexLocationResolver(codexLocationResolver)
+	s.SetTLSFingerprintProfileService(tlsFPProfileService)
 	s.SetCodexTicketHistory(history)
 	s.StartOpenAICodexTicketHarvester()
 	return s

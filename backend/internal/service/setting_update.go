@@ -499,6 +499,31 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 			fmt.Sprintf("ticket reuse window must be between 0 and %d seconds", openAICodexTicketMaxTTLSeconds))
 	}
 	updates[SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds] = strconv.Itoa(settings.OpenAICodexTicketReuseExpiredMaxSeconds)
+	if settings.OpenAICodexTicketHarvestIntervalMinSeconds != 0 &&
+		(settings.OpenAICodexTicketHarvestIntervalMinSeconds < openAICodexTicketMinHarvestIntervalSeconds ||
+			settings.OpenAICodexTicketHarvestIntervalMinSeconds > openAICodexTicketMaxHarvestIntervalSeconds) {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_HARVEST_INTERVAL",
+			fmt.Sprintf("ticket harvest interval min must be between %d and %d seconds",
+				openAICodexTicketMinHarvestIntervalSeconds, openAICodexTicketMaxHarvestIntervalSeconds))
+	}
+	if settings.OpenAICodexTicketHarvestIntervalMaxSeconds != 0 &&
+		(settings.OpenAICodexTicketHarvestIntervalMaxSeconds < openAICodexTicketMinHarvestIntervalSeconds ||
+			settings.OpenAICodexTicketHarvestIntervalMaxSeconds > openAICodexTicketMaxHarvestIntervalSeconds) {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_HARVEST_INTERVAL",
+			fmt.Sprintf("ticket harvest interval max must be between %d and %d seconds",
+				openAICodexTicketMinHarvestIntervalSeconds, openAICodexTicketMaxHarvestIntervalSeconds))
+	}
+	if settings.OpenAICodexTicketHarvestIntervalMinSeconds != 0 &&
+		settings.OpenAICodexTicketHarvestIntervalMaxSeconds != 0 &&
+		settings.OpenAICodexTicketHarvestIntervalMinSeconds > settings.OpenAICodexTicketHarvestIntervalMaxSeconds {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_HARVEST_INTERVAL",
+			"ticket harvest interval min must not exceed max")
+	}
+	harvestIntervalMin, harvestIntervalMax := normalizeOpenAICodexTicketHarvestInterval(
+		settings.OpenAICodexTicketHarvestIntervalMinSeconds,
+		settings.OpenAICodexTicketHarvestIntervalMaxSeconds)
+	updates[SettingKeyOpenAICodexTicketHarvestIntervalMinSeconds] = strconv.Itoa(harvestIntervalMin)
+	updates[SettingKeyOpenAICodexTicketHarvestIntervalMaxSeconds] = strconv.Itoa(harvestIntervalMax)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
@@ -763,6 +788,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexTicketReuseExpiredCache()
 	s.InvalidateOpenAICodexTicketReuseExpiredMaxSecondsCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
+	s.InvalidateOpenAICodexTicketHarvestIntervalCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
 		lowUpstreamRatePriorityEnabled: settings.OpenAILowUpstreamRatePriorityEnabled,

@@ -4,10 +4,96 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type recordingProxyLatencyCache struct {
+	mu      sync.Mutex
+	records map[int64]*ProxyLatencyInfo
+}
+
+func newRecordingProxyLatencyCache() *recordingProxyLatencyCache {
+	return &recordingProxyLatencyCache{records: make(map[int64]*ProxyLatencyInfo)}
+}
+
+func (c *recordingProxyLatencyCache) GetProxyLatencies(_ context.Context, proxyIDs []int64) (map[int64]*ProxyLatencyInfo, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[int64]*ProxyLatencyInfo, len(proxyIDs))
+	for _, id := range proxyIDs {
+		if rec := c.records[id]; rec != nil {
+			copied := *rec
+			out[id] = &copied
+		}
+	}
+	return out, nil
+}
+
+func (c *recordingProxyLatencyCache) SetProxyLatency(_ context.Context, proxyID int64, info *ProxyLatencyInfo) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	copied := *info
+	c.records[proxyID] = &copied
+	return nil
+}
+
+func (c *recordingProxyLatencyCache) record(proxyID int64) *ProxyLatencyInfo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rec := c.records[proxyID]
+	if rec == nil {
+		return nil
+	}
+	copied := *rec
+	return &copied
+}
+
+func TestSaveProxyQualitySnapshotKeepsTimezone(t *testing.T) {
+	cache := newRecordingProxyLatencyCache()
+	svc := &adminServiceImpl{proxyLatencyCache: cache}
+	result := &ProxyQualityCheckResult{
+		Score:       100,
+		Grade:       "A",
+		CheckedAt:   time.Now().Unix(),
+		PassedCount: 1,
+		Items:       []ProxyQualityCheckItem{{Target: "base_connectivity", Status: "pass"}},
+	}
+
+	svc.saveProxyQualitySnapshot(context.Background(), 7, result, &ProxyExitInfo{
+		IP:          "1.2.3.4",
+		Country:     "Japan",
+		CountryCode: "JP",
+		Region:      "Tokyo",
+		City:        "Tokyo",
+		Timezone:    "Asia/Tokyo",
+	})
+
+	rec := cache.record(7)
+	require.NotNil(t, rec)
+	require.Equal(t, "Asia/Tokyo", rec.Timezone)
+}
+
+func TestProbeProxyLatencyKeepsTimezone(t *testing.T) {
+	cache := newRecordingProxyLatencyCache()
+	prober := &fakeProxyExitInfoProber{results: []*ProxyExitInfo{{
+		IP:          "1.2.3.4",
+		CountryCode: "JP",
+		City:        "Tokyo",
+		Timezone:    "Asia/Tokyo",
+	}}}
+	svc := &adminServiceImpl{proxyProber: prober, proxyLatencyCache: cache}
+
+	svc.probeProxyLatency(context.Background(), &Proxy{ID: 8, Protocol: "http", Host: "127.0.0.1", Port: 8080})
+
+	rec := cache.record(8)
+	require.NotNil(t, rec)
+	require.True(t, rec.Success)
+	require.Equal(t, "Asia/Tokyo", rec.Timezone)
+}
 
 func TestFinalizeProxyQualityResult_ScoreAndGrade(t *testing.T) {
 	result := &ProxyQualityCheckResult{

@@ -547,6 +547,10 @@ export default {
         codexTicketAllowWithoutTicketDesc: 'Used when an account has no override. When disabled, a valid ticket is required. Accounts can override this default.',
         codexTicketTTL: 'Ticket TTL (seconds)',
         codexTicketTTLDesc: 'How long a harvested ticket stays valid. Defaults to 200 seconds with a 60-second minimum. The gateway re-harvests before it expires.',
+        codexTicketHarvestInterval: 'Harvest interval range (seconds)',
+        codexTicketHarvestIntervalDesc:
+          'Every next harvest (after a fresh ticket, while a ticket is still valid, and when no ticket is available) is randomized within this range. Defaults to 10~30 seconds; minimum 1, maximum 86400. The scan cadence is min-1 seconds (never below 1 second).',
+        codexTicketHarvestIntervalUnit: 'sec',
         codexTicketReuseExpired: 'Reuse the last ticket after expiry',
         codexTicketReuseExpiredDesc: 'When enabled, requests keep using the last ticket after it expires until a fresh one is harvested. Account ticket status is marked as expired but reused.',
         codexTicketReuseExpiredMax: 'Max reuse time after expiry (seconds)',
