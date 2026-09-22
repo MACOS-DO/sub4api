@@ -109,33 +109,25 @@ func scheduledCodexTicketNext(t *testing.T, svc *OpenAIGatewayService, accountID
 	return next
 }
 
-func TestCodexTicketAutomaticScheduleFollowsTTLWithFloorAndCeiling(t *testing.T) {
+func TestCodexTicketAutomaticScheduleUsesFixedHarvestWindow(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 
-	// 默认 TTL 200s：提前量 refresh_before=600s 被夹到 TTL/2=100s。
-	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 200, RefreshBeforeSeconds: 600}, nil)
-	ticket := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now, ExpiresAt: now.Add(200 * time.Second)}
-	svc.scheduleCodexTicketAfterSuccess(ticket)
-	next := scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
-	require.GreaterOrEqual(t, next.Sub(now), 100*time.Second)
-	require.LessOrEqual(t, next.Sub(now), 150*time.Second)
+	// 无论 TTL / refresh_before 如何配置，取得新票据后都固定为 30~60 秒后重打。
+	for _, cfg := range []config.OpenAICodexTicketConfig{
+		{Enabled: true, TTLSeconds: 60},
+		{Enabled: true, TTLSeconds: 200, RefreshBeforeSeconds: 600},
+		{Enabled: true, TTLSeconds: 3600, RefreshBeforeSeconds: 600},
+	} {
+		svc := ticketTestService(t, cfg, nil)
+		ticket := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now,
+			ExpiresAt: now.Add(time.Duration(cfg.TTLSeconds) * time.Second)}
+		svc.scheduleCodexTicketAfterSuccess(ticket)
+		next := scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
+		require.GreaterOrEqual(t, next.Sub(now), codexTicketHarvestIntervalMin)
+		require.LessOrEqual(t, next.Sub(now), codexTicketHarvestIntervalMax)
+	}
 
-	// 最小 TTL 60s：跟随 TTL 提前重打，且不早于全局 30s 最短间隔。
-	svc = ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 60}, nil)
-	ticket = &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now, ExpiresAt: now.Add(60 * time.Second)}
-	svc.scheduleCodexTicketAfterSuccess(ticket)
-	next = scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
-	require.GreaterOrEqual(t, next.Sub(now), codexTicketMinAttemptInterval)
-	require.LessOrEqual(t, next.Sub(now), codexTicketMinAttemptInterval+15*time.Second)
-
-	// 大 TTL 时仍受 5-8 分钟上限约束，不会推迟到 TTL 末尾。
-	svc = ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 3600, RefreshBeforeSeconds: 600}, nil)
-	ticket = &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", CapturedAt: now, ExpiresAt: now.Add(time.Hour)}
-	svc.scheduleCodexTicketAfterSuccess(ticket)
-	next = scheduledCodexTicketNext(t, svc, 41, "gpt-6-astra")
-	require.GreaterOrEqual(t, next.Sub(now), codexTicketRefreshCeilingMin)
-	require.LessOrEqual(t, next.Sub(now), codexTicketRefreshCeilingMax)
-
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 200}, nil)
 	require.Equal(t, 30*time.Second, codexTicketMissingRetry)
 	require.Equal(t, 30*time.Second, codexTicketValidRetryMin)
 	retry := codexTicketJitter("41\x00gpt-6-astra", now, codexTicketValidRetryMin, codexTicketValidRetryMax)
@@ -145,8 +137,8 @@ func TestCodexTicketAutomaticScheduleFollowsTTLWithFloorAndCeiling(t *testing.T)
 	require.Equal(t, 3*time.Second, svc.openAICodexTicketNextScanDelay(now))
 }
 
-func TestCodexTicketAutomaticDueUsesTTLSchedule(t *testing.T) {
-	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 200, RefreshBeforeSeconds: 600}, nil)
+func TestCodexTicketAutomaticDueUsesFixedHarvestWindow(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TTLSeconds: 200}, nil)
 	account := ticketTestAccount(41)
 	now := time.Now().Truncate(time.Second)
 
@@ -157,7 +149,7 @@ func TestCodexTicketAutomaticDueUsesTTLSchedule(t *testing.T) {
 	svc.storeOpenAICodexTicket(context.Background(), account, fresh)
 	svc.openaiCodexTicketNextAttempt.Delete(openAICodexTicketKey(41, "gpt-6-astra"))
 	require.False(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now))
-	require.True(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now.Add(3*time.Minute)))
+	require.True(t, svc.codexTicketAutomaticDue(account, "gpt-6-astra", now.Add(codexTicketHarvestIntervalMax+time.Second)))
 
 	expired := &openAICodexTicket{AccountID: 41, Model: "gpt-6-astra", State: fakeCodexTicketState(292), Length: 292,
 		CapturedAt: now.Add(-time.Hour), ExpiresAt: now.Add(-time.Minute)}

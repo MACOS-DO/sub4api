@@ -1224,14 +1224,15 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 // OpenAICodexTicketConfig 控制 ChatGPT OAuth 的 x-codex-turn-state 门票。
 // 打票走 harvest_proxy_url（SOCKS），业务出站仍用账号住宅 proxy_id，只替换该头与打票
 // 响应中捕获的 Cookie。
-// 门票默认有效 200 秒（最小 60 秒），并在过期前 refresh_before_seconds 重新打票；
-// 到期仍可沿用上次票据由 reuse_expired 控制，reuse_expired_max_seconds 限制过期后
-// 最长复用时长（0 表示不限制，默认 600 秒）（后台设置为准）。
+// 门票默认有效 200 秒（最小 60 秒）；取得新票据后固定等待 30~60 秒的随机间隔
+// 开始下一轮打票。到期仍可沿用上次票据由 reuse_expired 控制，
+// reuse_expired_max_seconds 限制过期后最长复用时长（0 表示不限制，默认 600 秒）
+// （后台设置为准）。
 type OpenAICodexTicketConfig struct {
 	Enabled                      bool     `mapstructure:"enabled"`
 	TargetLength                 int      `mapstructure:"target_length"`
 	TTLSeconds                   int      `mapstructure:"ttl_seconds"`
-	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"`
+	RefreshBeforeSeconds         int      `mapstructure:"refresh_before_seconds"` // 兼容保留：固定 30~60 秒随机间隔重打，本字段不再参与调度
 	ReuseExpired                 bool     `mapstructure:"reuse_expired"`
 	ReuseExpiredMaxSeconds       int      `mapstructure:"reuse_expired_max_seconds"`
 	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`

@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/MACOS-DO/sub4api/internal/config"
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
@@ -26,14 +25,13 @@ const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
 const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
 
 const (
-	// 任意两次自动打票之间的全局最短间隔，防止 TTL 配置过小造成热循环。
-	codexTicketMinAttemptInterval = 30 * time.Second
-	// 成功捕获后的重打上限窗口：跟随 TTL 提前重打之外，最迟也要在 5-8 分钟内刷新一次。
-	codexTicketRefreshCeilingMin = 5 * time.Minute
-	codexTicketRefreshCeilingMax = 8 * time.Minute
-	codexTicketValidRetryMin     = 30 * time.Second
-	codexTicketValidRetryMax     = 40 * time.Second
-	codexTicketMissingRetry      = 30 * time.Second
+	// 取得新票据后，固定等待 30~60 秒的随机间隔开始下一轮自动打票。
+	codexTicketHarvestIntervalMin = 30 * time.Second
+	codexTicketHarvestIntervalMax = 60 * time.Second
+	// 打票失败后的重试节奏（未命中 / 仍持有有效票据）。
+	codexTicketValidRetryMin = 30 * time.Second
+	codexTicketValidRetryMax = 40 * time.Second
+	codexTicketMissingRetry  = 30 * time.Second
 )
 
 func CodexTicketHarvestEnabled(account *Account, model string) bool {
@@ -105,47 +103,22 @@ func codexTicketJitter(key string, at time.Time, min, max time.Duration) time.Du
 	return min + time.Duration(h.Sum64()%uint64(max-min+1))
 }
 
-// codexTicketRefreshDueAt 计算成功捕获后的下一次自动打票时间：跟随 TTL 提前
-// refresh_before_seconds 重打（提前量夹取在 [30s, TTL/2]），且不晚于 5-8 分钟的
-// 上限窗口；同时保证与本次捕获至少间隔 30 秒。
-func codexTicketRefreshDueAt(ticket *openAICodexTicket, cfg config.OpenAICodexTicketConfig) time.Time {
+// codexTicketNextHarvestAt 返回成功捕获票据后的下一次自动打票时间：固定为捕获后
+// 30~60 秒的随机时刻（按 账号+模型+捕获时间 确定性哈希，同一张票只产生一个值）。
+// 无捕获时间时返回零值，调用方视为立即到期。
+func codexTicketNextHarvestAt(ticket *openAICodexTicket) time.Time {
 	if ticket == nil || ticket.CapturedAt.IsZero() {
 		return time.Time{}
 	}
 	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
-	ttl := time.Duration(normalizeOpenAICodexTicketTTLSeconds(cfg.TTLSeconds)) * time.Second
-	lead := time.Duration(cfg.RefreshBeforeSeconds) * time.Second
-	if lead <= 0 {
-		lead = ttl / 5
-	}
-	if half := ttl / 2; lead > half {
-		lead = half
-	}
-	if floorLead := min(codexTicketMinAttemptInterval, ttl/2); lead < floorLead {
-		lead = floorLead
-	}
-	expires := ticket.ExpiresAt
-	if expires.IsZero() {
-		expires = ticket.CapturedAt.Add(ttl)
-	}
-	next := expires.Add(-lead)
-	if lead > 0 {
-		next = next.Add(codexTicketJitter(key, ticket.CapturedAt, 0, lead/2))
-	}
-	if ceiling := ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketRefreshCeilingMin, codexTicketRefreshCeilingMax)); next.After(ceiling) {
-		next = ceiling
-	}
-	if floor := ticket.CapturedAt.Add(codexTicketMinAttemptInterval); next.Before(floor) {
-		next = floor
-	}
-	return next
+	return ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketHarvestIntervalMin, codexTicketHarvestIntervalMax))
 }
 
 func (s *OpenAIGatewayService) scheduleCodexTicketAfterSuccess(ticket *openAICodexTicket) {
 	if ticket == nil {
 		return
 	}
-	next := codexTicketRefreshDueAt(ticket, s.openAICodexTicketConfig())
+	next := codexTicketNextHarvestAt(ticket)
 	if next.IsZero() {
 		return
 	}
@@ -161,7 +134,7 @@ func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model s
 		return true
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	if due := codexTicketRefreshDueAt(ticket, s.openAICodexTicketConfig()); !due.IsZero() {
+	if due := codexTicketNextHarvestAt(ticket); !due.IsZero() {
 		s.openaiCodexTicketNextAttempt.Store(key, due)
 		return !now.Before(due)
 	}
