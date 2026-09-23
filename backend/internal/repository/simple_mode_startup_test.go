@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/MACOS-DO/sub4api/ent"
+	"github.com/MACOS-DO/sub4api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 

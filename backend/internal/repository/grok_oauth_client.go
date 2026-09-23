@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	sharedhttp "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
+	sharedhttp "github.com/MACOS-DO/sub4api/internal/pkg/httpclient"
+	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
+	"github.com/MACOS-DO/sub4api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/util/logredact"
 	"github.com/imroc/req/v3"
 )
 

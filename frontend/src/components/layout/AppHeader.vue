@@ -167,7 +167,7 @@
 
                 <a
                   v-if="authStore.isAdmin"
-                  href="https://github.com/Wei-Shaw/sub2api"
+                  href="https://github.com/MACOS-DO/sub4api"
                   target="_blank"
                   rel="noopener noreferrer"
                   @click="closeDropdown"

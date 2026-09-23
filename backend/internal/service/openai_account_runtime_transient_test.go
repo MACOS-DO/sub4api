@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -112,7 +112,7 @@ func TestHandleOpenAITransientError_HardDisableStillBlocksWholeAccount(t *testin
 	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "upstream_disable")
 
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
-	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-sol"))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5", false))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-sol", false))
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }

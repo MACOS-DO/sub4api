@@ -17,18 +17,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	"github.com/MACOS-DO/sub4api/internal/domain"
+	"github.com/MACOS-DO/sub4api/internal/handler/dto"
+	"github.com/MACOS-DO/sub4api/internal/pkg/antigravity"
+	"github.com/MACOS-DO/sub4api/internal/pkg/claude"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
+	"github.com/MACOS-DO/sub4api/internal/pkg/geminicli"
+	"github.com/MACOS-DO/sub4api/internal/pkg/openai"
+	"github.com/MACOS-DO/sub4api/internal/pkg/response"
+	"github.com/MACOS-DO/sub4api/internal/pkg/timezone"
+	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
+	"github.com/MACOS-DO/sub4api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
@@ -65,6 +65,10 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	codexTicketSettings     *service.SettingService
+	codexTicketGateway      *service.OpenAIGatewayService
+	codexTicketRouter       http.Handler
+	codexTicketAPIKeys      *service.APIKeyService
 	cfg                     *config.Config
 	opencodeGoUsage         *service.OpenCodeGoUsageService
 }
@@ -80,6 +84,14 @@ func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUs
 
 func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsageService) {
 	h.opencodeGoUsage = usage
+}
+
+// SetCodexTicketSettings supplies the live policy without mutating shared config.
+func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
+	h.codexTicketSettings = settings
+}
+func (h *AccountHandler) SetCodexTicketGateway(gateway *service.OpenAIGatewayService) {
+	h.codexTicketGateway = gateway
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -342,6 +354,7 @@ const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromService(account)
+	h.enrichCodexTicketStatus(account, out)
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
@@ -350,6 +363,7 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromServiceShallow(account)
+	h.enrichCodexTicketStatus(account, out)
 	if out != nil && account != nil {
 		out.Proxy = dto.ProxyFromService(account.Proxy)
 	}
@@ -357,6 +371,16 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
 	return out
+}
+
+func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
+	if h != nil && h.cfg != nil && out != nil {
+		cfg := h.cfg.Gateway.OpenAICodexTicket
+		if h.codexTicketSettings != nil {
+			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+		}
+		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	}
 }
 
 func (h *AccountHandler) isSimpleMode() bool {
@@ -795,6 +819,22 @@ func (h *AccountHandler) List(c *gin.Context) {
 		_ = g.Wait()
 	}
 
+	var ticketEvents map[int64]service.CodexTicketRecentEvent
+	if pageHasOpenAIAccounts && h.codexTicketGateway != nil {
+		var ticketAccountIDs []int64
+		for _, account := range accounts {
+			if account.Platform == service.PlatformOpenAI {
+				ticketAccountIDs = append(ticketAccountIDs, account.ID)
+			}
+		}
+		var err error
+		ticketEvents, err = h.codexTicketGateway.CodexTicketLatestEvents(c.Request.Context(), ticketAccountIDs)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
@@ -805,6 +845,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 			if h.isSimpleMode() {
 				accountResponse.GroupIDs = filterSimpleModeGroupIDs(accountResponse.GroupIDs, simpleModeCompositeServiceGroupIDs(acc))
 			}
+		}
+		if event, ok := ticketEvents[acc.ID]; ok {
+			accountResponse.CodexTicketLatestEvent = &event
 		}
 		item := AccountWithConcurrency{
 			Account:            accountResponse,
@@ -937,6 +980,13 @@ func ifNoneMatchMatched(ifNoneMatch, etag string) bool {
 
 // GetByID handles getting an account by ID
 // GET /api/v1/admin/accounts/:id
+func (h *AccountHandler) GetOpenAIRequestTimezones(c *gin.Context) {
+	response.Success(c, gin.H{
+		"default": service.DefaultOpenAIRequestTimezone,
+		"timezones": service.OpenAIRequestTimezoneOptions(),
+	})
+}
+
 func (h *AccountHandler) GetByID(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

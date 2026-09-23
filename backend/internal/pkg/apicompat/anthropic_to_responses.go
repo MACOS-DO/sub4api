@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/MACOS-DO/sub4api/internal/pkg/openai"
 )
 
 // AnthropicToResponses converts an Anthropic Messages request directly into

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/MACOS-DO/sub4api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 )
 

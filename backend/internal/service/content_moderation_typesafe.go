@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
+	"github.com/MACOS-DO/sub4api/internal/pkg/typesafe"
 )
 
 const TypeSafeModerationRulesVersion = "content-audit-13-zh-v1"

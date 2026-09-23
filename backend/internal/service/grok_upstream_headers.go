@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/MACOS-DO/sub4api/internal/pkg/tlsfingerprint"
+	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
 )
 
 // Fixed CLI identity aliases — single source of truth is internal/pkg/xai.

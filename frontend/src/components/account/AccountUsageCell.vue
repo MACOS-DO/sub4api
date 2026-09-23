@@ -116,8 +116,16 @@
       </div>
     </template>
 
-    <!-- OpenAI OAuth accounts: single source from /usage API -->
-    <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
+    <!-- OpenAI Codex accounts: ticket status; usage querying remains OAuth-only. -->
+    <template v-else-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')">
+      <div v-if="codexTurnTickets.length" class="mb-1 text-[11px] leading-4">
+        <div class="flex items-center gap-1.5 font-semibold" :class="codexReadyCount ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
+          <span aria-hidden="true">{{ codexReadyCount ? '●' : '○' }}</span>
+          <span>{{ t('admin.accounts.openai.codexTicketSummary', { ready: codexReadyCount, total: codexTurnTickets.length }) }}</span>
+        </div>
+        <div v-if="account.codex_ticket_latest_event" class="truncate text-[10px]" :class="account.codex_ticket_latest_event.kind === 'success' ? 'text-emerald-600' : 'text-rose-600'" :title="account.codex_ticket_latest_event.model">{{ codexEventLabel(account.codex_ticket_latest_event.kind) }} · {{ formatCodexCaptured(account.codex_ticket_latest_event.occurred_at) }}</div>
+        <div v-else-if="codexLatestCapture" class="text-[10px] text-gray-500 dark:text-gray-400">{{ formatCodexCaptured(codexLatestCapture) }}</div>
+      </div>
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
@@ -186,6 +194,7 @@
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
         <OpenAIQuotaResetCell
+          v-if="account.type === 'oauth'"
           :account="account"
           class="mt-1"
           @account-updated="handleQuotaResetAccountUpdated"
@@ -808,6 +817,21 @@ const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
+
+const codexTurnTickets = computed(() => props.account.codex_turn_tickets ?? [])
+
+const codexReadyCount = computed(() => codexTurnTickets.value.filter(ticket => ticket.ready).length)
+const codexLatestCapture = computed(() => codexTurnTickets.value.map(ticket => ticket.captured_at).filter((value): value is string => !!value).sort().at(-1))
+function codexEventLabel(kind: string) {
+  switch (kind) {
+    case 'success': return t('admin.accounts.openai.codexTicketEventSuccess')
+    case 'miss': return t('admin.accounts.openai.codexTicketEventMiss')
+    case 'error': return t('admin.accounts.openai.codexTicketEventError')
+    case 'invalidation': return t('admin.accounts.openai.codexTicketEventInvalidation')
+    default: return kind
+  }
+}
+function formatCodexCaptured(value: string) { return new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) }
 
 const openAISevenDayEstimatedTotalCost = computed(() => {
   const sevenDay = usageInfo.value?.seven_day

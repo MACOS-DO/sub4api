@@ -2197,7 +2197,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\bKVDelete\x12\".sub2api.plugin.v1.KVDeleteRequest\x1a#.sub2api.plugin.v1.KVDeleteResponse\x12M\n" +
 	"\x06KVList\x12 .sub2api.plugin.v1.KVListRequest\x1a!.sub2api.plugin.v1.KVListResponse\x12_\n" +
 	"\fListAccounts\x12&.sub2api.plugin.v1.ListAccountsRequest\x1a'.sub2api.plugin.v1.ListAccountsResponse\x12\x80\x01\n" +
-	"\x17ResolveOutboundIdentity\x121.sub2api.plugin.v1.ResolveOutboundIdentityRequest\x1a2.sub2api.plugin.v1.ResolveOutboundIdentityResponseB7Z5github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1b\x06proto3"
+	"\x17ResolveOutboundIdentity\x121.sub2api.plugin.v1.ResolveOutboundIdentityRequest\x1a2.sub2api.plugin.v1.ResolveOutboundIdentityResponseB7Z5github.com/MACOS-DO/sub4api/pkg/pluginapi/v1;pluginv1b\x06proto3"
 
 var (
 	file_plugin_proto_rawDescOnce sync.Once

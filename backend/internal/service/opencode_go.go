@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 )
 
 // OpenCode Go 是 OpenCode Zen 的订阅网关：同一 API Key 下按模型分流到

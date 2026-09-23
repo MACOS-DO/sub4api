@@ -261,7 +261,7 @@ fast_mode = true
 #### 安装步骤
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/install.sh | sudo bash
 ```
 
 脚本会自动：
@@ -311,7 +311,7 @@ sudo journalctl -u sub2api -f
 sudo systemctl restart sub2api
 
 # 卸载
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
@@ -334,7 +334,7 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/docker-deploy.sh | bash
 
 # 启动服务
 docker compose up -d
@@ -356,7 +356,7 @@ docker compose logs -f sub2api
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/MACOS-DO/sub4api.git
 cd sub2api/deploy
 
 # 2. 复制环境配置文件
@@ -498,7 +498,7 @@ rm -rf data/ postgres_data/ redis_data/
 Apple 芯片 Mac 在 macOS 26 上可使用 Apple `container` 1.1.0 或更高版本运行完整的 Sub2API、PostgreSQL 和 Redis：
 
 ```bash
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/MACOS-DO/sub4api.git
 cd sub2api/deploy
 ./apple-container.sh init
 ./apple-container.sh up
@@ -524,7 +524,7 @@ cd sub2api/deploy
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/MACOS-DO/sub4api.git
 cd sub2api
 
 # 2. 安装 pnpm（如果还没有安装）
@@ -799,11 +799,11 @@ sub2api/
 
 ## Star History
 
-<a href="https://star-history.dera.page/#Wei-Shaw/sub2api&Date">
+<a href="https://star-history.dera.page/#MACOS-DO/sub4api&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Wei-Shaw/sub2api&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=MACOS-DO/sub4api&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=MACOS-DO/sub4api&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=MACOS-DO/sub4api&type=Date" />
  </picture>
 </a>
 

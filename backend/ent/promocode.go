@@ -9,7 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/promocode"
+	"github.com/MACOS-DO/sub4api/ent/promocode"
 )
 
 // PromoCode is the model entity for the PromoCode schema.

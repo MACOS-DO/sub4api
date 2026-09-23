@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	dbent "github.com/Wei-Shaw/sub2api/ent"
-	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
+	dbent "github.com/MACOS-DO/sub4api/ent"
+	_ "github.com/MACOS-DO/sub4api/ent/runtime"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"

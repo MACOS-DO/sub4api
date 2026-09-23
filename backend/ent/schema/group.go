@@ -3,8 +3,8 @@ package schema
 import (
 	"encoding/json"
 
-	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/MACOS-DO/sub4api/ent/schema/mixins"
+	"github.com/MACOS-DO/sub4api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
