@@ -26,6 +26,7 @@ import (
 
 const (
 	openAICodexTicketExtraKeyPrefix  = "codex_turn_ticket:"
+	CodexTicketReadyModelsExtraKey   = "codex_ticket_ready_models"
 	openAICodexAstraMinVersion       = "0.153.4"
 	openAICodexTicketStatePrefix     = "gAAAAA"
 	openAICodexTicketDefaultModel    = "gpt-6-astra"
@@ -96,6 +97,23 @@ func openAICodexTicketExtraKey(model string) string {
 	return openAICodexTicketExtraKeyPrefix + strings.TrimSpace(model)
 }
 
+func OpenAICodexTicketReadyModels(account *Account) map[string]bool {
+	ready := make(map[string]bool)
+	if account == nil {
+		return ready
+	}
+	for key, raw := range account.Extra {
+		if !strings.HasPrefix(key, openAICodexTicketExtraKeyPrefix) {
+			continue
+		}
+		model := strings.TrimPrefix(key, openAICodexTicketExtraKeyPrefix)
+		if model != "" && parseOpenAICodexTicketFromAny(account.ID, model, raw) != nil {
+			ready[model] = true
+		}
+	}
+	return ready
+}
+
 func normalizeOpenAICodexTicketModel(model string) string {
 	return strings.TrimSpace(model)
 }
@@ -124,7 +142,7 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 	if cfg.HarvestRetryMaxSeconds < cfg.HarvestRetryMinSeconds {
 		cfg.HarvestRetryMaxSeconds = cfg.HarvestRetryMinSeconds
 	}
-	cfg.Models, _ = ModelTraceGPTModels()
+	cfg.Models, _ = ModelTraceTicketModels()
 	return cfg
 }
 
@@ -166,14 +184,14 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 	if !isOpenAICodexTicketAccount(account) {
 		return nil
 	}
-	models, err := ModelTraceGPTModels()
+	models, err := ModelTraceTicketModels()
 	if err != nil {
 		return nil
 	}
 	quota := openAICodexTicketQuota(account, now)
 	out := make([]OpenAICodexTicketStatus, 0, len(models))
 	for _, model := range models {
-		status := OpenAICodexTicketStatus{Model: model, HarvestPaused: quota.paused, QuotaResetAt: quota.resetAt, HarvestResumeAt: quota.resumeAt, HarvestEnabled: cfg.Enabled && account.Status == StatusActive && CodexTicketHarvestEnabled(account, model)}
+		status := OpenAICodexTicketStatus{Model: model, HarvestPaused: openAICodexTicketHarvestLimited(account, model, now), QuotaResetAt: quota.resetAt, HarvestResumeAt: quota.resumeAt, HarvestEnabled: cfg.Enabled && account.Status == StatusActive && CodexTicketHarvestEnabled(account, model)}
 		var ticket *openAICodexTicket
 		if account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
@@ -186,7 +204,7 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 			status.CookiePresent = ticket.Cookie != ""
 			status.FingerprintCommit = ticket.FingerprintCommit
 		}
-		status.Blocked = !OpenAICodexAllowsWithoutTicket(account, !cfg.FailClosed) && !status.Ready
+		status.Blocked = cfg.Enabled && !OpenAICodexAllowsWithoutTicket(account, !cfg.FailClosed) && !status.Ready
 		out = append(out, status)
 	}
 	return out
@@ -391,6 +409,16 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 	model := normalizeOpenAICodexTicketModel(outboundModel)
 	if !s.openAICodexTicketGatedModel(model) {
 		return false
+	}
+	if projected, ok := account.Extra[CodexTicketReadyModelsExtraKey]; account.SchedulerTicketProjection && ok {
+		switch ready := projected.(type) {
+		case map[string]bool:
+			return !ready[model]
+		case map[string]any:
+			return ready[model] != true
+		default:
+			return true
+		}
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
 	return !ticket.usable(time.Now(), 0, false, 0)
@@ -641,6 +669,9 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 			if !CodexTicketHarvestEnabled(&account, model) {
 				continue
 			}
+			if openAICodexTicketHarvestLimited(&account, model, now) {
+				continue
+			}
 			if !s.codexTicketAutomaticDue(&account, model, now) {
 				continue
 			}
@@ -670,6 +701,9 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 		return
 	}
 	if openAICodexTicketQuota(account, time.Now()).paused {
+		return
+	}
+	if openAICodexTicketHarvestLimited(account, model, time.Now()) {
 		return
 	}
 	result, err := s.runCodexTicketAttempt(ctx, account, model, "automatic")

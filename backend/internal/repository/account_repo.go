@@ -1809,6 +1809,10 @@ func (r *accountRepository) syncSchedulerAccountSnapshot(ctx context.Context, ac
 	}
 }
 
+func (r *accountRepository) RefreshSchedulerAccount(ctx context.Context, accountID int64) {
+	r.syncSchedulerAccountSnapshotDetached(ctx, accountID)
+}
+
 func (r *accountRepository) syncSchedulerAccountSnapshotDetached(ctx context.Context, accountID int64) {
 	base := context.Background()
 	if ctx != nil {

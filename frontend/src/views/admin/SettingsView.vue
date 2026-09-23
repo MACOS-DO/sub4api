@@ -4516,7 +4516,14 @@
                     v-model="form.openai_codex_ticket_enabled"
                   />
                 </div>
-                <CodexTicketCadenceSettings />
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t("admin.settings.gatewayForwarding.codexTicketAllowWithoutTicket") }}</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.gatewayForwarding.codexTicketAllowWithoutTicketDesc") }}</p>
+                  </div>
+                  <Toggle id="codex-ticket-allow-without" v-model="form.openai_codex_ticket_allow_without_ticket" />
+                </div>
+                <CodexTicketCadenceSettings ref="codexTicketCadenceRef" :saving="saving" />
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexClientRestrictionTitle") }}
@@ -8897,7 +8904,7 @@
         </div>
 
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <div v-show="activeTab !== 'backup'" class="settings-save-bar flex justify-end">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -9088,6 +9095,7 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
+const codexTicketCadenceRef = ref<InstanceType<typeof CodexTicketCadenceSettings> | null>(null);
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
@@ -10008,6 +10016,7 @@ const form = reactive<SettingsForm>({
   claude_code_client_version_synced: "",
   claude_code_version_auto_sync_enabled: true,
   openai_codex_ticket_enabled: false,
+  openai_codex_ticket_allow_without_ticket: true,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   // codex_cli_only 加固
@@ -11273,6 +11282,14 @@ const siteBillingModeHint = computed(() =>
 );
 
 async function saveSettings() {
+  const cadence = codexTicketCadenceRef.value;
+  try {
+    if (activeTab.value === "gateway" || cadence?.isDirty?.()) cadence?.validate?.();
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.failedToSave")));
+    return;
+  }
+  let settingsSaved = false;
   saving.value = true;
   try {
     const normalizedTableDefaultPageSize = Math.floor(
@@ -11642,6 +11659,7 @@ async function saveSettings() {
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,
       openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
+      openai_codex_ticket_allow_without_ticket: form.openai_codex_ticket_allow_without_ticket,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
@@ -11796,6 +11814,8 @@ async function saveSettings() {
     const updated = await settingsStepUp.run(() =>
       adminAPI.settings.updateSettings(payload),
     );
+    settingsSaved = true;
+    if (cadence?.isDirty?.()) await cadence.save();
     for (const [key, value] of Object.entries(updated)) {
       if (key === "openai_fast_policy_settings") continue;
       if (value !== null && value !== undefined) {
@@ -11880,6 +11900,10 @@ async function saveSettings() {
       appStore.showSuccess(t("admin.settings.settingsSaved"));
     }
   } catch (error: unknown) {
+    if (settingsSaved) {
+      appStore.showError(`${localText("普通设置已保存，但打票间隔或其他附加设置保存失败：", "Settings saved, but a separate setting failed: ")}${extractApiErrorMessage(error, t("admin.settings.failedToSave"))}`);
+      return;
+    }
     // 用户取消 step-up 验证：静默返回，不弹错误
     if (isStepUpCancelled(error)) {
       return;
@@ -13260,6 +13284,21 @@ watch(
 .default-sub-delete-btn {
   @apply h-[42px];
 }
+
+.settings-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  margin: 0 -0.25rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  border: 1px solid rgb(226 232 240 / 0.85);
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 0.94);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -8px 24px rgb(15 23 42 / 0.06);
+}
+
+:global(.dark) .settings-save-bar { background: rgb(30 41 59 / 0.94); border-color: rgb(71 85 105 / 0.7); }
 
 /* ============ 系统设置 Tab 导航 ============ */
 .settings-tabs-shell {

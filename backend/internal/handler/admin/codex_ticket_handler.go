@@ -30,6 +30,8 @@ func codexTicketError(c *gin.Context, err error) {
 		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "No available ticket proxy", "CODEX_TICKET_NO_PROXY", nil)
 	case errors.Is(err, service.ErrCodexTicketModel):
 		response.ErrorWithDetails(c, http.StatusBadRequest, "Unsupported ticket model", "CODEX_TICKET_MODEL", nil)
+	case errors.Is(err, service.ErrCodexTicketRateLimited):
+		response.ErrorWithDetails(c, http.StatusConflict, "Account or model is rate limited", "CODEX_TICKET_RATE_LIMITED", nil)
 	case errors.Is(err, service.ErrCodexTicketUnavailable):
 		response.ErrorWithDetails(c, http.StatusUnprocessableEntity, "Ticket harvesting disabled or account ineligible", "CODEX_TICKET_UNAVAILABLE", nil)
 	default:
@@ -81,7 +83,7 @@ func (h *AccountHandler) GetCodexTicketEvents(c *gin.Context) {
 		return
 	}
 	filter := c.DefaultQuery("filter", "all")
-	if filter != "all" && filter != "success" && filter != "failure" && filter != "invalidation" {
+	if filter != "all" && filter != "attempts" && filter != "success" && filter != "failure" && filter != "invalidation" {
 		response.BadRequest(c, "Invalid event filter")
 		return
 	}

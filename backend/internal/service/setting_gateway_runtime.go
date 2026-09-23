@@ -1309,9 +1309,42 @@ func (s *SettingService) GetOpenAICodexTicketAllowWithoutTicket(ctx context.Cont
 	if s == nil || s.settingRepo == nil {
 		return fallback
 	}
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAICodexTicketAllowWithoutTicket)
-	if err != nil || value == "" {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
 		return fallback
 	}
-	return value == "true"
+	if cached, ok := s.openAICodexTicketAllowCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cached.value
+	}
+	value, err, _ := s.openAICodexTicketAllowSF.Do(SettingKeyOpenAICodexTicketAllowWithoutTicket, func() (any, error) {
+		if cached, ok := s.openAICodexTicketAllowCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cached.value, nil
+		}
+		dbCtx, cancel := context.WithTimeout(context.Background(), gatewayForwardingDBTimeout)
+		defer cancel()
+		raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketAllowWithoutTicket)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			return fallback, nil
+		}
+		allow := fallback
+		if raw != "" {
+			allow = raw == "true"
+		}
+		s.openAICodexTicketAllowCache.Store(&cachedOpenAICodexTicketEnabled{value: allow, expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano()})
+		return allow, nil
+	})
+	if err != nil || ctx.Err() != nil {
+		return fallback
+	}
+	return value.(bool)
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketAllowCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketAllowSF.Forget(SettingKeyOpenAICodexTicketAllowWithoutTicket)
+	s.openAICodexTicketAllowCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
 }

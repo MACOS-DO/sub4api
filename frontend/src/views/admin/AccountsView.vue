@@ -291,6 +291,16 @@
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
             </div>
           </template>
+          <template #cell-codex_ticket="{ row }">
+            <button
+              v-if="row.platform === 'openai' && (row.type === 'oauth' || row.type === 'setup-token')"
+              type="button"
+              class="rounded-lg px-2 py-1 text-sm font-semibold tabular-nums text-primary-600 transition hover:bg-primary-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-primary-400 dark:hover:bg-primary-900/20"
+              :aria-label="t('admin.accounts.openai.codexTicketSummary', ticketSummary(row))"
+              @click="openCodexTickets(row, false)"
+            >{{ ticketSummary(row).ready }} / {{ ticketSummary(row).total }}</button>
+            <span v-else class="text-gray-400">—</span>
+          </template>
           <template #cell-schedulable="{ row }">
             <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
               <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
@@ -457,7 +467,7 @@
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <CodexTicketDashboard :show="showCodexTickets" :account="codexTicketAcc" :initial-diagnostic="codexDiagnostic" @close="showCodexTickets = false" @updated="handleAccountUpdated" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexTickets($event, true)" @codex-tickets="openCodexTickets($event, false)" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexTickets($event, true)" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -596,6 +606,11 @@ const codexTicketAcc = ref<Account | null>(null)
 const codexDiagnostic = ref(false)
 function openEditCodexTickets() { if (edAcc.value) { showEdit.value = false; openCodexTickets(edAcc.value, false) } }
 function openCodexTickets(account: Account, diagnostic: boolean) { codexTicketAcc.value = account; codexDiagnostic.value = diagnostic; showCodexTickets.value = true }
+function ticketSummary(account: Account) {
+  const entries = account.codex_turn_tickets ?? []
+  return { ready: entries.filter(ticket => ticket.ready).length, total: entries.length }
+}
+
 const showSync = ref(false)
 const showImportData = ref(false)
 const showExportDataDialog = ref(false)
@@ -1794,6 +1809,7 @@ const allColumns = computed(() => {
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
+    { key: 'codex_ticket', label: t('admin.accounts.columns.codexTicket'), sortable: false },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]

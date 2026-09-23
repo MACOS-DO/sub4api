@@ -378,6 +378,7 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 		cfg := h.cfg.Gateway.OpenAICodexTicket
 		if h.codexTicketSettings != nil {
 			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+			cfg.FailClosed = !h.codexTicketSettings.GetOpenAICodexTicketAllowWithoutTicket(context.Background(), !cfg.FailClosed)
 		}
 		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
 	}
@@ -982,7 +983,7 @@ func ifNoneMatchMatched(ifNoneMatch, etag string) bool {
 // GET /api/v1/admin/accounts/:id
 func (h *AccountHandler) GetOpenAIRequestTimezones(c *gin.Context) {
 	response.Success(c, gin.H{
-		"default": service.DefaultOpenAIRequestTimezone,
+		"default":   service.DefaultOpenAIRequestTimezone,
 		"timezones": service.OpenAIRequestTimezoneOptions(),
 	})
 }

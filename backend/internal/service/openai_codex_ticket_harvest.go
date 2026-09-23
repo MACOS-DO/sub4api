@@ -20,6 +20,7 @@ var (
 	ErrCodexTicketBusy        = errors.New("codex ticket attempt already running")
 	ErrCodexTicketNoProxy     = errors.New("no available ticket proxy")
 	ErrCodexTicketModel       = errors.New("unsupported ticket model")
+	ErrCodexTicketRateLimited = errors.New("account or model is rate limited")
 )
 
 const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
@@ -28,7 +29,7 @@ const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
 const modelTraceChallengeCount = 292
 
 func CodexTicketHarvestEnabled(account *Account, model string) bool {
-	if account == nil || !isOpenAICodexTicketAccount(account) {
+	if account == nil || !isOpenAICodexTicketAccount(account) || !codexTicketEligibleModel(model) {
 		return false
 	}
 	if account.Extra[codexTicketAccountEnabledKey] == false {
@@ -144,6 +145,17 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		}
 		defer unlock()
 	}
+	current, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		return result, err
+	}
+	if current == nil || current.Status != StatusActive || !CodexTicketHarvestEnabled(current, model) {
+		return result, ErrCodexTicketUnavailable
+	}
+	if openAICodexTicketHarvestLimited(current, model, time.Now()) {
+		return result, ErrCodexTicketRateLimited
+	}
+	account = current
 	cfg := s.openAICodexTicketConfig()
 	start := time.Now()
 	a := &result.CodexTicketAttempt
@@ -260,12 +272,16 @@ func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, acc
 	if account.Status != StatusActive || !CodexTicketHarvestEnabled(account, model) {
 		return empty, ErrCodexTicketUnavailable
 	}
+	if openAICodexTicketHarvestLimited(account, model, time.Now()) {
+		return empty, ErrCodexTicketRateLimited
+	}
 	result, err := s.runCodexTicketAttempt(ctx, account, model, "manual")
 	if err != nil {
 		return result, err
 	}
 	cfg := s.openAICodexTicketConfig()
 	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
+	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil)
 	status := OpenAICodexTicketStatuses(account, cfg, time.Now())
 	for _, item := range status {
 		if item.Model == model {
@@ -278,7 +294,7 @@ func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, acc
 
 func (s *OpenAIGatewayService) CodexTicketHistory(ctx context.Context, accountID int64, model string, successOnly bool, page, size int) ([]CodexTicketAttempt, int64, OpenAICodexTicketStatus, error) {
 	var empty OpenAICodexTicketStatus
-	if model != "" && !s.codexTicketSupportedModel(model) {
+	if model != "" && !modelTraceKnownGPTModel(model) {
 		return nil, 0, empty, ErrCodexTicketModel
 	}
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -297,6 +313,7 @@ func (s *OpenAIGatewayService) CodexTicketHistory(ctx context.Context, accountID
 	}
 	cfg := s.openAICodexTicketConfig()
 	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
+	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil)
 	for _, status := range OpenAICodexTicketStatuses(account, cfg, time.Now()) {
 		if status.Model == model {
 			empty = status
@@ -337,7 +354,7 @@ func (s *OpenAIGatewayService) ListCodexTicketInvalidations(ctx context.Context,
 	if err != nil {
 		return nil, 0, err
 	}
-	if !isOpenAICodexTicketAccount(account) || model != "" && !s.codexTicketSupportedModel(model) {
+	if !isOpenAICodexTicketAccount(account) || model != "" && !modelTraceKnownGPTModel(model) {
 		return nil, 0, ErrCodexTicketUnavailable
 	}
 	return s.openaiCodexTicketLifecycle.ListInvalidations(ctx, accountID, model, start, end, page, size)

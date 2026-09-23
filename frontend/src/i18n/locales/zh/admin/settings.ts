@@ -556,6 +556,8 @@ export default {
         codexTicketEnabled: '292 打票',
         codexTicketEnabledDesc:
           '关闭后不打票、不注入 x-codex-turn-state，按原链路转发。开启后后台打票，并在业务请求中覆盖该头。',
+        codexTicketAllowWithoutTicket: '默认允许无票请求',
+        codexTicketAllowWithoutTicketDesc: '关闭后，OpenAI OAuth 类账号请求受门控模型时必须有该模型的票，除非账号明确允许无票请求。',
         codexTicketHarvestProxy: '292 打票代理',
         codexTicketHarvestProxyDesc:
           '仅在门票功能开启时用于打票，保存后后续探测会使用新代理，无需重启。日常业务仍走账号自己的住宅代理。填写完整代理 URL（http 或 socks5h，含用户名和密码）。代理服务商需自行负责出口 IP 轮换。留空并保存表示不改已保存的值。',

@@ -221,6 +221,7 @@ type SystemSettings struct {
 	ClaudeCodeClientVersionSynced           string `json:"claude_code_client_version_synced"`
 	ClaudeCodeVersionAutoSyncEnabled        bool   `json:"claude_code_version_auto_sync_enabled"`
 	OpenAICodexTicketEnabled                bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketAllowWithoutTicket     bool   `json:"openai_codex_ticket_allow_without_ticket"`
 	OpenAICodexTicketHarvestProxyURL        string `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketHarvestProxyConfigured bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
 

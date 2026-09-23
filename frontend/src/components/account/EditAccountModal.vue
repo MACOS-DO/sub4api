@@ -2338,6 +2338,16 @@
         </div>
       </div>
 
+      <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && !isSparkShadow" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label" for="codex-ticket-account-policy">{{ t('admin.accounts.openai.codexTicketAccountPolicy') }}</label>
+        <select id="codex-ticket-account-policy" v-model="codexTicketAccountPolicy" class="input" data-testid="codex-ticket-account-policy">
+          <option value="inherit">{{ t('admin.accounts.openai.codexTicketPolicyInherit') }}</option>
+          <option value="allow">{{ t('admin.accounts.openai.codexTicketPolicyAllow') }}</option>
+          <option value="deny">{{ t('admin.accounts.openai.codexTicketPolicyDeny') }}</option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.openai.codexTicketAccountPolicyDesc') }}</p>
+      </div>
+
       <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between gap-3"><label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketHistory') }}</label><button type="button" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400" @click="emit('codex-tickets')">{{ t('admin.accounts.openai.codexTicketHistory') }} →</button></div>
         <div class="mt-3 grid gap-2 sm:grid-cols-2"><div v-for="ticket in codexTurnTickets" :key="ticket.model" class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600"><div class="flex justify-between gap-2"><span class="break-all font-mono font-semibold">{{ ticket.model }}</span><span :class="ticket.ready ? 'text-emerald-600' : 'text-amber-600'">{{ ticket.ready ? '●' : '○' }} {{ t(ticket.ready ? 'admin.accounts.openai.codexTicketReadyShort' : 'admin.accounts.openai.codexTicketMissingShort') }}</span></div><p class="mt-2 text-gray-500">{{ ticket.length }} bytes · turn-state {{ ticket.turn_state_present ? '✓' : '—' }} · Cookie {{ ticket.cookie_present ? '✓' : '—' }}</p></div></div>
@@ -3709,6 +3719,8 @@ const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+type CodexTicketAccountPolicy = 'inherit' | 'allow' | 'deny'
+const codexTicketAccountPolicy = ref<CodexTicketAccountPolicy>('inherit')
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
@@ -4196,6 +4208,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  codexTicketAccountPolicy.value = 'inherit'
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
@@ -4245,6 +4258,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       defaultMode: OPENAI_WS_MODE_OFF
     })
     if (newAccount.type === 'oauth' || newAccount.type === 'setup-token') {
+      codexTicketAccountPolicy.value = extra?.codex_allow_without_ticket === true ? 'allow' : extra?.codex_allow_without_ticket === false ? 'deny' : 'inherit'
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
       codexCLIOnlyAppServerEnabled.value =
         extra?.codex_cli_only_allow_app_server === true
@@ -5767,6 +5781,11 @@ const handleSubmit = async () => {
       }
 
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
+        if (codexTicketAccountPolicy.value === 'inherit') {
+          delete newExtra.codex_allow_without_ticket
+        } else {
+          newExtra.codex_allow_without_ticket = codexTicketAccountPolicy.value === 'allow'
+        }
         if (codexCLIOnlyEnabled.value) {
           newExtra.codex_cli_only = true
         } else if (hadCodexCLIOnlyEnabled) {

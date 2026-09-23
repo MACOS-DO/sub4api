@@ -6,6 +6,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCodexDiagnosticGatewayErrorRedactsMessages(t *testing.T) {
+	for _, test := range []struct{ body, code string }{
+		{`{"code":403,"message":"secret-key","reason":"MODEL_NOT_ALLOWED"}`, "MODEL_NOT_ALLOWED"},
+		{`{"error":{"code":"invalid_api_key","message":"secret-key"}}`, "invalid_api_key"},
+		{`{"error":{"code":"secret key with spaces"}}`, ""},
+		{`{"message":"secret-key"}`, ""},
+	} {
+		require.Equal(t, test.code, codexDiagnosticGatewayError([]byte(test.body)))
+	}
+}
+
 func TestCodexDiagnosticOutputRequiresCompletedResponse(t *testing.T) {
 	for _, test := range []struct {
 		name     string

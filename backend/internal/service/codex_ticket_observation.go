@@ -59,6 +59,9 @@ func (s *OpenAIGatewayService) observeCodexTicketResponse(request *http.Request,
 		return
 	}
 	if inserted && event.InvalidatedCurrent {
+		if refresher, ok := s.accountRepo.(interface{ RefreshSchedulerAccount(context.Context, int64) }); ok {
+			refresher.RefreshSchedulerAccount(ctx, account.ID)
+		}
 		key := openAICodexTicketKey(account.ID, ticket.Model)
 		if cached, ok := s.openaiCodexTickets.Load(key); ok {
 			if current, ok := cached.(*openAICodexTicket); ok && current.GenerationID == ticket.GenerationID {

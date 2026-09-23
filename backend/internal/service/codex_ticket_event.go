@@ -12,7 +12,7 @@ type CodexTicketEventRepository interface {
 }
 
 func (s *OpenAIGatewayService) CodexTicketEvents(ctx context.Context, accountID int64, model, filter string, start, end time.Time, page, size int) ([]CodexTicketEvent, int64, error) {
-	if model != "" && !s.codexTicketSupportedModel(model) {
+	if model != "" && !modelTraceKnownGPTModel(model) {
 		return nil, 0, ErrCodexTicketModel
 	}
 	account, err := s.accountRepo.GetByID(ctx, accountID)

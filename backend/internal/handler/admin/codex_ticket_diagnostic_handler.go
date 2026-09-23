@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,14 +25,38 @@ func (h *AccountHandler) SetCodexTicketDiagnosticRouter(router http.Handler, key
 }
 
 type codexDiagnosticItem struct {
-	Model          string                      `json:"model"`
-	Status         string                      `json:"status"`
-	Reason         string                      `json:"reason,omitempty"`
-	PredictedModel string                      `json:"predicted_model,omitempty"`
-	Probability    float64                     `json:"probability,omitempty"`
-	ParsedCount    int                         `json:"parsed_number_count,omitempty"`
-	HTTPStatus     int                         `json:"http_status,omitempty"`
-	Harvest        *service.CodexTicketAttempt `json:"harvest,omitempty"`
+	Model            string                      `json:"model"`
+	Status           string                      `json:"status"`
+	Reason           string                      `json:"reason,omitempty"`
+	PredictedModel   string                      `json:"predicted_model,omitempty"`
+	Probability      float64                     `json:"probability,omitempty"`
+	ParsedCount      int                         `json:"parsed_number_count,omitempty"`
+	HTTPStatus       int                         `json:"http_status,omitempty"`
+	GatewayErrorCode string                      `json:"gateway_error_code,omitempty"`
+	Harvest          *service.CodexTicketAttempt `json:"harvest,omitempty"`
+}
+
+func codexDiagnosticGatewayError(raw []byte) string {
+	if len(raw) > 16<<10 {
+		raw = raw[:16<<10]
+	}
+	for _, path := range []string{"reason", "error.code"} {
+		code := gjson.GetBytes(raw, path).String()
+		if code == "" || len(code) > 64 {
+			continue
+		}
+		for _, character := range code {
+			if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '_' || character == '-' || character == '.' {
+				continue
+			}
+			code = ""
+			break
+		}
+		if code != "" {
+			return code
+		}
+	}
+	return ""
 }
 
 func codexDiagnosticOutput(raw []byte) (string, bool) {
@@ -128,22 +153,48 @@ func (h *AccountHandler) DiagnoseCodexModels(c *gin.Context) {
 		}
 		seen[model] = true
 	}
+	ticketModels, err := service.ModelTraceTicketModels()
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	ticketEligible := make(map[string]bool, len(ticketModels))
+	for _, model := range ticketModels {
+		ticketEligible[model] = true
+	}
 	results := make([]codexDiagnosticItem, 0, len(input.Models))
 	for _, model := range input.Models {
 		if c.Request.Context().Err() != nil {
 			break
 		}
 		item := codexDiagnosticItem{Model: model, Status: "failed"}
-		generation, err := h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
+		limited, err := h.codexTicketGateway.CodexTicketDiagnosticLimited(c.Request.Context(), accountID, model)
+		if err != nil {
+			item.Reason = "account_lookup_failed"
+			results = append(results, item)
+			continue
+		}
+		if limited {
+			item.Reason = "rate_limited"
+			results = append(results, item)
+			continue
+		}
+		generation := ""
+		if ticketEligible[model] {
+			generation, err = h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
+		}
 		if err != nil {
 			item.Reason = "ticket_lookup_failed"
 			results = append(results, item)
 			continue
 		}
-		if generation == "" {
+		if ticketEligible[model] && generation == "" {
 			harvest, err := h.codexTicketGateway.DiagnosticCodexTicketHarvest(c.Request.Context(), accountID, model)
 			if err != nil {
 				item.Reason = "harvest_unavailable"
+				if errors.Is(err, service.ErrCodexTicketRateLimited) {
+					item.Reason = "rate_limited"
+				}
 				results = append(results, item)
 				continue
 			}
@@ -173,11 +224,15 @@ func (h *AccountHandler) DiagnoseCodexModels(c *gin.Context) {
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Accept", "text/event-stream")
 		request.RemoteAddr = c.Request.RemoteAddr
+		request.Host = c.Request.Host
 		writer := httptest.NewRecorder()
 		h.codexTicketRouter.ServeHTTP(writer, request)
 		cancel()
 		item.HTTPStatus = writer.Code
-		currentGeneration, lookupErr := h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
+		currentGeneration, lookupErr := "", error(nil)
+		if ticketEligible[model] {
+			currentGeneration, lookupErr = h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
+		}
 		if lookupErr != nil || currentGeneration != generation {
 			item.Status, item.Reason = "uncertain", "ticket_invalidated_during_test"
 			_, _ = h.codexTicketGateway.DiagnosticCodexTicketHarvest(c.Request.Context(), accountID, model)
@@ -186,6 +241,7 @@ func (h *AccountHandler) DiagnoseCodexModels(c *gin.Context) {
 		}
 		if writer.Code < 200 || writer.Code >= 300 {
 			item.Reason = "gateway_request_failed"
+			item.GatewayErrorCode = codexDiagnosticGatewayError(writer.Body.Bytes())
 			results = append(results, item)
 			continue
 		}

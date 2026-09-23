@@ -307,6 +307,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ClaudeCodeClientVersionSynced:                          settings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       settings.ClaudeCodeVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketAllowWithoutTicket:                    settings.OpenAICodexTicketAllowWithoutTicket,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
 		MinCodexVersion:                                        settings.MinCodexVersion,

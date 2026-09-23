@@ -18,6 +18,14 @@ func isCodexTicketDiagnostic(ctx context.Context) bool {
 	return accountID > 0
 }
 
+func (s *OpenAIGatewayService) CodexTicketDiagnosticLimited(ctx context.Context, accountID int64, model string) (bool, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return false, err
+	}
+	return openAICodexTicketHarvestLimited(account, model, time.Now()), nil
+}
+
 func (s *OpenAIGatewayService) HasCodexTicket(ctx context.Context, accountID int64, model string) (string, error) {
 	if s.openaiCodexTicketLifecycle == nil || !s.codexTicketSupportedModel(model) {
 		return "", ErrCodexTicketUnavailable
@@ -58,6 +66,9 @@ func (s *OpenAIGatewayService) DiagnosticCodexTicketHarvest(ctx context.Context,
 	}
 	if account.Status != StatusActive || !CodexTicketHarvestEnabled(account, model) {
 		return empty, ErrCodexTicketUnavailable
+	}
+	if openAICodexTicketHarvestLimited(account, model, time.Now()) {
+		return empty, ErrCodexTicketRateLimited
 	}
 	return s.runCodexTicketAttempt(ctx, account, model, "diagnostic")
 }

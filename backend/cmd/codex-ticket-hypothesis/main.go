@@ -39,8 +39,8 @@ func main() {
 	sessionPath := flag.String("session-jsonl", "", "optional Codex Desktop session record for initial-context replay")
 	duration := flag.Duration("watch-duration", time.Hour, "maximum elapsed time, including ticket search")
 	flag.Parse()
-	if *duration <= 0 || *duration > time.Hour {
-		fmt.Fprintln(os.Stderr, "watch-duration must be between 1ns and 1h")
+	if *duration <= 0 || *duration > 24*time.Hour {
+		fmt.Fprintln(os.Stderr, "watch-duration must be between 1ns and 24h")
 		os.Exit(1)
 	}
 	if err := runLoggedWithReplay(*envPath, *sessionPath, *duration, os.Stdout); err != nil {

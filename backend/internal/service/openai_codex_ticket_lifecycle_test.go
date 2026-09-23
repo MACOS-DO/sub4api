@@ -87,6 +87,23 @@ func TestCodexTicketProbeParsesNormalSSEAndCookies(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 }
 
+func TestCodexTicketProbeDoesNotCarryExistingTicket(t *testing.T) {
+	account := ticketTestAccount(41)
+	account.Extra = map[string]any{openAICodexTicketExtraKey("gpt-6-astra"): &openAICodexTicket{
+		AccountID: account.ID, Model: "gpt-6-astra", State: fakeCodexTicketState(292),
+		Cookie: "session=old", GenerationID: "old-generation", CapturedAt: time.Now(),
+	}}
+	upstream := &codexTicketFuncUpstream{do: func(request *http.Request) (*http.Response, error) {
+		require.Empty(t, request.Header.Get(openAICodexTurnStateHeader))
+		require.Empty(t, request.Header.Get("Cookie"))
+		return codexTicketResponse(), nil
+	}}
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
+	_, _, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", 292, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status)
+}
+
 func TestCodexTicketPolicyExemptsCredentialShadows(t *testing.T) {
 	parentID := int64(41)
 	parent := ticketTestAccount(parentID)

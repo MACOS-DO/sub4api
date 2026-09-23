@@ -51,6 +51,7 @@ export interface TicketInvalidation extends TicketEvent {
 
 export interface TicketDiagnostic {
   model: string
+  gateway_error_code?: string
   status: 'normal' | 'degraded' | 'uncertain' | 'failed'
   reason?: string
   predicted_model?: string

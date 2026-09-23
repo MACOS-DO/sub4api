@@ -16,7 +16,6 @@
               {{ t('admin.accounts.testConnection') }}
             </button>
             <button v-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')" @click="$emit('codex-diagnostic', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"><Icon name="sparkles" size="sm" class="text-violet-500" />{{ t('admin.accounts.openai.codexDiagnostic') }}</button>
-            <button v-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')" @click="$emit('codex-tickets', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"><Icon name="clock" size="sm" class="text-indigo-500" />{{ t('admin.accounts.openai.codexTicketHistory') }}</button>
             <button @click="$emit('stats', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="chart" size="sm" class="text-indigo-500" />
               {{ t('admin.accounts.viewStats') }}
@@ -72,7 +71,7 @@ import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; anchorRect: DOMRect | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'codex-diagnostic', 'codex-tickets'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'codex-diagnostic'])
 const { t } = useI18n()
 const menuRef = ref<HTMLElement | null>(null)
 const { width: viewportWidth, height: viewportHeight } = useWindowSize()

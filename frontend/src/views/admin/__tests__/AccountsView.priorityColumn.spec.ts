@@ -41,13 +41,14 @@ vi.mock('vue-i18n', async () => {
 })
 
 const DataTableStub = {
-  props: ['columns'],
+  props: ['columns', 'data'],
   emits: ['sort'],
   template: `
     <div data-test="data-table">
       <span v-for="column in columns" :key="column.key" :data-column="column.key">
         {{ column.sortable ? 'sortable' : 'fixed' }}
       </span>
+      <div v-for="row in data" :key="row.id"><slot name="cell-codex_ticket" :row="row" /></div>
       <button data-test="sort-priority" @click="$emit('sort', 'priority', 'desc')" />
     </div>
   `
@@ -68,6 +69,7 @@ function mountView() {
         Pagination: true,
         ConfirmDialog: true,
         AccountActionMenu: true,
+        CodexTicketDashboard: true,
         ImportDataModal: true,
         ReAuthAccountModal: true,
         AccountTestModal: true,
@@ -148,5 +150,25 @@ describe('admin AccountsView priority column preferences', () => {
       expect.arrayContaining(['today_stats', 'scheduler_score'])
     )
     expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).not.toContain('priority')
+  })
+})
+
+describe('admin AccountsView ticket column', () => {
+  it('shows ticket counts without loading details per row', async () => {
+    localStorage.clear()
+    listAccounts.mockReset().mockResolvedValue({
+      items: [
+        { id: 1, name: 'Codex', platform: 'openai', type: 'oauth', codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: true }, { model: 'gpt-6-astra', ready: false }] },
+        { id: 2, name: 'Other', platform: 'anthropic', type: 'api-key' }
+      ],
+      total: 2, page: 1, page_size: 20, pages: 1
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-column="codex_ticket"]').text()).toBe('fixed')
+    expect(wrapper.get('button[aria-label="admin.accounts.openai.codexTicketSummary"]').text()).toBe('1 / 2')
+    expect(wrapper.get('[data-test="data-table"]').text()).toContain('—')
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
   })
 })

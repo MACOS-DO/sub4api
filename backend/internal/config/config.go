@@ -2424,7 +2424,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_retry_min_seconds", 10)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_retry_max_seconds", 30)
-	viper.SetDefault("gateway.openai_codex_ticket.harvest_refresh_seconds", 0)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_refresh_seconds", 1800)
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)

@@ -300,6 +300,12 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		if err != nil {
 			return nil, false, err
 		}
+		if account.IsOpenAIOAuthLike() && !account.IsShadow() {
+			if _, ok := account.Extra[service.CodexTicketReadyModelsExtraKey]; !ok {
+				return nil, false, nil
+			}
+			account.SchedulerTicketProjection = true
+		}
 		if err := applySchedulerLastUsed(account, lastUsedValues[i]); err != nil {
 			return nil, false, err
 		}
@@ -863,6 +869,13 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 }
 
 func buildSchedulerMetadataAccount(account service.Account) service.Account {
+	extra := filterSchedulerExtra(account.Extra)
+	if account.IsOpenAIOAuthLike() && !account.IsShadow() {
+		if extra == nil {
+			extra = make(map[string]any)
+		}
+		extra[service.CodexTicketReadyModelsExtraKey] = service.OpenAICodexTicketReadyModels(&account)
+	}
 	return service.Account{
 		ID:                      account.ID,
 		Name:                    account.Name,
@@ -890,7 +903,7 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		AccountGroups:           filterSchedulerAccountGroups(account.AccountGroups),
 		GroupIDs:                filterSchedulerGroupIDs(account.GroupIDs, account.AccountGroups),
 		Credentials:             filterSchedulerCredentials(account.Credentials),
-		Extra:                   filterSchedulerExtra(account.Extra),
+		Extra:                   extra,
 	}
 }
 
@@ -1023,6 +1036,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_oauth_passthrough",
 		"codex_fingerprint_mode",
 		"codex_fingerprint_seed",
+		"codex_allow_without_ticket",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
 		"codex_5h_reset_at",

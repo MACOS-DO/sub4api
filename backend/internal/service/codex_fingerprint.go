@@ -135,6 +135,50 @@ func ModelTraceGPTModels() ([]string, error) {
 	return models, nil
 }
 
+func modelTraceKnownGPTModel(model string) bool {
+	models, err := ModelTraceGPTModels()
+	if err != nil {
+		return false
+	}
+	for _, known := range models {
+		if known == model {
+			return true
+		}
+	}
+	return false
+}
+
+func codexTicketEligibleModel(model string) bool {
+	version := strings.TrimPrefix(model, "gpt-")
+	if version == model {
+		return false
+	}
+	majorText, remainder, _ := strings.Cut(version, ".")
+	major, err := strconv.Atoi(strings.SplitN(majorText, "-", 2)[0])
+	if err != nil {
+		return false
+	}
+	if major != 5 {
+		return major > 5
+	}
+	minor, err := strconv.Atoi(strings.SplitN(remainder, "-", 2)[0])
+	return err == nil && minor >= 6
+}
+
+func ModelTraceTicketModels() ([]string, error) {
+	models, err := ModelTraceGPTModels()
+	if err != nil {
+		return nil, err
+	}
+	eligible := make([]string, 0, len(models))
+	for _, model := range models {
+		if codexTicketEligibleModel(model) {
+			eligible = append(eligible, model)
+		}
+	}
+	return eligible, nil
+}
+
 func modelTraceParseNumbers(text string) []int {
 	matches := modelTraceNumbers.FindAllStringIndex(text, -1)
 	var longest, current []int

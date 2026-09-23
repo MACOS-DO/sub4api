@@ -11,7 +11,7 @@ import (
 func TestAccountResponseCodexTicketsUsesConfiguredPolicy(t *testing.T) {
 	account := &service.Account{ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive}
 	h := &AccountHandler{cfg: &config.Config{}}
-	models, err := service.ModelTraceGPTModels()
+	models, err := service.ModelTraceTicketModels()
 	require.NoError(t, err)
 	initial := h.accountResponseFromService(account).CodexTurnTickets
 	require.Len(t, initial, len(models))
@@ -35,7 +35,7 @@ func TestAccountResponseCodexTicketsReadsLiveSettingsAfterRestart(t *testing.T) 
 	h := &AccountHandler{cfg: cfg}
 	h.SetCodexTicketSettings(settings)
 	account := &service.Account{ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeSetupToken, Status: service.StatusActive}
-	models, err := service.ModelTraceGPTModels()
+	models, err := service.ModelTraceTicketModels()
 	require.NoError(t, err)
 	status := h.accountListResponseFromService(account).CodexTurnTickets
 	require.Len(t, status, len(models))
