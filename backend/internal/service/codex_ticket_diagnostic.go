@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -71,8 +70,4 @@ func (s *OpenAIGatewayService) DiagnosticCodexTicketHarvest(ctx context.Context,
 		return empty, ErrCodexTicketRateLimited
 	}
 	return s.runCodexTicketAttempt(ctx, account, model, "diagnostic")
-}
-
-func ModelTraceChallengePrompt(count int) string {
-	return fmt.Sprintf("For each of %d positions, make one separate first-instinct choice of an integer from 1 to 355 inclusive. Output exactly %d whole numbers separated by spaces, with no explanations. Choose each value independently; do not count upward, sort, use arithmetic progressions or repeating patterns. Do not call tools or external random generators.", count, count)
 }

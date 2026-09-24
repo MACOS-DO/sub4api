@@ -26,8 +26,6 @@ var (
 const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
 const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
 
-const modelTraceChallengeCount = 292
-
 func CodexTicketHarvestEnabled(account *Account, model string) bool {
 	if account == nil || !isOpenAICodexTicketAccount(account) || !codexTicketEligibleModel(model) {
 		return false
@@ -129,7 +127,11 @@ func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model s
 	return true
 }
 
-func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, account *Account, model, trigger string) (result CodexTicketHarvestResult, err error) {
+func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, account *Account, model, trigger string) (CodexTicketHarvestResult, error) {
+	return s.runCodexTicketAttemptWithChallengeGenerator(ctx, account, model, trigger, NewModelTraceChallenge)
+}
+
+func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx context.Context, account *Account, model, trigger string, generateChallenge func() (ModelTraceChallenge, error)) (result CodexTicketHarvestResult, err error) {
 	key := openAICodexTicketKey(account.ID, model)
 	if _, loaded := s.openaiCodexTicketInFlight.LoadOrStore(key, true); loaded {
 		return result, ErrCodexTicketBusy
@@ -161,7 +163,6 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 	a := &result.CodexTicketAttempt
 	a.AccountID, a.Model, a.Trigger = account.ID, model, trigger
 	a.VerificationMethod, a.FingerprintCommit = "modeltrace_v1", ModelTraceBankCommit()
-	a.ChallengeExpectedCount = new(modelTraceChallengeCount)
 	defer func() {
 		a.OccurredAt = time.Now()
 		a.DurationMS = int(a.OccurredAt.Sub(start).Milliseconds())
@@ -197,8 +198,14 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		a.Outcome, a.ReasonCode = "error", "credentials"
 		return result, nil
 	}
+	challenge, challengeErr := generateChallenge()
+	if challengeErr != nil {
+		a.Outcome, a.ReasonCode = "error", "challenge_generation_failed"
+		return result, nil
+	}
+	a.ChallengeExpectedCount = new(challenge.ExpectedCount)
 	output, state, cookie, status, probeErr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL,
-		modelTraceChallengeCount, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
+		challenge, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
 	if status != 0 {
 		a.HTTPStatus = &status
 		length := len(state)
@@ -217,7 +224,7 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		a.Outcome, a.ReasonCode = "miss", "http_status"
 		return result, nil
 	}
-	prediction, commit, predictErr := ModelTracePredictCommitted(output, modelTraceChallengeCount)
+	prediction, commit, predictErr := ModelTracePredictCommitted(output, challenge.ExpectedCount)
 	a.FingerprintCommit = commit
 	count := prediction.ParsedCount
 	a.ParsedNumberCount = &count

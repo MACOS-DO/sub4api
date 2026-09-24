@@ -424,11 +424,10 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 	return !ticket.usable(time.Now(), 0, false, 0)
 }
 
-func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, expectedCount int, attemptTimeout time.Duration) (output string, state string, cookie string, status int, err error) {
+func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, challenge ModelTraceChallenge, attemptTimeout time.Duration) (output string, state string, cookie string, status int, err error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
 	defer cancel()
-	prompt := ModelTraceChallengePrompt(expectedCount)
-	body, err := json.Marshal(map[string]any{"model": model, "store": false, "stream": true, "input": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": prompt}}}}})
+	body, err := json.Marshal(map[string]any{"model": model, "store": false, "stream": true, "input": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": challenge.Prompt}}}}})
 	if err != nil {
 		return "", "", "", 0, err
 	}

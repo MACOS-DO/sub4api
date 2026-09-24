@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -27,6 +28,13 @@ func codexTicketResponse() *http.Response {
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, fakeCodexTicketState(292))
 	return &http.Response{StatusCode: http.StatusOK, Header: h, Body: io.NopCloser(strings.NewReader("data: {}\n\n"))}
+}
+
+func ticketProbeChallenge(t *testing.T) ModelTraceChallenge {
+	t.Helper()
+	challenge, err := newModelTraceChallenge(bytes.NewReader([]byte{40, 0, 0, 0, 0}))
+	require.NoError(t, err)
+	return challenge
 }
 
 func TestCodexTicketProbeBypassesPluginDuringWiring(t *testing.T) {
@@ -59,7 +67,7 @@ func TestCodexTicketProbeBypassesPluginDuringWiring(t *testing.T) {
 	}()
 	close(start)
 	for i := 0; i < 20; i++ {
-		_, state, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "test-token", "gpt-6-astra", "http://proxy.example.com:8080", modelTraceChallengeCount, time.Second)
+		_, state, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "test-token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 		require.Len(t, state, 292)
@@ -78,7 +86,7 @@ func TestCodexTicketProbeParsesNormalSSEAndCookies(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Header: header, Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.output_text.delta\",\"delta\":\"1 2 3\"}\n\ndata: [DONE]\n\n"))}, nil
 	}}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
-	output, state, cookie, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", 292, time.Second)
+	output, state, cookie, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
 	require.NoError(t, err)
 	require.Equal(t, "1 2 3", output)
 	require.Equal(t, "new-state", state)
@@ -99,7 +107,7 @@ func TestCodexTicketProbeDoesNotCarryExistingTicket(t *testing.T) {
 		return codexTicketResponse(), nil
 	}}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
-	_, _, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", 292, time.Second)
+	_, _, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, status)
 }

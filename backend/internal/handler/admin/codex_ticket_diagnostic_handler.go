@@ -110,6 +110,10 @@ func codexDiagnosticOutput(raw []byte) (string, bool) {
 }
 
 func (h *AccountHandler) DiagnoseCodexModels(c *gin.Context) {
+	h.diagnoseCodexModels(c, service.NewModelTraceChallenge)
+}
+
+func (h *AccountHandler) diagnoseCodexModels(c *gin.Context, generateChallenge func() (service.ModelTraceChallenge, error)) {
 	accountID, ok := codexTicketAccountID(c)
 	if !ok {
 		return
@@ -211,7 +215,13 @@ func (h *AccountHandler) DiagnoseCodexModels(c *gin.Context) {
 				continue
 			}
 		}
-		body, _ := json.Marshal(map[string]any{"model": model, "stream": true, "store": false, "input": []any{map[string]any{"role": "user", "content": service.ModelTraceChallengePrompt(292)}}})
+		challenge, challengeErr := generateChallenge()
+		if challengeErr != nil {
+			item.Reason = "challenge_generation_failed"
+			results = append(results, item)
+			continue
+		}
+		body, _ := json.Marshal(map[string]any{"model": model, "stream": true, "store": false, "input": []any{map[string]any{"role": "user", "content": challenge.Prompt}}})
 		modelCtx, cancel := context.WithTimeout(service.WithCodexTicketDiagnostic(c.Request.Context(), accountID), 120*time.Second)
 		request, requestErr := http.NewRequestWithContext(modelCtx, http.MethodPost, "/v1/responses", bytes.NewReader(body))
 		if requestErr != nil {
@@ -257,7 +267,7 @@ func (h *AccountHandler) DiagnoseCodexModels(c *gin.Context) {
 			results = append(results, item)
 			continue
 		}
-		prediction, _, predictErr := service.ModelTracePredictCommitted(diagnosticText, 292)
+		prediction, _, predictErr := service.ModelTracePredictCommitted(diagnosticText, challenge.ExpectedCount)
 		item.ParsedCount = prediction.ParsedCount
 		if predictErr != nil {
 			item.Reason = "insufficient_numbers"

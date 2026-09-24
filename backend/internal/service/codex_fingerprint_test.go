@@ -32,7 +32,7 @@ func TestModelTraceGPTReferenceParity(t *testing.T) {
 }
 
 func TestModelTraceRejectsTruncatedChallenge(t *testing.T) {
-	prediction, _, err := ModelTracePredictCommitted("1 2 3 4 5", modelTraceChallengeCount)
+	prediction, _, err := ModelTracePredictCommitted("1 2 3 4 5", 332)
 	require.ErrorContains(t, err, "insufficient_numbers")
 	require.Equal(t, 5, prediction.ParsedCount)
 }
