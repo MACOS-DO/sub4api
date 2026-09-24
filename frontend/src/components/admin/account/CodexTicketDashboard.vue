@@ -1,12 +1,12 @@
 <template>
   <Teleport to="body">
     <div v-if="show && account" class="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-950/60 p-2 backdrop-blur-sm sm:p-6" @click.self="emit('close')">
-      <section role="dialog" aria-modal="true" :aria-label="text.title" :class="activeTab === 'diagnostic' ? 'h-[min(860px,94dvh)]' : ''" class="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-2xl dark:border-dark-600 dark:bg-dark-900">
+      <section role="dialog" aria-modal="true" :aria-label="text.title" class="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-2xl dark:border-dark-600 dark:bg-dark-900">
         <header class="flex items-start justify-between gap-3 border-b border-gray-200 bg-white px-5 py-4 dark:border-dark-700 dark:bg-dark-800 sm:px-7 sm:py-5">
           <div class="min-w-0 flex-1">
             <p class="truncate text-xs font-semibold text-primary-600 dark:text-primary-400">{{ account.name }} · CODEX</p>
             <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{{ text.title }}</h2>
-            <p v-if="activeTab !== 'diagnostic'" class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ text.retention }}</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ text.retention }}</p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button type="button" class="btn btn-secondary !px-3 !py-1.5 !text-xs" :disabled="loading || accountLoading || savingParticipation" @click="reload">{{ text.refresh }}</button>
@@ -16,9 +16,9 @@
         <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200 bg-white px-3 dark:border-dark-700 dark:bg-dark-800 sm:px-6" :aria-label="text.tabs">
           <button v-for="item in tabs" :key="item.value" type="button" class="shrink-0 border-b-2 px-2.5 py-3 text-xs font-medium transition sm:px-4 sm:text-sm" :class="activeTab === item.value ? 'border-primary-500 text-primary-700 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-white'" :aria-current="activeTab === item.value ? 'page' : undefined" @click="switchTab(item.value)">{{ item.label }}</button>
         </nav>
-        <div ref="scrollViewport" class="min-h-0 flex-1 overflow-y-auto" :class="activeTab === 'diagnostic' ? '' : 'px-4 py-5 sm:px-7'">
+        <div class="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
           <div v-if="error" role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">{{ error }}</div>
-          <div v-if="activeTab !== 'diagnostic'" class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-700 dark:bg-dark-800">
+          <div class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-700 dark:bg-dark-800">
             <div class="flex items-baseline gap-2"><strong class="text-2xl font-semibold tabular-nums text-primary-600 dark:text-primary-400">{{ statuses.filter(status => status.ready).length }} / {{ statuses.length }}</strong><span class="text-sm text-gray-600 dark:text-dark-300">{{ text.available }}</span></div>
             <div class="flex max-w-full items-center gap-2 text-xs text-gray-500 dark:text-dark-400"><span class="truncate" :title="fingerprintCommit">{{ text.fingerprint }} {{ fingerprintCommit ? fingerprintCommit.slice(0, 12) : '—' }}</span><button type="button" class="shrink-0 font-medium text-primary-600 hover:underline disabled:opacity-50 dark:text-primary-400" :disabled="refreshingBank" @click="updateFingerprint">{{ text.updateBank }}</button></div>
           </div>
@@ -79,50 +79,7 @@
             <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 text-xs text-gray-500 dark:border-dark-700"><span>{{ total }} {{ text.records }}</span><div class="flex items-center gap-2"><button type="button" class="btn btn-secondary !px-2 !py-1" :disabled="page <= 1 || loading" @click="page--">←</button><span>{{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }}</span><button type="button" class="btn btn-secondary !px-2 !py-1" :disabled="page * pageSize >= total || loading" @click="page++">→</button></div></div>
           </section>
 
-          <section v-else :aria-label="text.diagnostic" class="min-h-full">
-            <div v-if="diagnosticStage === 'setup'" class="mx-auto w-full max-w-3xl px-4 py-5 sm:px-7 sm:py-6">
-              <div class="mb-5 flex flex-wrap items-start justify-between gap-2">
-                <div><h3 ref="setupHeading" tabindex="-1" class="text-lg font-semibold text-gray-900 outline-none dark:text-white">{{ text.setup }}</h3><p class="mt-1 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ text.diagnosticDesc }}</p></div>
-                <button type="button" class="text-[11px] text-gray-500 hover:text-primary-600 disabled:opacity-50 dark:text-dark-400" :title="text.updateBank" :disabled="refreshingBank" @click="updateFingerprint">{{ text.fingerprint }} {{ fingerprintCommit ? fingerprintCommit.slice(0, 12) : '—' }}</button>
-              </div>
-              <div class="mb-5"><label class="mb-2 block text-xs font-semibold text-gray-700 dark:text-dark-200">{{ text.key }}</label><Select v-model="selectedKey" :options="keyOptions" searchable :loading="keysLoading" :disabled="diagnosing" :aria-label="text.key" /><p v-if="!keysLoading && !keys.length" class="mt-2 text-xs text-amber-600">{{ text.noKey }}</p></div>
-              <div class="mb-5"><h4 class="mb-1 text-xs font-semibold text-gray-700 dark:text-dark-200">{{ text.chooseModels }}</h4><p class="mb-3 text-xs text-gray-500 dark:text-dark-400">{{ text.modelHint }}</p><CodexDiagnosticModelPicker v-model="selectedModels" :models="models" :ticket-models="statuses.map(status => status.model)" :disabled="diagnosing" /></div>
-              <div class="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-dark-700 dark:bg-dark-900 sm:static sm:mx-0 sm:px-0">
-                <span class="text-xs text-gray-500 dark:text-dark-400">{{ text.paid }}</span>
-                <div class="ml-auto flex flex-wrap items-center gap-3"><button v-if="diagnosticRun" type="button" class="text-xs font-medium text-primary-600 dark:text-primary-400" @click="showDiagnosticStage('results')">{{ text.viewResults }}</button><button type="button" class="btn btn-primary" :disabled="diagnosing || !selectedKey || !selectedModels.length" @click="runDiagnostic">{{ text.start }} {{ selectedModels.length }} {{ text.count }}</button></div>
-              </div>
-            </div>
-            <div v-else-if="diagnosticRun" class="min-h-full bg-white dark:bg-dark-800">
-              <div data-test="diagnostic-progress" class="sticky top-0 z-10 border-b border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-                <div class="mx-auto max-w-3xl px-4 py-5 sm:px-7">
-                  <div class="flex items-center justify-between gap-3"><h3 ref="resultsHeading" tabindex="-1" class="text-lg font-semibold text-gray-900 outline-none dark:text-white">{{ text.results }}</h3><span class="rounded-md px-2 py-1 text-xs" :class="diagnosing ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-dark-300'">{{ diagnosing ? text.running : diagnosticRun.state === 'cancelled' ? text.cancelled : text.finished }}</span></div>
-                  <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-dark-400"><span data-test="diagnostic-key">{{ diagnosticRun.keyName }} · #{{ diagnosticRun.keyID }}</span><span>{{ diagnosticTotal }} {{ text.count }}</span><span>{{ text.paid }}</span><span :title="diagnosticRun.fingerprintCommit">{{ text.fingerprint }} {{ diagnosticRun.fingerprintCommit ? diagnosticRun.fingerprintCommit.slice(0, 12) : '—' }}</span></div>
-                  <div class="mt-5 flex items-center justify-between gap-3"><p role="status" aria-live="polite" class="min-w-0 break-words text-xs text-gray-800 dark:text-dark-200">{{ currentDiagnostic ? text.testing + ' ' + currentDiagnostic : diagnosticRun.state === 'cancelled' ? text.stoppedSummary : text.finishedSummary }}</p><span class="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ results.length }} / {{ diagnosticTotal }} {{ text.completed }}</span></div>
-                  <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700" role="progressbar" :aria-label="text.progress" :aria-valuemin="0" :aria-valuemax="diagnosticTotal" :aria-valuenow="results.length"><div class="h-full rounded-full bg-primary-500" :style="{ width: diagnosticTotal ? (results.length / diagnosticTotal * 100) + '%' : '0%' }"></div></div>
-                  <div class="mt-3 flex items-center justify-between gap-3"><p class="text-[11px] text-gray-500 dark:text-dark-400">{{ diagnosing ? text.serialHint : text.keepResults }}</p><button v-if="diagnosing" type="button" class="btn btn-secondary shrink-0 !px-3 !py-1.5 !text-xs" @click="cancelDiagnostic">{{ text.cancel }}</button><button v-else type="button" class="btn btn-secondary shrink-0 !px-3 !py-1.5 !text-xs" @click="showDiagnosticStage('setup')">{{ text.editSetup }}</button></div>
-                </div>
-              </div>
-              <div class="mx-auto max-w-3xl px-4 pb-5 sm:px-7">
-                <article v-for="(entry, entryIndex) in diagnosticRun.entries" :key="entry.model" :data-model="entry.model" :data-status="entry.status" class="border-b border-gray-100 py-4 dark:border-dark-700">
-                  <div class="flex items-center gap-3">
-                    <span v-if="entry.status === 'running'" aria-hidden="true" class="mx-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-gray-200 border-t-primary-500 motion-reduce:animate-none dark:border-dark-600 dark:border-t-primary-400"></span>
-                    <span v-else aria-hidden="true" class="w-5 shrink-0 text-center text-sm" :class="entry.status === 'normal' ? 'text-primary-600 dark:text-primary-400' : entry.status === 'failed' || entry.status === 'degraded' ? 'text-red-500' : 'text-gray-400'">{{ diagnosticIcon(entry.status) }}</span>
-                    <div class="min-w-0 flex-1"><h4 class="break-all font-mono text-xs font-medium text-gray-900 dark:text-white sm:text-sm">{{ entry.model }}</h4><p class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">{{ diagnosticCaption(entry.status) }}</p></div>
-                    <span class="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium" :class="diagnosticBadge(entry.status)">{{ resultLabel(entry.status) }}</span>
-                  </div>
-                  <template v-if="entry.result">
-                    <button type="button" class="ml-8 mt-2 text-[11px] font-medium text-primary-600 hover:underline dark:text-primary-400" :aria-expanded="entry.expanded" :aria-controls="'codex-diagnostic-detail-' + entryIndex" @click="entry.expanded = !entry.expanded">{{ entry.expanded ? text.hideResultDetails : text.resultDetails }}</button>
-                    <dl v-if="entry.expanded" :id="'codex-diagnostic-detail-' + entryIndex" class="ml-8 mt-2 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-dark-700 dark:bg-dark-900">
-                      <div><dt class="text-gray-500 dark:text-dark-400">{{ text.prediction }}</dt><dd class="mt-1 break-all text-gray-800 dark:text-dark-200">{{ entry.result.predicted_model || '—' }} · {{ entry.result.probability == null ? '—' : (entry.result.probability * 100).toFixed(1) + '%' }}</dd></div>
-                      <div v-if="entry.result.reason"><dt class="text-gray-500 dark:text-dark-400">{{ text.reason }}</dt><dd class="mt-1 whitespace-pre-wrap break-words text-gray-800 dark:text-dark-200 [overflow-wrap:anywhere]">{{ entry.result.reason === 'template_invalid' ? text.templateInvalid : entry.result.reason }}</dd></div>
-                      <div v-if="entry.result.gateway_error_code || entry.result.http_status"><dt class="text-gray-500 dark:text-dark-400">{{ text.gateway }}</dt><dd class="mt-1 break-all text-gray-800 dark:text-dark-200">{{ [entry.result.gateway_error_code, entry.result.http_status ? 'HTTP ' + entry.result.http_status : ''].filter(Boolean).join(' · ') }}</dd></div>
-                    </dl>
-                  </template>
-                </article>
-                <p class="mt-4 text-[11px] text-gray-500 dark:text-dark-400">{{ text.failureHint }}</p>
-              </div>
-            </div>
-          </section>
+
         </div>
       </section>
 
@@ -145,24 +102,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import * as tickets from '@/api/admin/codexTickets'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
-import CodexDiagnosticModelPicker from './CodexDiagnosticModelPicker.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Account } from '@/types'
 
-const props = defineProps<{ show: boolean; account: Account | null; initialDiagnostic?: boolean }>()
+const props = defineProps<{ show: boolean; account: Account | null }>()
 const emit = defineEmits<{ close: []; updated: [account: Account] }>()
 const { locale } = useI18n()
 const text = computed(() => locale.value.startsWith('zh') ? {
   title: '票据中心', retention: '流水保留 90 天 · 失效凭据仅管理员可查看', refresh: '刷新', close: '关闭',
   available: '可用票 / 模型', fingerprint: '指纹版本', updateBank: '校验并更新', tabs: '票据中心导航',
-  current: '当前票据', attempts: '打票流水', invalidations: '票据过期历史', diagnostic: '降智检测',
+  current: '当前票据', attempts: '打票流水', invalidations: '票据过期历史',
   noModels: '当前没有需要打票的模型', length: '票据长度', acquired: '获取于', present: '已携带', absent: '未携带',
   accountParticipation: '此账号参与打票', modelParticipation: '此模型参与打票',
   participationHint: '开关表示保存的参与设置，切换即保存。关闭账号参与后仍可编辑模型选择。关闭账号或单个模型参与时，对应请求跳过无票限制；重新开启后恢复原无票策略。实际打票还受全局开关、账号状态和现有运行条件约束。',
@@ -174,20 +130,11 @@ const text = computed(() => locale.value.startsWith('zh') ? {
   filter: '结果', model: '模型', all: '全部结果', success: '打票成功', failure: '失败与错误', invalidation: '票据失效', allModels: '全部模型',
   loading: '正在加载…', empty: '没有符合条件的记录（最多保留 90 天）', records: '条记录', legacy: '旧版长度校验',
   details: '流水详情', copy: '复制', notCarried: '未携带', notReturned: '上游未返回',
-  setup: '创建一次检测', diagnosticDesc: '使用所选计费 Key 和系统设置中的「Codex 打票与降智检测模板」，向选中账号发起正常网关请求。是否允许无票请求由网关策略决定；检测不会单独补票，也不受打票参与开关限制。',
-  key: '用于计费的 API Key', chooseKey: '选择 API Key', noKey: '没有可用的本人 API Key', chooseModels: '选择检测模型',
-  modelHint: '可多选；无需打票的旧模型直接检测。', start: '开始检测', count: '个模型', cancel: '取消后续检测', paid: '正常计费',
-  viewResults: '查看本次结果', editSetup: '修改配置', finished: '已完成', cancelled: '已取消', progress: '检测进度',
-  pending: '等待中', stopped: '已停止等待', not_run: '未执行', checking: '检测中', waitingHint: '等待前一个模型完成', checkingHint: '正在处理本次检测',
-  serialHint: '按所选顺序检测，结果逐项更新', keepResults: '已完成的结果仍然保留', stoppedSummary: '后续检测已停止', finishedSummary: '本次检测已结束',
-  resultDetails: '查看详情 +', hideResultDetails: '收起详情 −', prediction: '预测模型 / 匹配概率', reason: '原因', gateway: '网关响应',
-  templateInvalid: '共享模板配置无效，请在系统设置中修正后重试。',
-  failureHint: '请求失败与疑似降智分别展示。具体原因可展开查看。', failedHint: '请求未完成，不代表降智', stoppedHint: '未收到检测结论', notRunHint: '取消后未发起请求', missingResult: '未返回此模型的检测结果',
-  results: '检测结果', completed: '已完成', testing: '正在检测', normal: '正常', degraded: '疑似降智', uncertain: '不确定', failed: '失败', error: '操作失败'
+  error: '操作失败'
 } : {
   title: 'Ticket center', retention: 'Records retained for 90 days · credentials visible to admins only', refresh: 'Refresh', close: 'Close',
   available: 'Ready / models', fingerprint: 'Fingerprint version', updateBank: 'Verify & update', tabs: 'Ticket center navigation',
-  current: 'Current tickets', attempts: 'Ticket attempts', invalidations: 'Ticket expiry history', diagnostic: 'Model degradation check',
+  current: 'Current tickets', attempts: 'Ticket attempts', invalidations: 'Ticket expiry history',
   noModels: 'No models currently require tickets', length: 'Ticket length', acquired: 'Acquired', present: 'Present', absent: 'Absent',
   accountParticipation: 'Include this account in ticket harvesting', modelParticipation: 'Include this model in ticket harvesting',
   participationHint: 'Switches show saved participation settings and save immediately. Model choices remain editable when account participation is off. Disabling account or model participation bypasses missing-ticket restrictions for the affected requests. Re-enabling restores the saved policy. Harvesting also depends on the global switch, account status and existing runtime conditions.',
@@ -199,24 +146,14 @@ const text = computed(() => locale.value.startsWith('zh') ? {
   filter: 'Result', model: 'Model', all: 'All results', success: 'Success', failure: 'Failures & errors', invalidation: 'Invalidation', allModels: 'All models',
   loading: 'Loading…', empty: 'No matching records (90-day retention)', records: 'records', legacy: 'Legacy length check',
   details: 'Event details', copy: 'Copy', notCarried: 'Not carried', notReturned: 'Not returned by upstream',
-  setup: 'Create a check', diagnosticDesc: 'Uses the selected billing key and the shared Codex ticket and degradation check template from system settings to send normal gateway requests to the selected account. The gateway decides whether requests without tickets are allowed. Checks do not harvest tickets or require harvesting participation.',
-  key: 'Billing API key', chooseKey: 'Select API key', noKey: 'No eligible own API key', chooseModels: 'Select models',
-  modelHint: 'Select multiple models; older models without tickets are checked directly.', start: 'Check', count: 'models', cancel: 'Cancel remaining checks', paid: 'Normal billing applies',
-  viewResults: 'View current results', editSetup: 'Edit setup', finished: 'Completed', cancelled: 'Cancelled', progress: 'Check progress',
-  pending: 'Waiting', stopped: 'Stopped waiting', not_run: 'Not started', checking: 'Checking', waitingHint: 'Waiting for the previous model', checkingHint: 'Processing this check',
-  serialHint: 'Checking models in order; results appear as they complete', keepResults: 'Completed results are retained', stoppedSummary: 'Remaining checks stopped', finishedSummary: 'This check has ended',
-  resultDetails: 'View details +', hideResultDetails: 'Hide details −', prediction: 'Predicted model / probability', reason: 'Reason', gateway: 'Gateway response',
-  templateInvalid: 'The shared template is invalid. Correct it in system settings and retry.',
-  failureHint: 'Request failures and possible degradation are shown separately. Expand a result for details.', failedHint: 'Request failed; this does not imply degradation', stoppedHint: 'No conclusion received', notRunHint: 'Request not sent after cancellation', missingResult: 'No result was returned for this model',
-  results: 'Results', completed: 'completed', testing: 'Checking', normal: 'Normal', degraded: 'Possible degradation', uncertain: 'Uncertain', failed: 'Failed', error: 'Operation failed'
+  error: 'Operation failed'
 })
-type Tab = 'tickets' | 'attempts' | 'invalidations' | 'diagnostic'
+type Tab = 'tickets' | 'attempts' | 'invalidations'
 const activeTab = ref<Tab>('tickets')
 const tabs = computed(() => [
   { value: 'tickets' as const, label: text.value.current },
   { value: 'attempts' as const, label: text.value.attempts },
-  { value: 'invalidations' as const, label: text.value.invalidations },
-  { value: 'diagnostic' as const, label: text.value.diagnostic }
+  { value: 'invalidations' as const, label: text.value.invalidations }
 ])
 const pageSize = 20
 const page = ref(1)
@@ -242,25 +179,6 @@ const participationDisabled = computed(() => !accountLoaded.value || accountLoad
 let accountLoadSerial = 0
 let bankLoadSerial = 0
 const busyModel = ref('')
-const keys = ref<Awaited<ReturnType<typeof tickets.ownKeys>>>([])
-const selectedKey = ref<number | null>(null)
-const selectedModels = ref<string[]>([])
-type DiagnosticStatus = tickets.TicketDiagnostic['status'] | 'pending' | 'running' | 'stopped' | 'not_run'
-type DiagnosticStage = 'setup' | 'results'
-interface DiagnosticEntry { model: string; status: DiagnosticStatus; result?: tickets.TicketDiagnostic; expanded: boolean }
-interface DiagnosticRun { keyID: number; keyName: string; fingerprintCommit: string; entries: DiagnosticEntry[]; state: 'running' | 'finished' | 'cancelled' }
-const diagnosticStage = ref<DiagnosticStage>('setup')
-const diagnosticRun = ref<DiagnosticRun | null>(null)
-const scrollViewport = ref<HTMLElement | null>(null)
-const resultsHeading = ref<HTMLElement | null>(null)
-const setupHeading = ref<HTMLElement | null>(null)
-const keysLoading = ref(false)
-const diagnosing = computed(() => diagnosticRun.value?.state === 'running')
-const results = computed(() => diagnosticRun.value?.entries.flatMap(entry => entry.result ? [entry.result] : []) ?? [])
-const diagnosticTotal = computed(() => diagnosticRun.value?.entries.length ?? 0)
-const currentDiagnostic = computed(() => diagnosticRun.value?.entries.find(entry => entry.status === 'running')?.model ?? '')
-const controller = ref<AbortController | null>(null)
-let diagnosticSerial = 0
 let accountSessionSerial = 0
 const detail = ref<tickets.TicketEvent | null>(null)
 const rawDetail = ref<tickets.TicketInvalidation | null>(null)
@@ -273,9 +191,6 @@ const attemptOptions = computed(() => [
 ])
 const modelOptions = computed(() => [
   { value: '', label: text.value.allModels }, ...models.value.map(model => ({ value: model, label: model }))
-])
-const keyOptions = computed(() => [
-  { value: null, label: text.value.chooseKey }, ...keys.value.map(key => ({ value: key.id, label: `${key.name} · #${key.id}` }))
 ])
 function formatTime(value?: string, clockOnly = false) {
   if (!value) return '—'
@@ -299,35 +214,6 @@ function eventBadge(kind: string) {
       : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
 }
 function kindLabel(kind: string) { return kind === 'success' ? text.value.success : kind === 'invalidation' ? text.value.invalidation : text.value.failure }
-function resultLabel(status: DiagnosticStatus) { return status === 'running' ? text.value.checking : text.value[status] }
-function diagnosticBadge(status: DiagnosticStatus) {
-  if (status === 'normal' || status === 'running') return 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-  if (status === 'degraded' || status === 'failed') return 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-  if (status === 'uncertain') return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-  return 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-400'
-}
-function diagnosticIcon(status: DiagnosticStatus) {
-  return status === 'normal' ? '✓' : status === 'failed' ? '×' : status === 'degraded' ? '!' : status === 'uncertain' ? '?' : '—'
-}
-function diagnosticCaption(status: DiagnosticStatus) {
-  if (status === 'pending') return text.value.waitingHint
-  if (status === 'running') return text.value.checkingHint
-  if (status === 'failed') return text.value.failedHint
-  if (status === 'stopped') return text.value.stoppedHint
-  if (status === 'not_run') return text.value.notRunHint
-  return text.value.completed
-}
-async function showDiagnosticStage(stage: DiagnosticStage) {
-  if (stage === 'setup' && diagnosing.value) return
-  diagnosticStage.value = stage
-  const session = accountSessionSerial
-  const run = diagnosticRun.value
-  await nextTick()
-  if (session !== accountSessionSerial || run !== diagnosticRun.value || !props.show || activeTab.value !== 'diagnostic' || diagnosticStage.value !== stage) return
-  if (scrollViewport.value) scrollViewport.value.scrollTop = 0
-  const heading = stage === 'results' ? resultsHeading.value : setupHeading.value
-  heading?.focus({ preventScroll: true })
-}
 function reasonLabel(reason?: string) {
   if (reason === 'upstream_turn_state_and_oailb_changed') return text.value.credentialsChanged
   if (reason === 'upstream_new_turn_state') return text.value.legacyStateChanged
@@ -362,7 +248,6 @@ const attemptFields = computed(() => {
 function switchTab(tab: Tab) {
   if (activeTab.value === tab) return
   activeTab.value = tab
-  if (tab === 'diagnostic') { openDiagnostic(); void showDiagnosticStage(diagnosticStage.value) }
   if (tab === 'attempts' || tab === 'invalidations') { page.value = 1; loadEvents() }
 }
 async function loadEvents() {
@@ -482,72 +367,6 @@ async function harvestModel(model: string) {
   } catch (cause) { if (isCurrentAccount(session, id)) error.value = extractApiErrorMessage(cause, text.value.error) }
   finally { if (isCurrentAccount(session, id)) busyModel.value = '' }
 }
-async function openDiagnostic() {
-  if (keys.value.length || keysLoading.value) return
-  const session = accountSessionSerial
-  keysLoading.value = true
-  try {
-    const available = await tickets.ownKeys()
-    if (session !== accountSessionSerial || !props.show) return
-    keys.value = available.filter(key => key.status === 'active' &&
-      (key.quota === 0 || key.quota_used < key.quota) && (!key.expires_at || new Date(key.expires_at) > new Date()))
-  } catch (cause) { if (session === accountSessionSerial) error.value = extractApiErrorMessage(cause, text.value.error) }
-  finally { if (session === accountSessionSerial) keysLoading.value = false }
-}
-function cancelDiagnostic() {
-  ++diagnosticSerial
-  controller.value?.abort()
-  controller.value = null
-  const run = diagnosticRun.value
-  if (!run || run.state !== 'running') return
-  run.state = 'cancelled'
-  for (const entry of run.entries) {
-    if (entry.status === 'running') entry.status = 'stopped'
-    else if (entry.status === 'pending') entry.status = 'not_run'
-  }
-}
-async function runDiagnostic() {
-  if (!props.show || !props.account || !selectedKey.value || !selectedModels.value.length || diagnosing.value) return
-  const accountID = props.account.id
-  const serial = ++diagnosticSerial
-  const session = accountSessionSerial
-  const keyID = selectedKey.value
-  diagnosticRun.value = {
-    keyID, keyName: keys.value.find(key => key.id === keyID)?.name ?? text.value.key,
-    fingerprintCommit: fingerprintCommit.value,
-    entries: [...selectedModels.value].map(model => ({ model, status: 'pending', expanded: false })),
-    state: 'running'
-  }
-  const run = diagnosticRun.value
-  const isCurrent = () => serial === diagnosticSerial && session === accountSessionSerial && diagnosticRun.value === run && props.show && props.account?.id === accountID
-  error.value = ''
-  void showDiagnosticStage('results')
-  try {
-    for (const entry of run.entries) {
-      if (!isCurrent()) break
-      entry.status = 'running'
-      const requestController = new AbortController()
-      controller.value = requestController
-      try {
-        const data = await tickets.diagnose(accountID, keyID, [entry.model], requestController.signal)
-        if (!isCurrent()) break
-        const result = data.items?.find(item => item.model === entry.model)
-        if (result) { entry.result = result; entry.status = result.status }
-        if (data.canceled) { cancelDiagnostic(); break }
-        if (!result) { entry.result = { model: entry.model, status: 'failed', reason: text.value.missingResult }; entry.status = 'failed' }
-      } catch (cause) {
-        if (!isCurrent() || requestController.signal.aborted) break
-        entry.result = { model: entry.model, status: 'failed', reason: extractApiErrorMessage(cause, text.value.error) }
-        entry.status = 'failed'
-      } finally { if (controller.value === requestController) controller.value = null }
-    }
-  } finally {
-    if (isCurrent()) {
-      run.state = 'finished'
-      await reload()
-    }
-  }
-}
 async function openDetail(event: tickets.TicketEvent) {
   detail.value = event
   rawDetail.value = null
@@ -575,18 +394,12 @@ watch(() => [props.show, props.account?.id], () => {
   busyModel.value = ''
   fingerprintCommit.value = ''
   models.value = []
-  cancelDiagnostic()
-  diagnosticRun.value = null
-  diagnosticStage.value = 'setup'
-  keysLoading.value = false
   error.value = ''
   loading.value = false
   ++loadSerial
   closeDetail()
   if (!props.show || !props.account) return
-  activeTab.value = props.initialDiagnostic ? 'diagnostic' : 'tickets'
-  selectedKey.value = null
-  selectedModels.value = []
+  activeTab.value = 'tickets'
   page.value = 1
   filter.value = 'all'
   modelFilter.value = ''
@@ -594,11 +407,9 @@ watch(() => [props.show, props.account?.id], () => {
   endDay.value = ''
   accountDetail.value = props.account
   participation.value = savedParticipation(props.account)
-  keys.value = []
   reload()
-  if (activeTab.value === 'diagnostic') openDiagnostic()
 }, { immediate: true })
 watch([filter, modelFilter, startDay, endDay], () => { if (activeTab.value !== 'attempts' && activeTab.value !== 'invalidations') return; page.value = 1; loadEvents() })
 watch(page, loadEvents)
-onUnmounted(() => { ++accountSessionSerial; ++loadSerial; cancelDiagnostic() })
+onUnmounted(() => { ++accountSessionSerial; ++loadSerial })
 </script>

@@ -80,6 +80,7 @@ function mountView() {
         ConfirmDialog: true,
         AccountActionMenu: true,
         CodexTicketDashboard: true,
+        CodexDiagnosticModal: true,
         ImportDataModal: true,
         ReAuthAccountModal: true,
         AccountTestModal: true,
@@ -364,5 +365,26 @@ describe('admin AccountsView ticket column', () => {
     older.resolve({ openai_codex_ticket_enabled: true })
     await flushPromises()
     expect(current.find('[data-column="codex_ticket"]').exists()).toBe(false)
+  })
+})
+
+
+describe('independent model diagnostic entry', () => {
+  it('opens the diagnostic modal with harvesting disabled and keeps the ticket center separate', async () => {
+    listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+    const wrapper = mountView()
+    await flushPromises()
+    const selected = { id: 19, name: 'Diagnostic account', platform: 'openai', type: 'oauth', extra: { codex_ticket_harvest_enabled: false } }
+    const diagnostic = wrapper.getComponent({ name: 'CodexDiagnosticModal' })
+    const tickets = wrapper.getComponent({ name: 'CodexTicketDashboard' })
+    wrapper.getComponent({ name: 'AccountActionMenu' }).vm.$emit('codex-diagnostic', selected)
+    await flushPromises()
+    expect(diagnostic.props('show')).toBe(true)
+    expect(diagnostic.props('account')).toEqual(selected)
+    expect(tickets.props('show')).toBe(false)
+    diagnostic.vm.$emit('close')
+    await flushPromises()
+    expect(diagnostic.props('show')).toBe(false)
+    expect(tickets.props('show')).toBe(false)
   })
 })

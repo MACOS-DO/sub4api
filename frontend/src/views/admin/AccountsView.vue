@@ -297,7 +297,7 @@
               type="button"
               class="rounded-lg px-2 py-1 text-sm font-semibold tabular-nums text-primary-600 transition hover:bg-primary-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-primary-400 dark:hover:bg-primary-900/20"
               :aria-label="t('admin.accounts.openai.codexTicketSummary', ticketSummary(row))"
-              @click="openCodexTickets(row, false)"
+              @click="openCodexTickets(row)"
             >{{ ticketSummary(row).ready }} / {{ ticketSummary(row).total }}</button>
             <span v-else class="text-gray-400">—</span>
           </template>
@@ -466,8 +466,9 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <CodexTicketDashboard :show="showCodexTickets" :account="codexTicketAcc" :initial-diagnostic="codexDiagnostic" @close="showCodexTickets = false" @updated="handleAccountUpdated" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexTickets($event, true)" />
+    <CodexTicketDashboard :show="showCodexTickets" :account="codexTicketAcc" @close="showCodexTickets = false" @updated="handleAccountUpdated" />
+    <CodexDiagnosticModal :show="showCodexDiagnostic" :account="codexDiagnosticAcc" @close="showCodexDiagnostic = false" @completed="handleCodexDiagnosticCompleted" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexDiagnostic" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -520,6 +521,7 @@ import AccountTableFilters from '@/components/admin/account/AccountTableFilters.
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import CodexTicketDashboard from '@/components/admin/account/CodexTicketDashboard.vue'
+import CodexDiagnosticModal from '@/components/admin/account/CodexDiagnosticModal.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -603,11 +605,17 @@ const showCreate = ref(false)
 const showEdit = ref(false)
 const showCodexTickets = ref(false)
 const codexTicketAcc = ref<Account | null>(null)
-const codexDiagnostic = ref(false)
+const showCodexDiagnostic = ref(false)
+const codexDiagnosticAcc = ref<Account | null>(null)
 const codexTicketGloballyEnabled = ref(false)
 let codexTicketSettingsRequestId = 0
-function openEditCodexTickets() { if (edAcc.value) { showEdit.value = false; openCodexTickets(edAcc.value, false) } }
-function openCodexTickets(account: Account, diagnostic: boolean) { codexTicketAcc.value = account; codexDiagnostic.value = diagnostic; showCodexTickets.value = true }
+function openEditCodexTickets() { if (edAcc.value) { showEdit.value = false; openCodexTickets(edAcc.value) } }
+function openCodexTickets(account: Account) { showCodexDiagnostic.value = false; codexTicketAcc.value = account; showCodexTickets.value = true }
+function openCodexDiagnostic(account: Account) { showCodexTickets.value = false; codexDiagnosticAcc.value = account; showCodexDiagnostic.value = true }
+async function handleCodexDiagnosticCompleted(accountID: number) {
+  try { handleAccountUpdated(await adminAPI.accounts.getById(accountID)) }
+  catch (error) { console.error('Failed to refresh account after diagnostic', error) }
+}
 function ticketSummary(account: Account) {
   const entries = account.codex_turn_tickets ?? []
   return { ready: entries.filter(ticket => ticket.ready).length, total: entries.length }
