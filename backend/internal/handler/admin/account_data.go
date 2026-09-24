@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	dataType       = "sub4api-data"
-	legacyDataType = "sub4api-bundle"
+	dataType       = "sub2api-data"
+	legacyDataType = "sub2api-bundle"
 	dataVersion    = 1
 	dataPageCap    = 1000
 )

@@ -203,3 +203,20 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")
 }
+
+func TestUpdateSettingsCodexTicketAllowWithoutTicketPreservesPartialPayload(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyOpenAICodexTicketAllowWithoutTicket: "false",
+	})
+	response := doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_allow_without_ticket": true}, nil)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICodexTicketAllowWithoutTicket])
+
+	response = doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICodexTicketAllowWithoutTicket])
+
+	response = doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_allow_without_ticket": false}, nil)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketAllowWithoutTicket])
+}

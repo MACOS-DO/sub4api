@@ -99,7 +99,7 @@ func TestAESEncryptor_RoundTrip(t *testing.T) {
 		name      string
 		plaintext string
 	}{
-		{"ascii", "Hello, Sub4API!"},
+		{"ascii", "Hello, Sub2API!"},
 		{"chinese_multibyte", "你好，世界！这是多字节 UTF-8 文本。"},
 		{"empty_string", ""},
 		{"long_string_gt_1KB", strings.Repeat("x", 2048)},

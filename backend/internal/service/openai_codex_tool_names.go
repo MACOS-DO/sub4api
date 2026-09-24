@@ -12,7 +12,7 @@ import (
 
 const (
 	codexReservedPythonToolName = "python"
-	codexPythonToolAlias        = "python__sub4api"
+	codexPythonToolAlias        = "python__sub2api"
 	codexToolNameReverseKey     = "openai_codex_tool_name_reverse"
 	codexToolNameSessionKey     = "openai_codex_tool_name_session_reverse"
 )

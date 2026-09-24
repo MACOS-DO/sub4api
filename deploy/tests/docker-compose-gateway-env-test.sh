@@ -4,7 +4,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo_root"
 
-gateway_variables=$(mktemp "${TMPDIR:-/tmp}/sub4api-gateway-env.XXXXXX")
+gateway_variables=$(mktemp "${TMPDIR:-/tmp}/sub2api-gateway-env.XXXXXX")
 cleanup() {
   rm -f "$gateway_variables"
 }

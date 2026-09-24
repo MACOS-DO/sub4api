@@ -96,7 +96,7 @@ func (h *PasskeyHandler) BeginLogin(c *gin.Context) {
 	response.Success(c, passkeyOptionsResponse{SessionToken: token, Options: assertion})
 }
 
-// FinishLogin validates a passkey assertion and creates a normal Sub4API token
+// FinishLogin validates a passkey assertion and creates a normal Sub2API token
 // session. User verification is mandatory, so a successful passkey assertion
 // already supplies phishing-resistant multi-factor authentication and does not
 // enter the separate TOTP challenge flow.

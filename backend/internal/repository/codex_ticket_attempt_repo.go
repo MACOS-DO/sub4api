@@ -23,14 +23,18 @@ func NewCodexTicketAttemptRepository(db *sql.DB) service.CodexTicketAttemptRepos
 
 func (r *codexTicketAttemptRepository) Insert(ctx context.Context, a *service.CodexTicketAttempt) error {
 	return r.db.QueryRowContext(ctx, `INSERT INTO codex_ticket_attempts
-		(account_id,model,occurred_at,outcome,source,http_status,ticket_length,duration_ms,reason_code,proxy_id,proxy_name,expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+		(account_id,model,occurred_at,outcome,source,http_status,ticket_length,duration_ms,reason_code,proxy_id,proxy_name,expires_at,
+		 ticket_generation_id,verification_method,fingerprint_commit,fingerprint_predicted_model,fingerprint_probability,fingerprint_matched,challenge_expected_count,parsed_number_count,turn_state_present,cookie_present)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id`,
 		a.AccountID, a.Model, a.OccurredAt, a.Outcome, a.Trigger, a.HTTPStatus, a.TicketLength,
-		a.DurationMS, a.ReasonCode, a.ProxyID, a.ProxyName, a.ExpiresAt).Scan(&a.ID)
+		a.DurationMS, a.ReasonCode, a.ProxyID, a.ProxyName, a.ExpiresAt,
+		a.TicketGenerationID, a.VerificationMethod, a.FingerprintCommit, a.FingerprintPredictedModel,
+		a.FingerprintProbability, a.FingerprintMatched, a.ChallengeExpectedCount, a.ParsedNumberCount,
+		a.TurnStatePresent, a.CookiePresent).Scan(&a.ID)
 }
 
 func (r *codexTicketAttemptRepository) List(ctx context.Context, accountID int64, model string, successOnly bool, page, size int) ([]service.CodexTicketAttempt, int64, error) {
-	condition := "account_id=$1 AND model=$2 AND (outcome='success' OR occurred_at >= NOW() - INTERVAL '30 days')"
+	condition := "account_id=$1 AND ($2='' OR model=$2) AND occurred_at >= NOW() - INTERVAL '90 days'"
 	if successOnly {
 		condition += " AND outcome='success'"
 	}
@@ -38,8 +42,9 @@ func (r *codexTicketAttemptRepository) List(ctx context.Context, accountID int64
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM codex_ticket_attempts WHERE "+condition, accountID, model).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,occurred_at,outcome,source,http_status,ticket_length,duration_ms,reason_code,proxy_id,proxy_name,expires_at
-		FROM codex_ticket_attempts WHERE `+condition+` ORDER BY occurred_at DESC,id DESC LIMIT $3 OFFSET $4`,
+	rows, err := r.db.QueryContext(ctx, `SELECT id,model,occurred_at,outcome,source,http_status,ticket_length,duration_ms,reason_code,proxy_id,proxy_name,expires_at,
+		 ticket_generation_id,verification_method,fingerprint_commit,fingerprint_predicted_model,fingerprint_probability,fingerprint_matched,challenge_expected_count,parsed_number_count,turn_state_present,cookie_present
+		FROM codex_ticket_attempts WHERE `+condition+` ORDER BY occurred_at DESC,id DESC,outcome LIMIT $3 OFFSET $4`,
 		accountID, model, size, (page-1)*size)
 	if err != nil {
 		return nil, 0, err
@@ -51,8 +56,13 @@ func (r *codexTicketAttemptRepository) List(ctx context.Context, accountID int64
 		var status, length, proxyID sql.NullInt64
 		var reason, name sql.NullString
 		var expires sql.NullTime
-		if err := rows.Scan(&a.ID, &a.OccurredAt, &a.Outcome, &a.Trigger, &status, &length,
-			&a.DurationMS, &reason, &proxyID, &name, &expires); err != nil {
+		var generation, method, commit, predicted sql.NullString
+		var probability sql.NullFloat64
+		var matched, turnState, cookie sql.NullBool
+		var expected, parsed sql.NullInt64
+		if err := rows.Scan(&a.ID, &a.Model, &a.OccurredAt, &a.Outcome, &a.Trigger, &status, &length,
+			&a.DurationMS, &reason, &proxyID, &name, &expires, &generation, &method, &commit, &predicted,
+			&probability, &matched, &expected, &parsed, &turnState, &cookie); err != nil {
 			return nil, 0, err
 		}
 		if status.Valid {
@@ -70,6 +80,30 @@ func (r *codexTicketAttemptRepository) List(ctx context.Context, accountID int64
 		if expires.Valid {
 			v := expires.Time
 			a.ExpiresAt = &v
+		}
+		if generation.Valid {
+			a.TicketGenerationID = &generation.String
+		}
+		a.VerificationMethod, a.FingerprintCommit, a.FingerprintPredictedModel = method.String, commit.String, predicted.String
+		if probability.Valid {
+			a.FingerprintProbability = &probability.Float64
+		}
+		if matched.Valid {
+			a.FingerprintMatched = &matched.Bool
+		}
+		if expected.Valid {
+			count := int(expected.Int64)
+			a.ChallengeExpectedCount = &count
+		}
+		if parsed.Valid {
+			count := int(parsed.Int64)
+			a.ParsedNumberCount = &count
+		}
+		if turnState.Valid {
+			a.TurnStatePresent = &turnState.Bool
+		}
+		if cookie.Valid {
+			a.CookiePresent = &cookie.Bool
 		}
 		a.ReasonCode, a.ProxyName = reason.String, name.String
 		result = append(result, a)
@@ -137,7 +171,7 @@ func (r *codexTicketAttemptRepository) Cleanup(ctx context.Context) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	cutoff := now.Add(-30 * 24 * time.Hour)
+	cutoff := now.Add(-90 * 24 * time.Hour)
 	for _, name := range names {
 		matches := codexTicketFailurePartitionPattern.FindStringSubmatch(name)
 		if len(matches) != 2 {
@@ -154,14 +188,33 @@ func (r *codexTicketAttemptRepository) Cleanup(ctx context.Context) error {
 	// Batch-delete only the expired rows in the UTC boundary partition.
 	for {
 		result, err := conn.ExecContext(ctx, `DELETE FROM codex_ticket_attempts WHERE (outcome,occurred_at,id) IN (
-			SELECT outcome,occurred_at,id FROM codex_ticket_attempts WHERE outcome <> 'success'
-			AND occurred_at < NOW() - INTERVAL '30 days' ORDER BY occurred_at,id LIMIT 1000)`)
+			SELECT outcome,occurred_at,id FROM codex_ticket_attempts WHERE occurred_at < NOW() - INTERVAL '90 days' ORDER BY occurred_at,id LIMIT 1000)`)
 		if err != nil {
 			return fmt.Errorf("cleanup ticket attempts: %w", err)
 		}
 		n, err := result.RowsAffected()
-		if err != nil || n < 1000 {
+		if err != nil {
 			return err
+		}
+		if n < 1000 {
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	for {
+		result, err := conn.ExecContext(ctx, `DELETE FROM codex_ticket_invalidations WHERE id IN (
+			SELECT id FROM codex_ticket_invalidations WHERE occurred_at < NOW() - INTERVAL '90 days' ORDER BY occurred_at,id LIMIT 1000)`)
+		if err != nil {
+			return fmt.Errorf("cleanup ticket invalidations: %w", err)
+		}
+		removed, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if removed < 1000 {
+			return nil
 		}
 		if err := ctx.Err(); err != nil {
 			return err

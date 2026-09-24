@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/MACOS-DO/sub4api/internal/config"
@@ -32,7 +31,7 @@ type keyBillingInfoResponse struct {
 }
 
 // KeyBillingInfo returns the token billing multiplier effective for the authenticated API key.
-// GET /v1/sub4api/billing
+// GET /v1/sub2api/billing
 func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -59,11 +58,7 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	}
 
 	c.Header("Cache-Control", "no-store")
-	response := buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now())
-	if strings.HasSuffix(c.Request.URL.Path, "/sub2api/billing") {
-		response.Object = "sub2api.key_billing" // Preserve the legacy endpoint's wire contract.
-	}
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now()))
 }
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {
@@ -91,7 +86,7 @@ func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.
 	appliedPeak := apiKey.Group.PeakMultiplierAt(now)
 
 	response := keyBillingInfoResponse{
-		Object:                  "sub4api.key_billing",
+		Object:                  "sub2api.key_billing",
 		SchemaVersion:           keyBillingInfoSchemaVersion,
 		BillingScope:            "token",
 		GroupRateMultiplier:     groupRate,

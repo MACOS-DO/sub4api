@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MACOS-DO/sub4api/internal/pkg/antigravity"
+	"github.com/MACOS-DO/sub4api/internal/pkg/claude"
 	"github.com/MACOS-DO/sub4api/internal/pkg/openai"
 	"golang.org/x/sync/singleflight"
 )
@@ -118,6 +119,19 @@ const openAICodexClientVersionDBTimeout = 5 * time.Second
 
 // openAICodexClientVersionSFKey singleflight 键。
 const openAICodexClientVersionSFKey = "openai_codex_client_version"
+
+// cachedClaudeCodeClientVersion 缓存出站 Claude Code 客户端版本号（进程内缓存，60s TTL）
+type cachedClaudeCodeClientVersion struct {
+	version   string
+	expiresAt int64 // unix nano
+}
+
+const claudeCodeClientVersionCacheTTL = 60 * time.Second
+const claudeCodeClientVersionErrorTTL = 5 * time.Second
+const claudeCodeClientVersionDBTimeout = 5 * time.Second
+
+// claudeCodeClientVersionSFKey singleflight 键。
+const claudeCodeClientVersionSFKey = "claude_code_client_version"
 
 type cachedOpenAIQuotaAutoPauseSettings struct {
 	settings  OpsOpenAIAccountQuotaAutoPauseSettings
@@ -332,269 +346,6 @@ func (s *SettingService) InvalidateOpenAICodexTicketEnabledCache() {
 	s.openAICodexTicketEnabledCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
 }
 
-// GetOpenAICodexTicketAllowWithoutTicket resolves the live global default.
-func (s *SettingService) GetOpenAICodexTicketAllowWithoutTicket(ctx context.Context, fallback bool) bool {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if ctx.Err() != nil {
-		return fallback
-	}
-	if s == nil || s.settingRepo == nil {
-		return fallback
-	}
-	if cached, ok := s.openAICodexTicketAllowWithoutTicketCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value
-		}
-	}
-	resultCh := s.openAICodexTicketAllowWithoutTicketSF.DoChan(SettingKeyOpenAICodexTicketAllowWithoutTicket, func() (any, error) {
-		if cached, ok := s.openAICodexTicketAllowWithoutTicketCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
-			}
-		}
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketAllowWithoutTicket)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			if cached, ok := s.openAICodexTicketAllowWithoutTicketCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
-				return cached.value, nil
-			}
-			return fallback, nil
-		}
-		enabled := fallback
-		if err == nil && strings.TrimSpace(value) != "" {
-			enabled = value == "true"
-		}
-		s.openAICodexTicketAllowWithoutTicketCache.Store(&cachedOpenAICodexTicketEnabled{
-			value:     enabled,
-			expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
-		})
-		return enabled, nil
-	})
-	select {
-	case <-ctx.Done():
-		return fallback
-	case result := <-resultCh:
-		if v, ok := result.Val.(bool); ok && result.Err == nil {
-			return v
-		}
-		return fallback
-	}
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketAllowWithoutTicketCache() {
-	if s == nil {
-		return
-	}
-	s.openAICodexTicketAllowWithoutTicketSF.Forget(SettingKeyOpenAICodexTicketAllowWithoutTicket)
-	s.openAICodexTicketAllowWithoutTicketCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
-}
-
-type cachedOpenAICodexTicketTTLSeconds struct {
-	value     int
-	expiresAt int64
-}
-
-// GetOpenAICodexTicketTTLSeconds 返回后台配置的 292 票据有效期（秒）。
-// 设置键存在时以后台为准；缺失/非法则回退 yaml/env，并夹取到 [60, 86400]。
-func (s *SettingService) GetOpenAICodexTicketTTLSeconds(ctx context.Context, fallback int) int {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if ctx.Err() != nil {
-		return normalizeOpenAICodexTicketTTLSeconds(fallback)
-	}
-	if s == nil || s.settingRepo == nil {
-		return normalizeOpenAICodexTicketTTLSeconds(fallback)
-	}
-	if cached, ok := s.openAICodexTicketTTLCache.Load().(*cachedOpenAICodexTicketTTLSeconds); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value
-		}
-	}
-	resultCh := s.openAICodexTicketTTLSF.DoChan(SettingKeyOpenAICodexTicketTTLSeconds, func() (any, error) {
-		if cached, ok := s.openAICodexTicketTTLCache.Load().(*cachedOpenAICodexTicketTTLSeconds); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
-			}
-		}
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketTTLSeconds)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			if cached, ok := s.openAICodexTicketTTLCache.Load().(*cachedOpenAICodexTicketTTLSeconds); ok && cached != nil {
-				return cached.value, nil
-			}
-			return normalizeOpenAICodexTicketTTLSeconds(fallback), nil
-		}
-		seconds := normalizeOpenAICodexTicketTTLSeconds(fallback)
-		if err == nil && strings.TrimSpace(value) != "" {
-			if parsed, parseErr := strconv.Atoi(strings.TrimSpace(value)); parseErr == nil {
-				seconds = normalizeOpenAICodexTicketTTLSeconds(parsed)
-			}
-		}
-		s.openAICodexTicketTTLCache.Store(&cachedOpenAICodexTicketTTLSeconds{
-			value:     seconds,
-			expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
-		})
-		return seconds, nil
-	})
-	select {
-	case <-ctx.Done():
-		return normalizeOpenAICodexTicketTTLSeconds(fallback)
-	case result := <-resultCh:
-		if v, ok := result.Val.(int); ok && result.Err == nil {
-			return v
-		}
-		return normalizeOpenAICodexTicketTTLSeconds(fallback)
-	}
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketTTLCache() {
-	if s == nil {
-		return
-	}
-	s.openAICodexTicketTTLSF.Forget(SettingKeyOpenAICodexTicketTTLSeconds)
-	s.openAICodexTicketTTLCache.Store(&cachedOpenAICodexTicketTTLSeconds{expiresAt: 0})
-}
-
-// GetOpenAICodexTicketReuseExpired 返回票据过期后是否仍沿用上次票据（默认开启）。
-func (s *SettingService) GetOpenAICodexTicketReuseExpired(ctx context.Context, fallback bool) bool {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if ctx.Err() != nil {
-		return fallback
-	}
-	if s == nil || s.settingRepo == nil {
-		return fallback
-	}
-	if cached, ok := s.openAICodexTicketReuseExpiredCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value
-		}
-	}
-	resultCh := s.openAICodexTicketReuseExpiredSF.DoChan(SettingKeyOpenAICodexTicketReuseExpired, func() (any, error) {
-		if cached, ok := s.openAICodexTicketReuseExpiredCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
-			}
-		}
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketReuseExpired)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			if cached, ok := s.openAICodexTicketReuseExpiredCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
-				return cached.value, nil
-			}
-			return fallback, nil
-		}
-		reuse := fallback
-		if err == nil && strings.TrimSpace(value) != "" {
-			reuse = value == "true"
-		}
-		s.openAICodexTicketReuseExpiredCache.Store(&cachedOpenAICodexTicketEnabled{
-			value:     reuse,
-			expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
-		})
-		return reuse, nil
-	})
-	select {
-	case <-ctx.Done():
-		return fallback
-	case result := <-resultCh:
-		if v, ok := result.Val.(bool); ok && result.Err == nil {
-			return v
-		}
-		return fallback
-	}
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketReuseExpiredCache() {
-	if s == nil {
-		return
-	}
-	s.openAICodexTicketReuseExpiredSF.Forget(SettingKeyOpenAICodexTicketReuseExpired)
-	s.openAICodexTicketReuseExpiredCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
-}
-
-// GetOpenAICodexTicketReuseExpiredMaxSeconds 返回票据过期后的最长复用时长（秒）。
-// 0 表示不限制；设置键存在时以后台为准，缺失/非法回退 yaml/env，并夹取到 [0, 86400]。
-func (s *SettingService) GetOpenAICodexTicketReuseExpiredMaxSeconds(ctx context.Context, fallback int) int {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if ctx.Err() != nil {
-		return normalizeOpenAICodexTicketReuseWindowSeconds(fallback)
-	}
-	if s == nil || s.settingRepo == nil {
-		return normalizeOpenAICodexTicketReuseWindowSeconds(fallback)
-	}
-	if cached, ok := s.openAICodexTicketReuseWindowCache.Load().(*cachedOpenAICodexTicketTTLSeconds); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value
-		}
-	}
-	resultCh := s.openAICodexTicketReuseWindowSF.DoChan(SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds, func() (any, error) {
-		if cached, ok := s.openAICodexTicketReuseWindowCache.Load().(*cachedOpenAICodexTicketTTLSeconds); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
-			}
-		}
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			if cached, ok := s.openAICodexTicketReuseWindowCache.Load().(*cachedOpenAICodexTicketTTLSeconds); ok && cached != nil {
-				return cached.value, nil
-			}
-			return normalizeOpenAICodexTicketReuseWindowSeconds(fallback), nil
-		}
-		seconds := normalizeOpenAICodexTicketReuseWindowSeconds(fallback)
-		if err == nil && strings.TrimSpace(value) != "" {
-			if parsed, parseErr := strconv.Atoi(strings.TrimSpace(value)); parseErr == nil && parsed >= 0 {
-				seconds = normalizeOpenAICodexTicketReuseWindowSeconds(parsed)
-			}
-		}
-		s.openAICodexTicketReuseWindowCache.Store(&cachedOpenAICodexTicketTTLSeconds{
-			value:     seconds,
-			expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
-		})
-		return seconds, nil
-	})
-	select {
-	case <-ctx.Done():
-		return normalizeOpenAICodexTicketReuseWindowSeconds(fallback)
-	case result := <-resultCh:
-		if v, ok := result.Val.(int); ok && result.Err == nil {
-			return v
-		}
-		return normalizeOpenAICodexTicketReuseWindowSeconds(fallback)
-	}
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketReuseExpiredMaxSecondsCache() {
-	if s == nil {
-		return
-	}
-	s.openAICodexTicketReuseWindowSF.Forget(SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds)
-	s.openAICodexTicketReuseWindowCache.Store(&cachedOpenAICodexTicketTTLSeconds{expiresAt: 0})
-}
-
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64
@@ -700,7 +451,8 @@ func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
 			})
 			return fallback, nil
 		}
-		ua := strings.TrimSpace(value)
+		// Preserve invalid header bytes for canonical identity validation.
+		ua := strings.Trim(value, " \t")
 		if ua == "" {
 			ua = fallback
 		}
@@ -783,6 +535,101 @@ func (s *SettingService) InvalidateOpenAICodexClientVersionCache() {
 	s.openAICodexVersionCache.Store((*cachedOpenAICodexClientVersion)(nil))
 }
 
+// NormalizeClaudeCodeClientVersion 校验并归一化 Claude Code 客户端版本号，非法值返回空串。
+// 容忍前导 "v" 与首尾空白；合法性复用 claude.IsSupportedCLIVersion（严格三段纯数字 semver、
+// 无预发布/构建后缀、且不低于内置基线）。
+func NormalizeClaudeCodeClientVersion(version string) string {
+	normalized := strings.TrimSpace(version)
+	normalized = strings.TrimPrefix(normalized, "v")
+	if normalized == "" {
+		return ""
+	}
+	if !claude.IsSupportedCLIVersion(normalized) {
+		return ""
+	}
+	return normalized
+}
+
+// GetClaudeCodeClientVersion 返回出站声明的 Claude Code CLI 客户端版本号。
+// 优先级：管理员在面板覆写的版本 → 自动同步到的官方最新版本 → claude.CLIVersion()
+// （环境变量 SUB2API_CLAUDE_CLI_VERSION 覆盖 + 内置基线）。
+// 版本太旧会被 Anthropic 拒绝（HTTP 400 claude_code_version_too_old），故该值需保持跟随官方发布。
+//
+// ⚠️ 一致性约束：同一次请求里，拼 User-Agent（claude-cli/<版本>）的版本号和用于
+// billing attribution 的版本号必须是同一个值，否则 Anthropic 侧对不上、判为非正版客户端。
+// 因此调用点必须在一次请求内只取一次本函数并复用；本缓存的唯一主动变更点是
+// 同步任务写入后调用 InvalidateClaudeCodeClientVersionCache，60s TTL 不会在极短时间内抖动。
+func (s *SettingService) GetClaudeCodeClientVersion(ctx context.Context) string {
+	fallback := claude.CLIVersion()
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.claudeCodeVersionCache.Load().(*cachedClaudeCodeClientVersion); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.version
+		}
+	}
+
+	result, _, _ := s.claudeCodeVersionSF.Do(claudeCodeClientVersionSFKey, func() (any, error) {
+		if cached, ok := s.claudeCodeVersionCache.Load().(*cachedClaudeCodeClientVersion); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.version, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), claudeCodeClientVersionDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyClaudeCodeClientVersion,
+			SettingKeyClaudeCodeClientVersionSynced,
+		})
+		if err != nil {
+			slog.Warn("failed to get claude code client version setting", "error", err)
+			s.claudeCodeVersionCache.Store(&cachedClaudeCodeClientVersion{
+				version:   fallback,
+				expiresAt: time.Now().Add(claudeCodeClientVersionErrorTTL).UnixNano(),
+			})
+			return fallback, nil
+		}
+		version := NormalizeClaudeCodeClientVersion(values[SettingKeyClaudeCodeClientVersion])
+		if version == "" {
+			if raw := values[SettingKeyClaudeCodeClientVersion]; strings.TrimSpace(raw) != "" {
+				slog.Warn("ignoring invalid claude_code_client_version setting; falling back to the next layer",
+					"value", raw)
+			}
+			version = NormalizeClaudeCodeClientVersion(values[SettingKeyClaudeCodeClientVersionSynced])
+			if version == "" && strings.TrimSpace(values[SettingKeyClaudeCodeClientVersionSynced]) != "" {
+				slog.Warn("ignoring invalid claude_code_client_version_synced setting; falling back to the built-in pin",
+					"value", values[SettingKeyClaudeCodeClientVersionSynced])
+			}
+		}
+		if version == "" {
+			version = fallback
+		}
+		s.claudeCodeVersionCache.Store(&cachedClaudeCodeClientVersion{
+			version:   version,
+			expiresAt: time.Now().Add(claudeCodeClientVersionCacheTTL).UnixNano(),
+		})
+		return version, nil
+	})
+	if version, ok := result.(string); ok && version != "" {
+		return version
+	}
+	return fallback
+}
+
+// InvalidateClaudeCodeClientVersionCache 丢弃版本号缓存，下次读取回源。
+// 面板保存与自动同步写入后调用。
+func (s *SettingService) InvalidateClaudeCodeClientVersionCache() {
+	if s == nil {
+		return
+	}
+	s.claudeCodeVersionSF.Forget(claudeCodeClientVersionSFKey)
+	s.claudeCodeVersionCache.Store((*cachedClaudeCodeClientVersion)(nil))
+}
+
 // GetOpenAICodexCanonicalUserAgent 返回出站规范 Codex User-Agent。
 // 未填面板 UA 时按当前生效的客户端版本号拼出标准 Codex TUI UA。
 //
@@ -795,16 +642,14 @@ func (s *SettingService) GetOpenAICodexCanonicalUserAgent(ctx context.Context) s
 		return codexCLIUserAgent
 	}
 	version := s.GetOpenAICodexClientVersion(ctx)
-	ua := strings.TrimSpace(s.GetOpenAICodexUserAgent(ctx))
-	if ua == "" {
-		return buildCodexCLIUserAgent(version)
+	ua := s.GetOpenAICodexUserAgent(ctx)
+	if _, pairedUA, ok := openai.PairCodexClientIdentity(ua); ok {
+		if rebuilt := openai.SetCodexUserAgentVersion(pairedUA, version); rebuilt != "" {
+			return rebuilt
+		}
 	}
-	if rebuilt := openai.SetCodexUserAgentVersion(ua, version); rebuilt != "" {
-		return rebuilt
-	}
-	// 非 `{client}/{version}` 形态：交给 PairCodexClientIdentity 判定，
-	// 推导不出官方身份时由收口整体回退规范身份。
-	return ua
+	// Invalid fingerprints must not discard the independently resolved version.
+	return buildCodexCLIUserAgent(version)
 }
 
 var legacyClaudeCodeCodexWhitelistEntry = openai.AllowedClientEntry{
@@ -1458,4 +1303,48 @@ func (s *SettingService) SetOpenAIQuotaAutoPauseSettings(settings OpsOpenAIAccou
 		settings:  settings,
 		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
 	})
+}
+
+func (s *SettingService) GetOpenAICodexTicketAllowWithoutTicket(ctx context.Context, fallback bool) bool {
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketAllowCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cached.value
+	}
+	value, err, _ := s.openAICodexTicketAllowSF.Do(SettingKeyOpenAICodexTicketAllowWithoutTicket, func() (any, error) {
+		if cached, ok := s.openAICodexTicketAllowCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cached.value, nil
+		}
+		dbCtx, cancel := context.WithTimeout(context.Background(), gatewayForwardingDBTimeout)
+		defer cancel()
+		raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketAllowWithoutTicket)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			return fallback, nil
+		}
+		allow := fallback
+		if raw != "" {
+			allow = raw == "true"
+		}
+		s.openAICodexTicketAllowCache.Store(&cachedOpenAICodexTicketEnabled{value: allow, expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano()})
+		return allow, nil
+	})
+	if err != nil || ctx.Err() != nil {
+		return fallback
+	}
+	return value.(bool)
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketAllowCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketAllowSF.Forget(SettingKeyOpenAICodexTicketAllowWithoutTicket)
+	s.openAICodexTicketAllowCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
 }

@@ -4,55 +4,7 @@
  */
 
 import { apiClient } from '../client'
-
-export type CodexTicketStatus = NonNullable<Account['codex_turn_tickets']>[number]
-
-export interface CodexTicketAttempt {
-  id: number
-  account_id: number
-  model: string
-  occurred_at: string
-  outcome: 'success' | 'miss' | 'error'
-  trigger: 'automatic' | 'manual'
-  http_status: number | null
-  ticket_length: number | null
-  duration_ms: number
-  reason_code?: string
-  proxy_id?: number
-  proxy_name?: string
-  expires_at?: string
-}
-
-export interface CodexTicketHistory {
-  items: CodexTicketAttempt[]
-  total: number
-  page: number
-  page_size: number
-  ticket_status: CodexTicketStatus
-  manual_available: boolean
-  manual_unavailable_reason: string
-}
-
-export interface CodexTicketHarvestResult extends CodexTicketAttempt {
-  ticket_status: CodexTicketStatus
-  history_recorded: boolean
-}
-
-export async function getCodexTicketHistory(id: number, model: string, filter: 'all' | 'success', page: number): Promise<CodexTicketHistory> {
-  const { data } = await apiClient.get<CodexTicketHistory>(`/admin/accounts/${id}/codex-ticket-history`, {
-    params: { model, filter, page, page_size: 20 }
-  })
-  return data
-}
-
-export async function harvestCodexTicket(id: number, model: string): Promise<CodexTicketHarvestResult> {
-  const { data } = await apiClient.post<CodexTicketHarvestResult>(`/admin/accounts/${id}/codex-ticket-harvest`, { model })
-  return data
-}
-
-export async function setCodexTicketParticipation(id: number, enabled: boolean, models: Record<string, boolean>): Promise<void> {
-  await apiClient.put(`/admin/accounts/${id}/codex-ticket-participation`, { enabled, models })
-}
+import type { OpenAIReferralRefreshResult, OpenAIReferralSendResult } from '@/types/openaiReferrals'
 import type {
   Account,
   AccountListItem,
@@ -77,7 +29,9 @@ import type {
   OllamaCloudUsageSettings,
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
-  GrokMediaEligibilityState
+  GrokMediaEligibilityState,
+  OpenCodeGoUsageSettings,
+  OpenCodeGoUsageState
 } from '@/types'
 
 /**
@@ -967,7 +921,14 @@ export interface OpenAIQuotaUsage {
   rate_limit?: OpenAIRateLimit | null
   additional_rate_limits?: OpenAIAdditionalRateLimit[]
   rate_limit_reset_credits?: OpenAIRateLimitResetCredits | null
+  credits?: OpenAICredits | null
   fetched_at: number
+}
+
+export interface OpenAICredits {
+  has_credits: boolean
+  unlimited: boolean
+  balance: string | null
 }
 
 export interface OpenAIQuotaResetCredit {
@@ -997,6 +958,7 @@ export interface OpenAIQuotaResetResult {
 /** Usage payload plus whether the reset-credit snapshot was persisted. */
 export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
   cache_persisted: boolean
+  credits_cache_persisted?: boolean
 }
 
 /**
@@ -1011,6 +973,23 @@ export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
 export async function refreshOpenAIQuota(id: number): Promise<OpenAIQuotaRefreshResult> {
   const { data } = await apiClient.post<OpenAIQuotaRefreshResult>(
     `/admin/openai/accounts/${id}/quota/refresh`
+  )
+  return data
+}
+
+export async function refreshOpenAIReferrals(id: number): Promise<OpenAIReferralRefreshResult> {
+  const { data } = await apiClient.post<OpenAIReferralRefreshResult>(
+    `/admin/openai/accounts/${id}/referrals/refresh`
+  )
+  return data
+}
+
+export async function sendOpenAIReferralInvite(
+  id: number,
+  input: { email: string; program_id: string; confirmed: boolean }
+): Promise<OpenAIReferralSendResult> {
+  const { data } = await apiClient.post<OpenAIReferralSendResult>(
+    `/admin/openai/accounts/${id}/referrals/invite`, input, { timeout: 90_000 }
   )
   return data
 }
@@ -1120,12 +1099,47 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
   return data
 }
 
+export async function getOpenCodeGoUsageSettings(): Promise<OpenCodeGoUsageSettings> {
+  const { data } = await apiClient.get<OpenCodeGoUsageSettings>('/admin/accounts/opencode-go-usage/settings')
+  return data
+}
+
+export async function updateOpenCodeGoUsageSettings(
+  settings: OpenCodeGoUsageSettings
+): Promise<OpenCodeGoUsageSettings> {
+  const { data } = await apiClient.put<OpenCodeGoUsageSettings>(
+    '/admin/accounts/opencode-go-usage/settings',
+    settings
+  )
+  return data
+}
+
+export async function getOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.get<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage`)
+  return data
+}
+
+export async function setOpenCodeGoUsageAutoRefresh(id: number, enabled: boolean): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.put<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage/auto-refresh`, {
+    enabled
+  })
+  return data
+}
+
+export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsageState> {
+  const { data } = await apiClient.post<OpenCodeGoUsageState>(`/admin/accounts/${id}/opencode-go-usage/refresh`)
+  return data
+}
+
+export async function getOpenAIRequestTimezones(): Promise<{ default: string; timezones: string[] }> {
+  const { data } = await apiClient.get<{ default: string; timezones: string[] }>('/admin/accounts/openai-request-timezones')
+  return data
+}
+
 export const accountsAPI = {
-  getCodexTicketHistory,
-  harvestCodexTicket,
-  setCodexTicketParticipation,
   list,
   listWithEtag,
+  getOpenAIRequestTimezones,
   getUpstreamBillingRatesWithEtag,
   getById,
   create,
@@ -1186,7 +1200,12 @@ export const accountsAPI = {
   saveOllamaCloudUsageSession,
   deleteOllamaCloudUsageSession,
   setOllamaCloudUsageAutoRefresh,
-  refreshOllamaCloudUsage
+  refreshOllamaCloudUsage,
+  getOpenCodeGoUsageSettings,
+  updateOpenCodeGoUsageSettings,
+  getOpenCodeGoUsage,
+  setOpenCodeGoUsageAutoRefresh,
+  refreshOpenCodeGoUsage
 }
 
 export default accountsAPI

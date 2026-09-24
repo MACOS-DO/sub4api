@@ -8,9 +8,9 @@
 
 ## 自动验证
 
-- `GOCACHE=/tmp/sub4api-go-cache go test -tags=unit ./... -timeout=5m`：通过，55 个含测试的包成功。
-- 最后补充响应格式缓存隔离和冷缓存 304 错误处理后，执行 `GOCACHE=/tmp/sub4api-go-cache go test -race -tags=unit -p 2 ./internal/service ./internal/handler ./internal/server/routes -run 'Test.*(OpenAIModels|CodexModels|OrdinaryPinned|PinnedModels|ProjectAccountModels)' -count=1 -timeout=3m`：三个包全部通过。
-- 最终代码执行 `GOCACHE=/tmp/sub4api-go-cache GOLANGCI_LINT_CACHE=/tmp/sub4api-models-lint-cache golangci-lint run ./... --timeout=5m`：0 issues。
+- `GOCACHE=/tmp/sub2api-go-cache go test -tags=unit ./... -timeout=5m`：通过，55 个含测试的包成功。
+- 最后补充响应格式缓存隔离和冷缓存 304 错误处理后，执行 `GOCACHE=/tmp/sub2api-go-cache go test -race -tags=unit -p 2 ./internal/service ./internal/handler ./internal/server/routes -run 'Test.*(OpenAIModels|CodexModels|OrdinaryPinned|PinnedModels|ProjectAccountModels)' -count=1 -timeout=3m`：三个包全部通过。
+- 最终代码执行 `GOCACHE=/tmp/sub2api-go-cache GOLANGCI_LINT_CACHE=/tmp/sub2api-models-lint-cache golangci-lint run ./... --timeout=5m`：0 issues。
 - 前端使用已安装依赖执行 `./node_modules/.bin/vitest run src/components/admin/group/__tests__/CodexManifestAccountsField.spec.ts src/views/admin/__tests__/GroupsView.duplicate.spec.ts`：2 个文件、10 个测试通过。
 - `./node_modules/.bin/vue-tsc --noEmit`：通过。
 - 两个修改的 i18n 文件 ESLint：通过。

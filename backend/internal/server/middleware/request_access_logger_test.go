@@ -45,7 +45,7 @@ func initMiddlewareTestLoggerWithLevel(t *testing.T, level string) *testLogSink 
 	if err := logger.Init(logger.InitOptions{
 		Level:       level,
 		Format:      "json",
-		ServiceName: "sub4api",
+		ServiceName: "sub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: false,

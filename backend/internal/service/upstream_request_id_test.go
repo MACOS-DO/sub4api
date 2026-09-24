@@ -10,8 +10,8 @@ import (
 
 func TestUpstreamRequestIDFromHeaders_UnconfiguredAccountRecordsNothing(t *testing.T) {
 	h := http.Header{}
-	h.Set("X-Client-Request-ID", "sub4api-client")
-	h.Set("X-Request-ID", "sub4api-local")
+	h.Set("X-Client-Request-ID", "sub2api-client")
+	h.Set("X-Request-ID", "sub2api-local")
 	h.Set("X-Oneapi-Request-Id", "oneapi-1")
 	h.Set("Request-Id", "req_official")
 	h.Set("xai-request-id", "xai-1")

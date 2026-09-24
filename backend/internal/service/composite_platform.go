@@ -85,7 +85,7 @@ func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 }
 
 // DetectModelPlatform maps common public model IDs to the concrete provider
-// platform used by sub4api. It intentionally returns false for ambiguous model
+// platform used by sub2api. It intentionally returns false for ambiguous model
 // names so composite groups fail closed instead of guessing.
 func DetectModelPlatform(model string) (string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(model))

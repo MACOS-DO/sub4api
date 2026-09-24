@@ -275,7 +275,7 @@ func TestJWTAuth_UserLookupErrors(t *testing.T) {
 					if route.websocket {
 						req.Header.Set("Upgrade", "websocket")
 						req.Header.Set("Connection", "Upgrade")
-						req.Header.Set("Sec-WebSocket-Protocol", "sub4api-admin, jwt."+token)
+						req.Header.Set("Sec-WebSocket-Protocol", "sub2api-admin, jwt."+token)
 					} else {
 						req.Header.Set("Authorization", "Bearer "+token)
 					}

@@ -110,9 +110,9 @@ func (p *darwinProvider) Generate(ctx context.Context) (string, error) {
 	command := exec.CommandContext(runCtx, nodePath, "-e", deviceCheckScript)
 	command.Env = []string{
 		"PATH=/usr/bin:/bin",
-		"SUB4API_DEVICECHECK_MODULE=" + modulePath,
-		"SUB4API_ATTESTATION_BUNDLE_ID=" + bundleID,
-		"SUB4API_ATTESTATION_SIGNALS=" + string(signalsJSON),
+		"SUB2API_DEVICECHECK_MODULE=" + modulePath,
+		"SUB2API_ATTESTATION_BUNDLE_ID=" + bundleID,
+		"SUB2API_ATTESTATION_SIGNALS=" + string(signalsJSON),
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -226,9 +226,9 @@ func truncateSignal(value string, limit int, fallback string) string {
 }
 
 const deviceCheckScript = `
-const addon = require(process.env.SUB4API_DEVICECHECK_MODULE);
-const signals = JSON.parse(process.env.SUB4API_ATTESTATION_SIGNALS);
-const bundleID = process.env.SUB4API_ATTESTATION_BUNDLE_ID;
+const addon = require(process.env.SUB2API_DEVICECHECK_MODULE);
+const signals = JSON.parse(process.env.SUB2API_ATTESTATION_SIGNALS);
+const bundleID = process.env.SUB2API_ATTESTATION_BUNDLE_ID;
 
 function head(major, value) {
   if (value < 24) return Buffer.from([major + value]);

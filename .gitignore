@@ -13,7 +13,7 @@
 *.dylib
 backend/bin/
 backend/server
-backend/sub4api
+backend/sub2api
 backend/main
 
 # Go 测试二进制
@@ -122,9 +122,6 @@ tests
 CLAUDE.md
 .claude
 scripts
-!/scripts/
-/scripts/*
-!/scripts/release/
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
@@ -136,7 +133,6 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
-!docs/ANTIGRAVITY_ATTRIBUTION_429.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
@@ -145,19 +141,30 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
 docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
+!docs/screenshots/codex-referral-dialog.png
+!docs/screenshots/codex-referral-success.png
 .serena/
 .codex/
 frontend/coverage/
 aicodex
 output/
 .codegraph/
+issues/
 
 # Vitest / Vite cache at repo root
 .vite/
-# 本地闭源插件开发目录及构建产物不进入 Sub4API 仓库
+# 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+
+!scripts/
+scripts/*
+!scripts/release/
+!scripts/release/**
+__pycache__/
+*.pyc

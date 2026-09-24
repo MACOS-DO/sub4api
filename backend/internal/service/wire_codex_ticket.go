@@ -1,6 +1,10 @@
 package service
 
-import "github.com/MACOS-DO/sub4api/internal/config"
+import (
+	"context"
+	"github.com/MACOS-DO/sub4api/internal/config"
+	"time"
+)
 
 // Construct the harvester only after history and proxy settings are available.
 func ProvideOpenAIGatewayService(
@@ -34,6 +38,16 @@ func ProvideOpenAIGatewayService(
 		openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService,
 		settingService, userPlatformQuotaRepo)
 	s.SetCodexTicketHistory(history)
+	if settingService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = settingService.LoadModelTraceBank(ctx)
+		cancel()
+	}
 	s.StartOpenAICodexTicketHarvester()
 	return s
+}
+
+func (s *OpenAIGatewayService) SetCodexTicketHistory(history CodexTicketAttemptRepository) {
+	s.openaiCodexTicketHistory = history
+	s.openaiCodexTicketLifecycle, _ = history.(CodexTicketLifecycleRepository)
 }

@@ -12,8 +12,8 @@
 ## 调用
 
 ```bash
-curl "$SUB4API_BASE_URL/api/v3/contents/generations/tasks" \
-  -H "Authorization: Bearer $SUB4API_KEY" \
+curl "$SUB2API_BASE_URL/api/v3/contents/generations/tasks" \
+  -H "Authorization: Bearer $SUB2API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "seedance-video",
@@ -25,14 +25,14 @@ curl "$SUB4API_BASE_URL/api/v3/contents/generations/tasks" \
   }'
 
 # 使用创建响应中的原生 id 查询，直至 succeeded / failed / cancelled 等终态。
-curl "$SUB4API_BASE_URL/api/v3/contents/generations/tasks/$TASK_ID" \
-  -H "Authorization: Bearer $SUB4API_KEY"
+curl "$SUB2API_BASE_URL/api/v3/contents/generations/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $SUB2API_KEY"
 
-curl -X DELETE "$SUB4API_BASE_URL/api/v3/contents/generations/tasks/$TASK_ID" \
-  -H "Authorization: Bearer $SUB4API_KEY"
+curl -X DELETE "$SUB2API_BASE_URL/api/v3/contents/generations/tasks/$TASK_ID" \
+  -H "Authorization: Bearer $SUB2API_KEY"
 ```
 
-亦支持 `/v3`、`/v1` 和无版本前缀别名。Ark SDK 的 Base URL 可改为 `$SUB4API_BASE_URL/api/v3`。文本、图片、视频、音频内容、角色及扩展参数原样传递，仅按账号配置改写模型名；响应保持上游原生格式。
+亦支持 `/v3`、`/v1` 和无版本前缀别名。Ark SDK 的 Base URL 可改为 `$SUB2API_BASE_URL/api/v3`。文本、图片、视频、音频内容、角色及扩展参数原样传递，仅按账号配置改写模型名；响应保持上游原生格式。
 
 ## 任务与计费
 

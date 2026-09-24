@@ -292,14 +292,13 @@
             </div>
           </template>
           <template #cell-codex_ticket="{ row }">
-            <div v-if="row.platform === 'openai' && (row.type === 'oauth' || row.type === 'setup-token')" class="flex min-w-36 flex-col gap-1">
-              <button v-for="model in ['gpt-6-astra', 'gpt-5.6-sol']" :key="model" type="button" class="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-xs transition-colors hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-primary-900/20" @click="ticketAccount = row; ticketModel = model">
-                <span class="font-medium text-gray-700 dark:text-gray-200">{{ model === 'gpt-6-astra' ? '6 Astra' : '5.6 Sol' }}</span>
-                <span :class="codexTicketStatusClass(row, model)" :title="codexTicketStatusTitle(row, model)">
-                  {{ codexTicketStatusText(row, model) }}
-                </span>
-              </button>
-            </div>
+            <button
+              v-if="row.platform === 'openai' && (row.type === 'oauth' || row.type === 'setup-token')"
+              type="button"
+              class="rounded-lg px-2 py-1 text-sm font-semibold tabular-nums text-primary-600 transition hover:bg-primary-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-primary-400 dark:hover:bg-primary-900/20"
+              :aria-label="t('admin.accounts.openai.codexTicketSummary', ticketSummary(row))"
+              @click="openCodexTickets(row, false)"
+            >{{ ticketSummary(row).ready }} / {{ ticketSummary(row).total }}</button>
             <span v-else class="text-gray-400">—</span>
           </template>
           <template #cell-schedulable="{ row }">
@@ -462,13 +461,13 @@
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
-    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
-    <CodexTicketDialog :show="!!ticketAccount" :account="ticketAccount" :model="ticketModel" @close="ticketAccount = null" @refreshed="reload" />
+    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" @codex-tickets="openEditCodexTickets" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
+    <CodexTicketDashboard :show="showCodexTickets" :account="codexTicketAcc" :initial-diagnostic="codexDiagnostic" @close="showCodexTickets = false" @updated="handleAccountUpdated" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexTickets($event, true)" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -520,6 +519,7 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import CodexTicketDashboard from '@/components/admin/account/CodexTicketDashboard.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -528,7 +528,6 @@ import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
-import CodexTicketDialog from '@/components/account/CodexTicketDialog.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
@@ -602,33 +601,16 @@ const selTypes = computed<AccountType[]>(() => {
 })
 const showCreate = ref(false)
 const showEdit = ref(false)
-const ticketAccount = ref<AccountListItem | null>(null)
-const ticketModel = ref('gpt-6-astra')
-const getCodexTicket = (account: AccountListItem, model: string) => account.codex_turn_tickets?.find(ticket => ticket.model === model)
-const isCodexTicketHarvestEnabled = (account: AccountListItem, model: string) => {
-  const status = getCodexTicket(account, model)
-  if (status?.harvest_enabled === false || account.extra?.codex_ticket_harvest_enabled === false) return false
-  return account.extra?.codex_ticket_harvest_models?.[model] !== false
+const showCodexTickets = ref(false)
+const codexTicketAcc = ref<Account | null>(null)
+const codexDiagnostic = ref(false)
+function openEditCodexTickets() { if (edAcc.value) { showEdit.value = false; openCodexTickets(edAcc.value, false) } }
+function openCodexTickets(account: Account, diagnostic: boolean) { codexTicketAcc.value = account; codexDiagnostic.value = diagnostic; showCodexTickets.value = true }
+function ticketSummary(account: Account) {
+  const entries = account.codex_turn_tickets ?? []
+  return { ready: entries.filter(ticket => ticket.ready).length, total: entries.length }
 }
-const codexTicketStatusText = (account: AccountListItem, model: string) => {
-  if (!isCodexTicketHarvestEnabled(account, model)) return t('admin.accounts.codexTicket.inactive')
-  const ticket = getCodexTicket(account, model)
-  if (!ticket?.ready) return '—'
-  if (ticket.reusing_expired) return t('admin.accounts.codexTicket.reusedExpired')
-  return `${Math.ceil((ticket.remaining_seconds ?? 0) / 60)}m`
-}
-const codexTicketStatusClass = (account: AccountListItem, model: string) => {
-  const ticket = getCodexTicket(account, model)
-  if (!isCodexTicketHarvestEnabled(account, model) || !ticket?.ready) return 'text-gray-500 dark:text-gray-400'
-  return ticket.reusing_expired ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
-}
-const codexTicketStatusTitle = (account: AccountListItem, model: string) => {
-  const ticket = getCodexTicket(account, model)
-  if (!ticket?.reusing_expired) return undefined
-  return ticket.expires_at
-    ? t('admin.accounts.codexTicket.reusedExpiredHint', { time: formatDateTime(ticket.expires_at) })
-    : t('admin.accounts.codexTicket.reusedExpired')
-}
+
 const showSync = ref(false)
 const showImportData = ref(false)
 const showExportDataDialog = ref(false)
@@ -1827,7 +1809,7 @@ const allColumns = computed(() => {
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
-    { key: 'codex_ticket', label: t('admin.accounts.codexTicket.column'), sortable: false },
+    { key: 'codex_ticket', label: t('admin.accounts.columns.codexTicket'), sortable: false },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
@@ -2315,7 +2297,7 @@ const handleExportData = async () => {
           }
     ))
     const timestamp = formatExportTimestamp()
-    const filename = `sub4api-account-${timestamp}.json`
+    const filename = `sub2api-account-${timestamp}.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')

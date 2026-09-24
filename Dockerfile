@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
-# Sub4API Multi-Stage Dockerfile
+# Sub2API Multi-Stage Dockerfile
 # =============================================================================
 # Stage 1: Build frontend
 # Stage 2: Build Go backend with embedded frontend
@@ -30,7 +30,7 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN --mount=type=cache,id=sub4api-pnpm-store,target=/root/.local/share/pnpm/store \
+RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/store \
     if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
     pnpm install --frozen-lockfile --prefer-offline
 
@@ -74,7 +74,7 @@ WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 # Cache mount keeps the module cache across builds so a transient CDN blip on
 # retry resumes instead of re-fetching every zip from scratch.
-RUN --mount=type=cache,id=sub4api-gomod,target=/go/pkg/mod \
+RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
     go mod download
 
 # Copy backend source first
@@ -85,8 +85,8 @@ COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
 
 # Build the binary (BuildType=release for CI builds, embed frontend)
 # Version precedence: build arg VERSION > exact git tag > cmd/server/VERSION
-RUN --mount=type=cache,id=sub4api-gomod,target=/go/pkg/mod \
-    --mount=type=cache,id=sub4api-gobuild,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
+    --mount=type=cache,id=sub2api-gobuild,target=/root/.cache/go-build \
     VERSION_VALUE="${VERSION}" && \
     if [ -z "${VERSION_VALUE}" ]; then VERSION_VALUE="$(./scripts/resolve-version.sh)"; fi && \
     DATE_VALUE="${DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" && \
@@ -94,7 +94,7 @@ RUN --mount=type=cache,id=sub4api-gomod,target=/go/pkg/mod \
     -tags embed \
     -ldflags="-s -w -X main.Version=${VERSION_VALUE} -X main.Commit=${COMMIT} -X main.Date=${DATE_VALUE} -X main.BuildType=release" \
     -trimpath \
-    -o /app/sub4api \
+    -o /app/sub2api \
     ./cmd/server
 
 # -----------------------------------------------------------------------------
@@ -108,8 +108,8 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 FROM ${ALPINE_IMAGE}
 
 # Labels
-LABEL maintainer="MACOS-DO <github.com/MACOS-DO>"
-LABEL description="Sub4API - AI API Gateway Platform"
+LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
+LABEL description="Sub2API - AI API Gateway Platform"
 LABEL org.opencontainers.image.source="https://github.com/MACOS-DO/sub4api"
 
 # Install runtime dependencies
@@ -132,26 +132,20 @@ COPY --from=pg-client /usr/local/bin/psql /usr/local/bin/psql
 COPY --from=pg-client /usr/local/lib/libpq.so.5* /usr/local/lib/
 
 # Create non-root user
-RUN addgroup -g 1000 sub4api && \
-    adduser -u 1000 -G sub4api -s /bin/sh -D sub4api
+RUN addgroup -g 1000 sub2api && \
+    adduser -u 1000 -G sub2api -s /bin/sh -D sub2api
 
 # Set working directory
 WORKDIR /app
 
-# Legacy Compose may select the original user and executable by name.
-RUN printf 'sub2api:x:1000:1000::/home/sub4api:/bin/sh\n' >> /etc/passwd && \
-    printf 'sub2api:x:1000:\n' >> /etc/group && \
-    ln -s /app/sub4api /app/sub2api
-
 # Copy binary/resources with ownership to avoid extra full-layer chown copy
-COPY --from=backend-builder --chown=sub4api:sub4api /app/sub4api /app/sub4api
-COPY --from=backend-builder --chown=sub4api:sub4api /app/backend/resources /app/resources
+COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api
+COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
 
-# The updater creates temporary files, backups, and replacement binaries beside
-# /app/sub4api, so the runtime user needs write access to /app itself.
-RUN mkdir -p /app/data && chown sub4api:sub4api /app /app/data
+# Create data directory
+RUN mkdir -p /app/data && chown sub2api:sub2api /app/data
 
-# Copy entrypoint script (fixes volume permissions then drops to sub4api)
+# Copy entrypoint script (fixes volume permissions then drops to sub2api)
 COPY deploy/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
@@ -162,6 +156,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget -q -T 5 -O /dev/null http://localhost:${SERVER_PORT:-8080}/health || exit 1
 
-# Run the application (entrypoint fixes /app/data ownership then execs as sub4api)
+# Run the application (entrypoint fixes /app/data ownership then execs as sub2api)
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["/app/sub4api"]
+CMD ["/app/sub2api"]

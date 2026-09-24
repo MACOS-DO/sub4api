@@ -24,9 +24,9 @@ func (pluginFailingRequestBody) Read([]byte) (int, error) {
 func (pluginFailingRequestBody) Close() error { return nil }
 
 func TestPluginRuntimeIntegration(t *testing.T) {
-	packagePath := os.Getenv("SUB4API_TEST_PLUGIN_PACKAGE")
+	packagePath := os.Getenv("SUB2API_TEST_PLUGIN_PACKAGE")
 	if packagePath == "" {
-		t.Skip("未提供 SUB4API_TEST_PLUGIN_PACKAGE，跳过本地插件进程集成测试")
+		t.Skip("未提供 SUB2API_TEST_PLUGIN_PACKAGE，跳过本地插件进程集成测试")
 	}
 	packageFile, err := os.Open(packagePath)
 	require.NoError(t, err)

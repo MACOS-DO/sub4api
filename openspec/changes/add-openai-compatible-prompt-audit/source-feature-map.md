@@ -79,7 +79,7 @@ ok github.com/mt21625457/aicodex/internal/gatewayadapter/transport 3.233s
 
 以下差异是目标架构适配，不是功能删减：
 
-| AICodex 实现细节 | sub4api 目标实现 | 等价性理由/门禁 |
+| AICodex 实现细节 | sub2api 目标实现 | 等价性理由/门禁 |
 | --- | --- | --- |
 | Ent PromptAuditJob/Event | PostgreSQL migration + `database/sql` | 目标项目以 SQL migration 为 schema 事实源；字段和行为由 A05/A07/A10/A12 验证 |
 | 表/对象可能带 AICodex 命名 | `prompt_audit_jobs/events` | 不复制 `aicodex_` 前缀；管理能力不变 |

@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# Sub4API Docker Deployment Preparation Script
+# Sub2API Docker Deployment Preparation Script
 # =============================================================================
-# This script prepares deployment files for Sub4API:
+# This script prepares deployment files for Sub2API:
 #   - Downloads docker-compose.local.yml and .env.example
 #   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
 #   - Creates necessary data directories
@@ -54,7 +54,7 @@ command_exists() {
 main() {
     echo ""
     echo "=========================================="
-    echo "  Sub4API Deployment Preparation"
+    echo "  Sub2API Deployment Preparation"
     echo "=========================================="
     echo ""
 
@@ -157,7 +157,7 @@ main() {
     echo "     docker-compose up -d"
     echo ""
     echo "  3. View logs:"
-    echo "     docker-compose logs -f sub4api"
+    echo "     docker-compose logs -f sub2api"
     echo ""
     echo "  4. Access Web UI:"
     echo "     http://localhost:8080"

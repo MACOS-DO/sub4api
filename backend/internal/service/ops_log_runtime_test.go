@@ -129,7 +129,7 @@ func TestUpdateRuntimeLogConfig_InvalidConfigShouldNotApply(t *testing.T) {
 	if err := logger.Init(logger.InitOptions{
 		Level:       "info",
 		Format:      "json",
-		ServiceName: "sub4api",
+		ServiceName: "sub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: true,
@@ -200,7 +200,7 @@ func TestResetRuntimeLogConfig_ShouldFallbackToBaseline(t *testing.T) {
 	if err := logger.Init(logger.InitOptions{
 		Level:       "debug",
 		Format:      "json",
-		ServiceName: "sub4api",
+		ServiceName: "sub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: true,
@@ -311,7 +311,7 @@ func TestUpdateRuntimeLogConfig_PersistFailureRollback(t *testing.T) {
 	if err := logger.Init(logger.InitOptions{
 		Level:       "info",
 		Format:      "json",
-		ServiceName: "sub4api",
+		ServiceName: "sub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: true,
@@ -368,7 +368,7 @@ func TestApplyRuntimeLogConfigOnStartup(t *testing.T) {
 	if err := logger.Init(logger.InitOptions{
 		Level:       "info",
 		Format:      "json",
-		ServiceName: "sub4api",
+		ServiceName: "sub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: true,
@@ -534,7 +534,7 @@ func TestUpdateRuntimeLogConfig_Success(t *testing.T) {
 	if err := logger.Init(logger.InitOptions{
 		Level:       "info",
 		Format:      "json",
-		ServiceName: "sub4api",
+		ServiceName: "sub2api",
 		Environment: "test",
 		Output: logger.OutputOptions{
 			ToStdout: true,

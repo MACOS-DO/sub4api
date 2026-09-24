@@ -1165,20 +1165,3 @@ func TestResolveGrokCacheIdentityConcurrentDeterminism(t *testing.T) {
 	}
 	require.NotEmpty(t, first)
 }
-
-func TestGrokCacheLegacyHeaderAndNewPrecedence(t *testing.T) {
-	account := healthyGrokOAuthGatewayTestAccount(90144, "access-token")
-	account.Credentials["subscription_tier"] = "free"
-	body := []byte(`{"model":"grok","tools":[{"type":"function","name":"Read","parameters":{"type":"object"}}],"tool_choice":"auto"}`)
-	c := newGrokCacheTestContext(90144)
-	c.Request.URL.Path = "/v1/chat/completions"
-	c.Request.Header.Set("X-Sub2API-Grok-Client-Tool-Cache", "off")
-	patched, err := applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
-	require.NoError(t, err)
-	require.JSONEq(t, string(body), string(patched))
-	c.Request.Header.Set("X-Sub2API-Grok-Client-Tool-Cache", "prefer-cache")
-	c.Request.Header.Set(grokClientToolCacheOptInHeader, "off")
-	patched, err = applyGrokFreeRequestToolCacheRoute(c, body, body, account, "isolated-id")
-	require.NoError(t, err)
-	require.JSONEq(t, string(body), string(patched))
-}

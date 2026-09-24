@@ -487,23 +487,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
 	updates[SettingKeyOpenAICodexTicketAllowWithoutTicket] = strconv.FormatBool(settings.OpenAICodexTicketAllowWithoutTicket)
-	if settings.OpenAICodexTicketTTLSeconds != 0 &&
-		(settings.OpenAICodexTicketTTLSeconds < openAICodexTicketMinTTLSeconds || settings.OpenAICodexTicketTTLSeconds > openAICodexTicketMaxTTLSeconds) {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TTL",
-			fmt.Sprintf("ticket TTL must be between %d and %d seconds", openAICodexTicketMinTTLSeconds, openAICodexTicketMaxTTLSeconds))
-	}
-	updates[SettingKeyOpenAICodexTicketTTLSeconds] = strconv.Itoa(normalizeOpenAICodexTicketTTLSeconds(settings.OpenAICodexTicketTTLSeconds))
-	updates[SettingKeyOpenAICodexTicketReuseExpired] = strconv.FormatBool(settings.OpenAICodexTicketReuseExpired)
-	if settings.OpenAICodexTicketReuseExpiredMaxSeconds < 0 || settings.OpenAICodexTicketReuseExpiredMaxSeconds > openAICodexTicketMaxTTLSeconds {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_REUSE_WINDOW",
-			fmt.Sprintf("ticket reuse window must be between 0 and %d seconds", openAICodexTicketMaxTTLSeconds))
-	}
-	updates[SettingKeyOpenAICodexTicketReuseExpiredMaxSeconds] = strconv.Itoa(settings.OpenAICodexTicketReuseExpiredMaxSeconds)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
 	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
 	// SettingKeyOpenAICodexClientVersionSynced 由自动同步任务独占写入，此处不得覆盖，
+	// 否则面板保存会把同步结果清空。
+	updates[SettingKeyClaudeCodeClientVersion] = NormalizeClaudeCodeClientVersion(settings.ClaudeCodeClientVersion)
+	updates[SettingKeyClaudeCodeVersionAutoSyncEnabled] = strconv.FormatBool(settings.ClaudeCodeVersionAutoSyncEnabled)
+	// SettingKeyClaudeCodeClientVersionSynced 由自动同步任务独占写入，此处不得覆盖，
 	// 否则面板保存会把同步结果清空。
 	// codex_cli_only 加固
 	updates[SettingKeyMinCodexVersion] = strings.TrimSpace(settings.MinCodexVersion)
@@ -517,7 +509,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
 	updates[SettingKeyOpenAILowUpstreamRatePriorityEnabled] = strconv.FormatBool(settings.OpenAILowUpstreamRatePriorityEnabled)
-	updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier] = strconv.FormatFloat(settings.OpenAIOAuthSchedulingRateMultiplier, 'f', -1, 64)
+	updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier] = ""
+	if rate := settings.OpenAIOAuthSchedulingRateMultiplier; rate != nil {
+		updates[SettingKeyOpenAIOAuthSchedulingRateMultiplier] = strconv.FormatFloat(*rate, 'f', -1, 64)
+	}
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerStickyWeightedEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled)
@@ -757,11 +752,9 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// 版本号缓存只做失效，不在此重算：生效值还取决于自动同步写入的 synced 键，
 	// 这里没有它的最新值，重算会把同步结果覆盖成陈旧值。
 	s.InvalidateOpenAICodexClientVersionCache()
+	s.InvalidateClaudeCodeClientVersionCache()
 	s.InvalidateOpenAICodexTicketEnabledCache()
-	s.InvalidateOpenAICodexTicketAllowWithoutTicketCache()
-	s.InvalidateOpenAICodexTicketTTLCache()
-	s.InvalidateOpenAICodexTicketReuseExpiredCache()
-	s.InvalidateOpenAICodexTicketReuseExpiredMaxSecondsCache()
+	s.InvalidateOpenAICodexTicketAllowCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

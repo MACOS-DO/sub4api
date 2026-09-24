@@ -7,8 +7,6 @@ import (
 	"unicode"
 )
 
-const openAICodexTicketQuotaLeadTime = 30 * time.Minute
-
 // Use the same account-specific rule for harvesting, hydration, and forwarding.
 func openAICodexTicketTargetLength(account *Account, configured int) int {
 	if account != nil && account.IsOpenAIOAuthLike() {
@@ -51,9 +49,26 @@ func openAICodexTicketQuota(account *Account, now time.Time) openAICodexTicketQu
 		return state
 	}
 	resetAt := *account.RateLimitResetAt
-	resumeAt := resetAt.Add(-openAICodexTicketQuotaLeadTime)
 	state.resetAt = &resetAt
-	state.resumeAt = &resumeAt
-	state.paused = now.Before(resumeAt)
+	state.resumeAt = &resetAt
+	state.paused = now.Before(resetAt)
 	return state
+}
+
+func openAICodexTicketHarvestLimited(account *Account, model string, now time.Time) bool {
+	if openAICodexTicketQuota(account, now).paused {
+		return true
+	}
+	if account == nil {
+		return false
+	}
+	resetAt := account.modelRateLimitResetAt(model)
+	if resetAt == nil || !resetAt.After(now) {
+		return false
+	}
+	if account.Extra["allow_overages"] == true {
+		creditsReset := account.modelRateLimitResetAt("AICredits")
+		return creditsReset != nil && creditsReset.After(now)
+	}
+	return true
 }

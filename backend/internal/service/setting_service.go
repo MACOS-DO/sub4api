@@ -117,33 +117,30 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo                              SettingRepository
-	defaultSubGroupReader                    DefaultSubscriptionGroupReader
-	proxyRepo                                ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                                      *config.Config
-	onUpdate                                 func() // Callback when settings are updated (for cache invalidation)
-	version                                  string // Application version
-	webSearchManagerBuilder                  WebSearchManagerBuilder
-	antigravityUAVersionCache                atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF                   singleflight.Group
-	openAICodexUACache                       atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF                          singleflight.Group
-	openAICodexVersionCache                  atomic.Value // *cachedOpenAICodexClientVersion
-	openAICodexVersionSF                     singleflight.Group
-	openAICodexTicketEnabledCache            atomic.Value // *cachedOpenAICodexTicketEnabled
-	openAICodexTicketAllowWithoutTicketCache atomic.Value
-	openAICodexTicketEnabledSF               singleflight.Group
-	openAICodexTicketAllowWithoutTicketSF    singleflight.Group
-	openAICodexTicketTTLCache                atomic.Value // *cachedOpenAICodexTicketTTLSeconds
-	openAICodexTicketTTLSF                   singleflight.Group
-	openAICodexTicketReuseExpiredCache       atomic.Value // *cachedOpenAICodexTicketEnabled
-	openAICodexTicketReuseExpiredSF          singleflight.Group
-	openAICodexTicketReuseWindowCache        atomic.Value // *cachedOpenAICodexTicketTTLSeconds
-	openAICodexTicketReuseWindowSF           singleflight.Group
-	openAICodexTicketHarvestProxyCache       atomic.Value // *cachedOpenAICodexTicketHarvestProxy
-	openAICodexTicketHarvestProxySF          singleflight.Group
-	codexRestrictionPolicyCache              atomic.Value // *cachedCodexRestrictionPolicy
-	codexRestrictionPolicySF                 singleflight.Group
+	settingRepo                        SettingRepository
+	defaultSubGroupReader              DefaultSubscriptionGroupReader
+	proxyRepo                          ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                                *config.Config
+	onUpdate                           func() // Callback when settings are updated (for cache invalidation)
+	version                            string // Application version
+	webSearchManagerBuilder            WebSearchManagerBuilder
+	antigravityUAVersionCache          atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF             singleflight.Group
+	openAICodexUACache                 atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF                    singleflight.Group
+	openAICodexVersionCache            atomic.Value // *cachedOpenAICodexClientVersion
+	openAICodexVersionSF               singleflight.Group
+	claudeCodeVersionCache             atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF                singleflight.Group
+	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF           singleflight.Group
+	openAICodexTicketEnabledCache      atomic.Value // *cachedOpenAICodexTicketEnabled
+	codexTicketCadenceCache            atomic.Value
+	openAICodexTicketEnabledSF         singleflight.Group
+	openAICodexTicketAllowCache        atomic.Value
+	openAICodexTicketAllowSF           singleflight.Group
+	openAICodexTicketHarvestProxyCache atomic.Value // *cachedOpenAICodexTicketHarvestProxy
+	openAICodexTicketHarvestProxySF    singleflight.Group
 
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group

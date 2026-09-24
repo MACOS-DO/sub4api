@@ -90,7 +90,7 @@ func TestListDueOllamaCloudUsageAccountsOrderingLimitAndProxyHydration(t *testin
 //
 // Run against the oldest supported server to exercise the version-sensitive path:
 //
-//	SUB4API_TEST_POSTGRES_IMAGE=postgres:15-alpine go test -tags integration ./internal/repository/
+//	SUB2API_TEST_POSTGRES_IMAGE=postgres:15-alpine go test -tags integration ./internal/repository/
 func TestListDueOllamaCloudUsageAccountsParsesAllRFC3339Precisions(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)

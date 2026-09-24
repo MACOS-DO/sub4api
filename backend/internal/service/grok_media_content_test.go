@@ -220,7 +220,7 @@ func TestForwardGrokMediaContentFetchesValidatedSignedURLWithoutCredentials(t *t
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.requests[1].Context()))
 }
 
-func TestForwardGrokMediaContentFollowsAuthenticatedSub4APIRelay(t *testing.T) {
+func TestForwardGrokMediaContentFollowsAuthenticatedSub2APIRelay(t *testing.T) {
 	for _, statusURL := range []string{
 		`/v1/videos/task-1/content`,
 		`https://relay.example/v1/videos/task-1/content`,

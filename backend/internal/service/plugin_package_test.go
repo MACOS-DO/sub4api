@@ -175,9 +175,9 @@ func testPluginManifest(files map[string][]byte) PluginManifest {
 		Name:          "测试 OpenAI Transport",
 		Version:       "0.1.0",
 		Requires: PluginRequirements{
-			Sub4API:                   ">=0.1.170 <0.2.0",
-			RecommendedSub4APIVersion: "0.1.179",
-			TestedSub4APIVersions:     []string{"0.1.179"},
+			Sub2API:                   ">=0.1.170 <0.2.0",
+			RecommendedSub2APIVersion: "0.1.179",
+			TestedSub2APIVersions:     []string{"0.1.179"},
 			PluginProtocol:            pluginv1.ProtocolVersion,
 			TransportAPI:              pluginv1.TransportAPIVersion,
 			UIBridge:                  pluginv1.UIBridgeVersion,

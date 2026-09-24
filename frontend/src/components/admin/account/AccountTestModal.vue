@@ -170,8 +170,6 @@
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.grok.audioUploadHint') }}</p>
       </div>
 
-      <AccountTestResponseHeaders :responses="upstreamResponses" />
-
       <!-- Terminal Output -->
       <div class="group relative">
         <div
@@ -367,9 +365,6 @@
 </template>
 
 <script setup lang="ts">
-import AccountTestResponseHeaders from '@/components/account/AccountTestResponseHeaders.vue'
-import type { AccountTestUpstreamResponse } from '@/components/account/accountTestResponse'
-
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -412,7 +407,6 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
-const upstreamResponses = ref<AccountTestUpstreamResponse[]>([])
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewMedia[]>([])
@@ -504,10 +498,9 @@ const modelOptionsForMode = computed(() => {
 
 const supportsPromptInput = computed(() => {
   if (!isGrokAccount.value) {
-    return true
+    return supportsImageTest.value
   }
   return (
-    grokTestMode.value === 'text' ||
     grokTestMode.value === 'image' ||
     grokTestMode.value === 'video' ||
     grokTestMode.value === 'search' ||
@@ -616,7 +609,7 @@ const promptInputLabel = computed(() => {
   if (grokTestMode.value === 'tts') {
     return t('admin.accounts.grok.ttsTextLabel')
   }
-  return t('admin.accounts.testTextPrompt')
+  return t('admin.accounts.imagePromptLabel')
 })
 
 const promptInputPlaceholder = computed(() => {
@@ -632,7 +625,7 @@ const promptInputPlaceholder = computed(() => {
   if (grokTestMode.value === 'tts') {
     return t('admin.accounts.grok.ttsTextPlaceholder')
   }
-  return t('admin.accounts.testTextPromptHint')
+  return ''
 })
 
 const promptInputHint = computed(() => {
@@ -654,7 +647,7 @@ const promptInputHint = computed(() => {
   if (grokTestMode.value === 'realtime') {
     return t('admin.accounts.grok.realtimeTestHint')
   }
-  return t('admin.accounts.testTextPromptHint')
+  return ''
 })
 
 const testModeSummary = computed(() => {
@@ -798,7 +791,6 @@ const loadAvailableModels = async () => {
 }
 
 const resetState = () => {
-  upstreamResponses.value = []
   status.value = 'idle'
   outputLines.value = []
   streamingContent.value = ''
@@ -955,13 +947,9 @@ const handleEvent = (event: {
   image_url?: string
   audio_url?: string
   video_url?: string
-  data?: AccountTestUpstreamResponse
   mime_type?: string
 }) => {
   switch (event.type) {
-    case 'upstream_response':
-      if (event.data) upstreamResponses.value.push(event.data)
-      break
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {

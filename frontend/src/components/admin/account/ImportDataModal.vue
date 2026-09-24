@@ -224,7 +224,7 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
-const SUPPORTED_DATA_TYPES = ['sub4api-data', 'sub4api-bundle']
+const SUPPORTED_DATA_TYPES = ['sub2api-data', 'sub2api-bundle']
 const SUPPORTED_DATA_VERSION = 1
 
 // 与后端 validateDataHeader 对齐:合并前逐文件校验,避免坏文件混入合并 payload 后

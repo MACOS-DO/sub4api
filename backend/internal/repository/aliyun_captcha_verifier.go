@@ -60,14 +60,11 @@ func (v *aliyunCaptchaVerifier) VerifyCaptcha(ctx context.Context, cred service.
 	return result, nil
 }
 
-// normalizeAliyunCaptchaError 仅将带有 HTTP 响应状态码的 SDK 错误归一化为
-// service.AliyunCaptchaAPIError；网络/超时错误也可能被 SDK 包装，需原样返回。
+// normalizeAliyunCaptchaError 把 SDK 的两种错误类型归一化为 service.AliyunCaptchaAPIError，
+// 其余错误（网络/超时等）原样返回。
 func normalizeAliyunCaptchaError(err error) error {
 	var teaErr *tea.SDKError
 	if errors.As(err, &teaErr) {
-		if status := tea.IntValue(teaErr.StatusCode); status < 100 || status > 599 {
-			return err
-		}
 		return &service.AliyunCaptchaAPIError{
 			Code:    tea.StringValue(teaErr.Code),
 			Message: tea.StringValue(teaErr.Message),
@@ -75,9 +72,6 @@ func normalizeAliyunCaptchaError(err error) error {
 	}
 	var daraErr *dara.SDKError
 	if errors.As(err, &daraErr) {
-		if status := dara.IntValue(daraErr.StatusCode); status < 100 || status > 599 {
-			return err
-		}
 		return &service.AliyunCaptchaAPIError{
 			Code:    dara.StringValue(daraErr.Code),
 			Message: dara.StringValue(daraErr.Message),

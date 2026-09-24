@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>降智检测 · 配置与结果分步预览</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:#1f2937;background:#f3f4f6;--surface:#fff;--canvas:#f9fafb;--line:#e5e7eb;--muted:#6b7280;--text:#111827;--primary:#0d9488;--primary-soft:#f0fdfa;--primary-line:#99f6e4;--warning:#b45309;--warning-soft:#fffbeb;--danger:#b91c1c;--danger-soft:#fef2f2;--neutral:#f3f4f6;--shadow:0 16px 48px #0f172a12}
+    body.dark{background:#020617;color:#e2e8f0;--surface:#1e293b;--canvas:#0f172a;--line:#334155;--muted:#94a3b8;--text:#f8fafc;--primary:#5eead4;--primary-soft:#134e4a55;--primary-line:#115e59;--warning:#fcd34d;--warning-soft:#78350f44;--danger:#fca5a5;--danger-soft:#7f1d1d44;--neutral:#334155;--shadow:0 16px 48px #0004}
+    *{box-sizing:border-box}
+    body{margin:0;padding:18px;overflow:hidden}
+    button,input{font:inherit}
+    button{cursor:pointer}
+    button:disabled{cursor:not-allowed;opacity:.5}
+    button:focus-visible,input:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+    h2[tabindex="-1"]:focus{outline:none}
+    [hidden]{display:none!important}
+    h1,h2,h3,p{margin:0}
+    h1{font-size:19px;font-weight:650;letter-spacing:-.02em}
+    h2{font-size:18px;font-weight:650;color:var(--text)}
+    h3{font-size:13px;font-weight:600}
+    .preview-tools{max-width:980px;margin:0 auto 12px;display:flex;align-items:center;gap:14px;min-width:0}
+    .preview-label{font-size:11px;color:var(--muted);white-space:nowrap}
+    .scenarios{display:flex;gap:4px;overflow-x:auto;min-width:0;scrollbar-width:none}
+    .scenario{flex-shrink:0;background:none;border:0;border-radius:6px;color:var(--muted);padding:6px 9px;font-size:11px}
+    .scenario[aria-pressed=true]{color:var(--primary);background:var(--primary-soft)}
+    .frame{display:flex;flex-direction:column;width:100%;max-width:980px;height:calc(100dvh - 82px);max-height:880px;margin:auto;background:var(--canvas);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 28px;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0}
+    .account{margin-bottom:4px;font-size:11px;font-weight:600;color:var(--primary)}
+    .button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);padding:9px 13px;font-size:12px;font-weight:500;white-space:nowrap}
+    .button:hover{background:var(--neutral)}
+    .button.primary{background:#0d9488;border-color:#0d9488;color:#fff}
+    .button.primary:hover{background:#0f766e}
+    .button.small{padding:6px 10px;font-size:11px}
+    .text-button{border:0;background:none;color:var(--primary);padding:3px 0;font-size:12px;text-align:left}
+    .text-button:hover{text-decoration:underline}
+    .tabs{display:flex;gap:4px;flex-shrink:0;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--surface);padding:0 22px;scrollbar-width:none}
+    .tab{flex-shrink:0;padding:13px 12px;background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font-size:13px}
+    .tab[aria-current=page]{border-bottom-color:var(--primary);color:var(--primary);font-weight:600}
+    .viewport{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+    .content{width:100%;max-width:790px;margin:auto;padding:25px 28px 28px}
+    .intro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:23px}
+    .muted{color:var(--muted);font-size:12px;line-height:1.6}
+    .intro p{margin-top:6px}
+    .version{font-family:ui-monospace,monospace;font-size:10px;color:var(--muted);white-space:nowrap;padding-top:5px}
+    .field{margin-bottom:20px}
+    .field-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+    .key-select{position:relative}
+    .key-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);padding:11px 13px;font-size:13px}
+    .key-trigger:hover,.key-trigger[aria-expanded=true]{border-color:var(--primary)}
+    .key-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .key-id{font-size:11px;color:var(--muted);margin-left:8px}
+    .key-menu{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:20;padding:5px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow)}
+    .key-option{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px;border:0;border-radius:6px;background:none;color:var(--text);font-size:13px;text-align:left}
+    .key-option:hover,.key-option[aria-selected=true]{background:var(--primary-soft);color:var(--primary)}
+    .picker{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+    .picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+    .picker-head strong{font-weight:600;color:var(--primary)}
+    .chip-area{padding:10px 13px 0}
+    .chips{display:flex;flex-wrap:wrap;gap:6px}
+    .chip{display:inline-flex;align-items:center;gap:7px;max-width:100%;height:26px;padding:3px 7px 3px 9px;border-radius:5px;background:var(--primary-soft);color:var(--primary);font-size:11px;font-family:ui-monospace,monospace}
+    .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .chip button{flex-shrink:0;border:0;background:none;color:inherit;padding:0 2px;font-size:16px}
+    .chip-toggle{margin-top:7px;font-size:11px}
+    .search-box{display:flex;align-items:center;gap:9px;margin:12px 13px 8px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;color:var(--muted)}
+    .search-box:focus-within{border-color:var(--primary)}
+    .search-box svg{width:16px;height:16px;flex-shrink:0}
+    .search-box input{min-width:0;flex:1;outline:none;border:0;background:none;color:var(--text);font-size:12px}
+    .model-list{max-height:196px;overflow-y:auto;padding:0 6px 7px}
+    .group-label{font-size:10px;font-weight:600;color:var(--muted);padding:9px 8px 6px}
+    .model-option{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;border-radius:6px;color:var(--text);padding:9px 8px;text-align:left}
+    .model-option:hover{background:var(--canvas)}
+    .model-option[aria-pressed=true]{background:var(--primary-soft)}
+    .checkbox{display:grid;place-items:center;width:17px;height:17px;flex-shrink:0;border:1px solid var(--line);border-radius:5px;color:transparent;font-size:11px}
+    .model-option[aria-pressed=true] .checkbox{background:#0d9488;border-color:#0d9488;color:#fff}
+    .model-name{min-width:0;flex:1;font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}
+    .model-kind{flex-shrink:0;font-size:10px;color:var(--muted)}
+    .empty{padding:20px;color:var(--muted);font-size:12px;text-align:center}
+    .launch{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:17px;border-top:1px solid var(--line)}
+    .launch-actions{display:flex;align-items:center;gap:13px;flex-shrink:0}
+    .results{min-height:100%;background:var(--surface)}
+    .result-header{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+    .result-header-inner{max-width:790px;margin:auto;padding:22px 28px 18px}
+    .result-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .result-summary{display:flex;flex-wrap:wrap;gap:5px 9px;margin-top:9px;font-size:11px;color:var(--muted)}
+    .result-summary span+span:before{content:"·";margin-right:9px;color:var(--muted)}
+    .progress-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:20px}
+    .run-message{font-size:12px;min-width:0;color:var(--text);overflow-wrap:anywhere}
+    .progress-count{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums}
+    .progress-track{height:5px;margin-top:9px;border-radius:99px;overflow:hidden;background:var(--neutral)}
+    .progress-fill{width:0;height:100%;border-radius:inherit;background:#14b8a6;transition:width .2s}
+    .status-line{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:13px;min-height:29px}
+    .run-caption{font-size:11px;color:var(--muted)}
+    .queue{max-width:790px;margin:auto;padding:0 28px 20px}
+    .result-row{padding:17px 0;border-bottom:1px solid var(--line)}
+    .result-main{display:flex;gap:12px;align-items:center}
+    .row-indicator{width:20px;height:20px;display:grid;place-items:center;flex-shrink:0;color:var(--muted);font-size:12px}
+    .row-indicator.normal{color:var(--primary)}
+    .row-indicator.failed,.row-indicator.degraded{color:var(--danger)}
+    .row-indicator.uncertain{color:var(--warning)}
+    .row-indicator.running{width:14px;height:14px;margin:0 3px;border:2px solid var(--line);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}
+    .row-info{min-width:0;flex:1}
+    .row-name{font-family:ui-monospace,monospace;font-size:13px;font-weight:500;overflow-wrap:anywhere;color:var(--text)}
+    .row-caption{margin-top:4px;color:var(--muted);font-size:11px;line-height:1.5}
+    .badge{display:inline-flex;align-items:center;flex-shrink:0;font-size:11px;font-weight:500;border-radius:5px;padding:4px 8px;background:var(--neutral);color:var(--muted);white-space:nowrap}
+    .badge.normal,.badge.running{background:var(--primary-soft);color:var(--primary)}
+    .badge.failed,.badge.degraded{background:var(--danger-soft);color:var(--danger)}
+    .badge.uncertain{background:var(--warning-soft);color:var(--warning)}
+    .detail-toggle{margin:9px 0 0 32px;font-size:11px}
+    .result-detail{margin:10px 0 0 32px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--canvas);font-size:11px;line-height:1.7;color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}
+    .result-detail strong{color:var(--text);font-weight:500}
+    .result-footer{font-size:11px;color:var(--muted);padding:15px 0}
+    .placeholder{max-width:650px;margin:45px auto;padding:24px;color:var(--muted);font-size:13px;line-height:1.8;text-align:center}
+    .preview-footer{max-width:980px;margin:8px auto 0;font-size:10px;color:var(--muted);text-align:center}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(prefers-reduced-motion:reduce){.row-indicator.running{animation:none}.progress-fill{transition:none}}
+    @media(max-width:640px){
+      body{padding:8px}
+      .preview-tools{display:block;margin-bottom:8px}
+      .preview-label{font-size:10px;display:block;margin-bottom:4px}
+      .scenario{padding:5px 8px;font-size:10px}
+      .frame{height:calc(100dvh - 93px);border-radius:12px}
+      .top{padding:13px 16px}
+      .account{font-size:10px}h1{font-size:17px}
+      .tabs{padding:0 7px;gap:0}.tab{padding:11px 9px;font-size:12px}
+      .content{padding:20px 16px}
+      .intro{gap:8px;margin-bottom:19px}.intro .version{display:none}
+      .intro p{font-size:11px}
+      .field{margin-bottom:18px}
+      .model-list{max-height:173px}
+      .launch{position:sticky;bottom:-20px;flex-wrap:wrap;gap:9px;margin:0 -16px -20px;padding:12px 16px;background:var(--surface)}
+      .launch-actions{width:100%;justify-content:flex-end}
+      .launch .muted{font-size:11px}
+      .result-header-inner{padding:18px 16px 13px}
+      .result-summary{font-size:10px}
+      .progress-heading{margin-top:17px}
+      .queue{padding:0 16px 16px}
+      .result-row{padding:16px 0}
+      .row-name{font-size:12px}
+      .result-main{gap:9px}
+      .detail-toggle,.result-detail{margin-left:29px}
+      .result-heading h2{font-size:17px}
+      .preview-footer{font-size:9px}
+    }
+  </style>
+</head>
+<body>
+  <aside class="preview-tools" aria-label="视觉示例切换">
+    <span class="preview-label">布局预览</span>
+    <div class="scenarios">
+      <button type="button" class="scenario" data-scenario="setup" aria-pressed="true">配置</button>
+      <button type="button" class="scenario" data-scenario="waiting" aria-pressed="false">等待首项</button>
+      <button type="button" class="scenario" data-scenario="partial" aria-pressed="false">部分完成</button>
+      <button type="button" class="scenario" data-scenario="finished" aria-pressed="false">全部完成</button>
+      <button type="button" class="scenario" data-scenario="failed" aria-pressed="false">失败详情</button>
+      <button type="button" class="scenario" data-scenario="cancelled" aria-pressed="false">已取消</button>
+    </div>
+  </aside>
+  <main class="frame" aria-label="票据中心">
+    <header class="top">
+      <div><p class="account">示例 OpenAI 账号 · CODEX</p><h1>票据中心</h1></div>
+      <button type="button" id="theme" class="button small" aria-label="切换明暗主题">◐ 切换主题</button>
+    </header>
+    <nav class="tabs" aria-label="票据中心导航">
+      <button type="button" class="tab" data-tab="tickets">当前票据</button>
+      <button type="button" class="tab" data-tab="attempts">打票流水</button>
+      <button type="button" class="tab" data-tab="invalidations">票据过期历史</button>
+      <button type="button" class="tab" data-tab="diagnostic" aria-current="page">降智检测</button>
+    </nav>
+    <div class="viewport" id="viewport">
+      <section id="setup" class="content" aria-labelledby="setup-title">
+        <div class="intro">
+          <div><h2 id="setup-title" tabindex="-1">创建一次检测</h2><p class="muted">选择计费 Key 和模型，开始后直接查看检测进度与结果。</p></div>
+          <span class="version" title="视觉示例版本">指纹 abc123…</span>
+        </div>
+        <div class="field">
+          <div class="field-heading"><h3 id="key-label">用于计费的 API Key</h3></div>
+          <div class="key-select" id="key-select">
+            <button type="button" class="key-trigger" id="key-trigger" role="combobox" aria-labelledby="key-label" aria-controls="key-menu" aria-expanded="false" aria-haspopup="listbox"><span class="key-name" id="selected-key">示例检测 Key<span class="key-id">#27</span></span><span aria-hidden="true">⌄</span></button>
+            <div class="key-menu" id="key-menu" role="listbox" aria-label="计费 Key" hidden>
+              <button type="button" class="key-option" role="option" data-id="27" data-name="示例检测 Key" aria-selected="true">示例检测 Key<span class="key-id">#27</span></button>
+              <button type="button" class="key-option" role="option" data-id="42" data-name="示例日常 Key" aria-selected="false">示例日常 Key<span class="key-id">#42</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-heading"><h3>选择检测模型</h3><span class="muted">逐项串行检测</span></div>
+          <div class="picker">
+            <div class="picker-head"><span>已选择 <strong id="selection-count">6</strong> 个模型</span><button type="button" id="clear" class="text-button">清空选择</button></div>
+            <div class="chip-area"><div class="chips" id="chips"></div><button type="button" id="chip-toggle" class="text-button chip-toggle" aria-expanded="false" hidden></button></div>
+            <label class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="model-search" type="search" placeholder="搜索模型名称" aria-label="搜索模型名称"></label>
+            <div class="model-list" id="model-list" aria-label="GPT 模型"></div>
+          </div>
+        </div>
+        <div class="launch">
+          <p class="muted">通过正式请求链路检测，正常计费。</p>
+          <div class="launch-actions"><button type="button" id="show-results" class="text-button" hidden>查看本次结果</button><button type="button" id="start" class="button primary">开始检测 6 个模型</button></div>
+        </div>
+      </section>
+      <section class="results" id="results" aria-labelledby="result-title" hidden>
+        <div class="result-header" id="result-header">
+          <div class="result-header-inner">
+            <div class="result-heading"><h2 id="result-title" tabindex="-1">检测结果</h2><span class="badge running" id="run-status">运行中</span></div>
+            <div class="result-summary"><span id="run-key">示例检测 Key</span><span id="run-model-count">6 个模型</span><span>正常计费</span><span class="version">指纹 abc123…</span></div>
+            <div class="progress-heading"><p class="run-message" id="run-message" role="status" aria-live="polite"></p><span class="progress-count" id="progress-count"></span></div>
+            <div class="progress-track" id="progress" role="progressbar" aria-label="检测进度" aria-valuemin="0" aria-valuemax="6" aria-valuenow="0"><div class="progress-fill" id="progress-fill"></div></div>
+            <div class="status-line"><p class="run-caption" id="run-caption"></p><button type="button" id="cancel" class="button small">取消后续检测</button><button type="button" id="edit" class="button small" hidden>修改配置</button></div>
+          </div>
+        </div>
+        <div class="queue"><div id="result-list"></div><p class="result-footer">请求失败与疑似降智分别展示。具体原因可展开查看。</p></div>
+      </section>
+      <section id="other-tab" class="placeholder" hidden><p id="other-title"></p><p>此预览聚焦降智检测。切回后，本次进度与结果会保留。</p><button type="button" id="return-diagnostic" class="text-button">返回降智检测</button></section>
+    </div>
+  </main>
+  <p class="preview-footer">示例账号、Key 与结果仅用于布局演示；不发送真实请求，不产生费用。</p>
+  <script>
+    const models = [
+      {name:'gpt-6-astra',ticket:true},{name:'gpt-6-sol',ticket:true},
+      {name:'gpt-5.6-sol',ticket:true},{name:'gpt-5.6-terra',ticket:true},
+      {name:'gpt-5.5',ticket:false},{name:'gpt-5.4',ticket:false},
+      {name:'gpt-4.1',ticket:false},{name:'gpt-4o',ticket:false}
+    ];
+    const defaults = models.slice(0,6).map(model => model.name);
+    const selected = new Set(defaults);
+    const completedStates = new Set(['normal','degraded','uncertain','failed']);
+    const labels = {pending:'等待中',running:'检测中',normal:'正常',degraded:'疑似降智',uncertain:'不确定',failed:'失败',stopped:'已停止等待',not_run:'未执行'};
+    const captions = {pending:'等待前一个模型完成',running:'正在处理本次检测',normal:'已完成检测',degraded:'指纹结论与目标模型不一致',uncertain:'本次无法确认模型状态',failed:'请求未完成，不代表降智',stopped:'未收到检测结论',not_run:'取消后未发起请求'};
+    const icons = {pending:'·',running:'',normal:'✓',degraded:'!',uncertain:'?',failed:'×',stopped:'—',not_run:'—'};
+    const byId = id => document.getElementById(id);
+    let selectedKey = {id:27,name:'示例检测 Key'};
+    let chipsExpanded = false;
+    let stage = 'setup';
+    let activeTab = 'diagnostic';
+    let run = null;
+    let serial = 0;
+    let timer = null;
+    const expandedResults = new Set();
+    function setText(id, value) { byId(id).textContent = value; }
+    function closeKeyMenu() { byId('key-menu').hidden = true; byId('key-trigger').setAttribute('aria-expanded','false'); }
+    function openKeyMenu() { byId('key-menu').hidden = false; byId('key-trigger').setAttribute('aria-expanded','true'); }
+    byId('key-trigger').onclick = () => byId('key-menu').hidden ? openKeyMenu() : closeKeyMenu();
+    document.querySelectorAll('.key-option').forEach(option => {
+      option.onclick = () => {
+        selectedKey = {id:Number(option.dataset.id),name:option.dataset.name};
+        setText('selected-key',selectedKey.name + ' · #' + selectedKey.id);
+        document.querySelectorAll('.key-option').forEach(item => item.setAttribute('aria-selected',String(item === option)));
+        closeKeyMenu(); byId('key-trigger').focus();
+      };
+    });
+    document.addEventListener('click',event => { if (!byId('key-select').contains(event.target)) closeKeyMenu(); });
+    byId('key-select').addEventListener('keydown',event => {
+      const options = [...document.querySelectorAll('.key-option')];
+      if (event.key === 'Escape') { closeKeyMenu(); byId('key-trigger').focus(); }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault(); openKeyMenu();
+        const current = options.indexOf(document.activeElement);
+        options[(current + (event.key === 'ArrowDown' ? 1 : options.length - 1) + options.length) % options.length].focus();
+      }
+    });
+    function fitChips() {
+      if (stage !== 'setup' || activeTab !== 'diagnostic') return;
+      const chips = [...byId('chips').children];
+      chips.forEach(chip => chip.hidden = false);
+      let hiddenCount = 0;
+      if (!chipsExpanded && chips.length) {
+        const rows = [...new Set(chips.map(chip => chip.offsetTop))].sort((first,second) => first - second);
+        const lastVisibleRow = rows[Math.min(1,rows.length - 1)];
+        const overflow = chips.filter(chip => chip.offsetTop > lastVisibleRow);
+        overflow.forEach(chip => chip.hidden = true);
+        hiddenCount = overflow.length;
+      }
+      byId('chip-toggle').hidden = !chipsExpanded && !hiddenCount;
+      byId('chip-toggle').setAttribute('aria-expanded',String(chipsExpanded));
+      setText('chip-toggle',chipsExpanded ? '收起已选模型' : '还有 ' + hiddenCount + ' 个，展开');
+      byId('chips').parentElement.hidden = selected.size === 0;
+    }
+    function toggleModel(model) {
+      selected.has(model) ? selected.delete(model) : selected.add(model);
+      renderSelection();
+    }
+    function renderSelection() {
+      setText('selection-count',String(selected.size));
+      setText('start','开始检测 ' + selected.size + ' 个模型');
+      byId('start').disabled = !selected.size;
+      byId('clear').disabled = !selected.size;
+      byId('chips').replaceChildren();
+      for (const model of selected) {
+        const chip = document.createElement('span'); chip.className = 'chip';
+        const label = document.createElement('span'); label.textContent = model; label.title = model;
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label','移除 ' + model);
+        remove.onclick = () => toggleModel(model);
+        chip.append(label,remove); byId('chips').append(chip);
+      }
+      renderModels(); requestAnimationFrame(fitChips);
+    }
+    function renderModels() {
+      const search = byId('model-search').value.trim().toLowerCase();
+      byId('model-list').replaceChildren();
+      const visible = models.filter(model => model.name.toLowerCase().includes(search));
+      for (const ticket of [true,false]) {
+        const group = visible.filter(model => model.ticket === ticket);
+        if (!group.length) continue;
+        const title = document.createElement('div'); title.className = 'group-label'; title.textContent = ticket ? '需要打票' : '无需打票';
+        byId('model-list').append(title);
+        group.forEach(model => {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'model-option'; button.dataset.model = model.name;
+          button.setAttribute('aria-pressed',String(selected.has(model.name)));
+          const check = document.createElement('span'); check.className = 'checkbox'; check.textContent = '✓'; check.setAttribute('aria-hidden','true');
+          const label = document.createElement('span'); label.className = 'model-name'; label.textContent = model.name;
+          const hint = document.createElement('span'); hint.className = 'model-kind'; hint.textContent = ticket ? '按指纹库打票' : '直接检测';
+          button.append(check,label,hint); button.onclick = () => toggleModel(model.name); byId('model-list').append(button);
+        });
+      }
+      if (!visible.length) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = '没有匹配的模型'; byId('model-list').append(empty); }
+    }
+    byId('clear').onclick = () => { selected.clear(); chipsExpanded = false; renderSelection(); };
+    byId('chip-toggle').onclick = () => { chipsExpanded = !chipsExpanded; fitChips(); };
+    byId('model-search').oninput = renderModels;
+    let previousWidth = 0;
+    new ResizeObserver(entries => {
+      const width = entries[0].contentRect.width;
+      if (width !== previousWidth) { previousWidth = width; requestAnimationFrame(fitChips); }
+    }).observe(byId('chips'));
+    function showStage(nextStage, focus = true) {
+      stage = nextStage;
+      byId('setup').hidden = activeTab !== 'diagnostic' || stage !== 'setup';
+      byId('results').hidden = activeTab !== 'diagnostic' || stage !== 'results';
+      byId('other-tab').hidden = activeTab === 'diagnostic';
+      byId('show-results').hidden = !run;
+      if (focus && activeTab === 'diagnostic') {
+        byId('viewport').scrollTop = 0;
+        byId(stage === 'results' ? 'result-title' : 'setup-title').focus({preventScroll:true});
+      }
+      if (stage === 'setup') requestAnimationFrame(fitChips);
+    }
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('.tab').forEach(button => {
+        if (button.dataset.tab === tab) button.setAttribute('aria-current','page');
+        else button.removeAttribute('aria-current');
+      });
+      const button = document.querySelector('.tab[data-tab="' + tab + '"]');
+      setText('other-title',button.textContent);
+      showStage(stage);
+    }
+    document.querySelectorAll('.tab').forEach(button => button.onclick = () => switchTab(button.dataset.tab));
+    byId('return-diagnostic').onclick = () => switchTab('diagnostic');
+    function resultDetails(status,model) {
+      if (status === 'failed') return 'HTTP 403 · MODEL_NOT_ALLOWED\n当前 API Key 所属分组不允许请求此模型，请调整分组权限后再检测。失败不等于降智；此处为长说明的排版示例。\n安全渲染示例：<script>这段文字不会执行<' + '/script>';
+      if (status === 'uncertain') return '原因：检测期间凭据发生变化，本次无法确定模型状态。';
+      if (status === 'degraded') return '预测模型：gpt-5.5\n匹配概率：96.2%\n指纹预测与本次目标模型不一致。';
+      return '预测模型：' + model + '\n匹配概率：99.1%\n指纹预测与目标模型一致。';
+    }
+    function completeEntry(entry,status) { entry.status = status; entry.details = resultDetails(status,entry.model); }
+    function renderResults() {
+      if (!run) return;
+      const completed = run.entries.filter(entry => completedStates.has(entry.status)).length;
+      const current = run.entries.find(entry => entry.status === 'running');
+      setText('run-key',run.key.name + ' · #' + run.key.id);
+      setText('run-model-count',run.entries.length + ' 个模型');
+      setText('run-status',run.state === 'running' ? '运行中' : run.state === 'cancelled' ? '已取消' : '已完成');
+      byId('run-status').className = 'badge ' + (run.state === 'running' ? 'running' : '');
+      setText('run-message',current ? '正在检测 ' + current.model : run.state === 'cancelled' ? '后续检测已停止' : '本次检测已结束');
+      setText('progress-count',completed + ' / ' + run.entries.length + ' 已完成');
+      byId('progress').setAttribute('aria-valuemax',String(run.entries.length));
+      byId('progress').setAttribute('aria-valuenow',String(completed));
+      byId('progress-fill').style.width = String(completed / run.entries.length * 100) + '%';
+      setText('run-caption',run.state === 'running' ? '按所选顺序检测，结果逐项更新' : run.state === 'cancelled' ? '已完成的结果仍然保留' : '可以展开详情，或修改配置再次检测');
+      byId('cancel').hidden = run.state !== 'running';
+      byId('edit').hidden = run.state === 'running';
+      byId('result-list').replaceChildren();
+      run.entries.forEach((entry,index) => {
+        const row = document.createElement('article'); row.className = 'result-row'; row.dataset.model = entry.model; row.dataset.status = entry.status;
+        const main = document.createElement('div'); main.className = 'result-main';
+        const indicator = document.createElement('span'); indicator.className = 'row-indicator ' + entry.status; indicator.textContent = icons[entry.status]; indicator.setAttribute('aria-hidden','true');
+        const info = document.createElement('div'); info.className = 'row-info';
+        const name = document.createElement('p'); name.className = 'row-name'; name.textContent = entry.model;
+        const caption = document.createElement('p'); caption.className = 'row-caption'; caption.textContent = captions[entry.status];
+        info.append(name,caption);
+        const status = document.createElement('span'); status.className = 'badge ' + entry.status; status.textContent = labels[entry.status];
+        main.append(indicator,info,status); row.append(main);
+        if (entry.details) {
+          const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'text-button detail-toggle';
+          toggle.setAttribute('aria-expanded',String(expandedResults.has(entry.model)));
+          toggle.setAttribute('aria-controls','result-detail-' + index);
+          toggle.textContent = expandedResults.has(entry.model) ? '收起详情 −' : '查看详情 +';
+          const detail = document.createElement('div'); detail.className = 'result-detail'; detail.id = 'result-detail-' + index; detail.textContent = entry.details; detail.hidden = !expandedResults.has(entry.model);
+          toggle.onclick = () => {
+            detail.hidden = !detail.hidden;
+            if (detail.hidden) expandedResults.delete(entry.model); else expandedResults.add(entry.model);
+            toggle.setAttribute('aria-expanded',String(!detail.hidden));
+            toggle.textContent = detail.hidden ? '查看详情 +' : '收起详情 −';
+          };
+          row.append(toggle,detail);
+        }
+        byId('result-list').append(row);
+      });
+    }
+    function beginRun(animate = true) {
+      if (!selected.size) return;
+      clearTimeout(timer); const generation = ++serial;
+      expandedResults.clear();
+      run = {key:{...selectedKey},entries:[...selected].map(model => ({model,status:'pending',details:null})),state:'running'};
+      run.entries[0].status = 'running';
+      activeTab = 'diagnostic'; switchTab('diagnostic'); renderResults(); showStage('results');
+      if (!animate) return;
+      function next(index) {
+        timer = setTimeout(() => {
+          if (generation !== serial || !run || run.state !== 'running') return;
+          completeEntry(run.entries[index],['normal','failed','normal','degraded','uncertain','normal'][index % 6]);
+          if (index + 1 < run.entries.length) run.entries[index + 1].status = 'running'; else run.state = 'finished';
+          renderResults();
+          if (run.state === 'running') next(index + 1);
+        },2300);
+      }
+      next(0);
+    }
+    byId('start').onclick = () => beginRun();
+    byId('show-results').onclick = () => showStage('results');
+    byId('edit').onclick = () => showStage('setup');
+    byId('cancel').onclick = () => {
+      clearTimeout(timer); ++serial;
+      if (!run || run.state !== 'running') return;
+      run.state = 'cancelled';
+      run.entries.forEach(entry => { if (entry.status === 'running') entry.status = 'stopped'; else if (entry.status === 'pending') entry.status = 'not_run'; });
+      renderResults();
+    };
+    function showScenario(scenario) {
+      clearTimeout(timer); ++serial;
+      document.querySelectorAll('.scenario').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.scenario === scenario)));
+      switchTab('diagnostic');
+      if (scenario === 'setup') {
+        if (run && run.state === 'running') byId('cancel').click();
+        showStage('setup'); return;
+      }
+      if (!selected.size) { defaults.forEach(model => selected.add(model)); renderSelection(); }
+      beginRun(false);
+      if (scenario === 'partial' || scenario === 'cancelled') {
+        completeEntry(run.entries[0],'normal');
+        if (run.entries[1]) run.entries[1].status = 'running';
+        else run.state = 'finished';
+        if (scenario === 'cancelled' && run.state === 'running') byId('cancel').click();
+      } else if (scenario === 'finished') {
+        run.entries.forEach((entry,index) => completeEntry(entry,index === 1 ? 'failed' : index === 3 ? 'uncertain' : 'normal'));
+        run.state = 'finished';
+      } else if (scenario === 'failed') {
+        completeEntry(run.entries[0],'failed'); expandedResults.add(run.entries[0].model);
+        if (run.entries[1]) run.entries[1].status = 'running'; else run.state = 'finished';
+      }
+      renderResults();
+    }
+    document.querySelectorAll('.scenario').forEach(button => button.onclick = () => showScenario(button.dataset.scenario));
+    byId('theme').onclick = () => document.body.classList.toggle('dark');
+    const params = new URLSearchParams(location.search);
+    if (params.get('theme') === 'dark') document.body.classList.add('dark');
+    renderSelection();
+    if (params.has('scenario')) showScenario(params.get('scenario'));
+  </script>
+</body>
+</html>

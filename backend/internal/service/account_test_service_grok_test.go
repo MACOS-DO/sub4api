@@ -560,7 +560,6 @@ type grokRealtimeTestDialer struct {
 	conn      openAIWSClientConn
 	err       error
 	status    int
-	headers   http.Header
 }
 
 func (d *grokRealtimeTestDialer) Dial(_ context.Context, wsURL string, headers http.Header, proxyURL string) (openAIWSClientConn, int, http.Header, error) {
@@ -568,12 +567,12 @@ func (d *grokRealtimeTestDialer) Dial(_ context.Context, wsURL string, headers h
 	d.lastAuth = headers.Get("Authorization")
 	d.lastProxy = proxyURL
 	if d.err != nil {
-		return nil, d.status, d.headers, d.err
+		return nil, d.status, nil, d.err
 	}
 	if d.conn == nil {
 		d.conn = &grokRealtimeTestConn{}
 	}
-	return d.conn, http.StatusSwitchingProtocols, d.headers, nil
+	return d.conn, 0, nil, nil
 }
 
 func TestAccountTestService_GrokRealtimeModeDialsWS(t *testing.T) {
@@ -589,8 +588,7 @@ func TestAccountTestService_GrokRealtimeModeDialsWS(t *testing.T) {
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
 	dialer := &grokRealtimeTestDialer{
-		conn:    &grokRealtimeTestConn{msg: []byte(`{"type":"session.created","session":{"id":"sess_1"}}`)},
-		headers: http.Header{"Upgrade": {"websocket"}, "Set-Cookie": {"a=1", "b=2"}},
+		conn: &grokRealtimeTestConn{msg: []byte(`{"type":"session.created","session":{"id":"sess_1"}}`)},
 	}
 	svc := &AccountTestService{
 		accountRepo:       repo,
@@ -611,9 +609,6 @@ func TestAccountTestService_GrokRealtimeModeDialsWS(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "session.created")
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 	require.Contains(t, rec.Body.String(), `"success":true`)
-	require.Equal(t, 1, strings.Count(rec.Body.String(), `"type":"upstream_response"`))
-	require.Contains(t, rec.Body.String(), `"status_code":101`)
-	require.Contains(t, rec.Body.String(), `"Set-Cookie":["a=1","b=2"]`)
 }
 
 func TestAccountTestService_GrokRealtimeModeDialFailure(t *testing.T) {
@@ -629,9 +624,8 @@ func TestAccountTestService_GrokRealtimeModeDialFailure(t *testing.T) {
 	}
 	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
 	dialer := &grokRealtimeTestDialer{
-		status:  401,
-		headers: http.Header{"X-Request-Id": {"failed-handshake"}},
-		err:     &openAIWSHandshakeError{Body: []byte(`{"error":"unauthorized"}`), Err: errors.New("websocket handshake failed")},
+		status: 401,
+		err:    &openAIWSHandshakeError{Body: []byte(`{"error":"unauthorized"}`), Err: errors.New("websocket handshake failed")},
 	}
 	svc := &AccountTestService{
 		accountRepo:       repo,
@@ -647,7 +641,4 @@ func TestAccountTestService_GrokRealtimeModeDialFailure(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
 	require.Contains(t, rec.Body.String(), "Realtime")
-	require.Equal(t, 1, strings.Count(rec.Body.String(), `"type":"upstream_response"`))
-	require.Contains(t, rec.Body.String(), `"status_code":401`)
-	require.Contains(t, rec.Body.String(), `"X-Request-Id":["failed-handshake"]`)
 }

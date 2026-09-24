@@ -11,37 +11,37 @@
 ## 2. 宿主机构建与运行
 
 ```bash
-cd /opt/sub4api-src/datamanagement
-go build -o /opt/sub4api/datamanagementd ./cmd/datamanagementd
+cd /opt/sub2api-src/datamanagement
+go build -o /opt/sub2api/datamanagementd ./cmd/datamanagementd
 
-mkdir -p /var/lib/sub4api/datamanagement
-chown -R sub4api:sub4api /var/lib/sub4api/datamanagement
+mkdir -p /var/lib/sub2api/datamanagement
+chown -R sub2api:sub2api /var/lib/sub2api/datamanagement
 ```
 
 手动启动示例：
 
 ```bash
-/opt/sub4api/datamanagementd \
+/opt/sub2api/datamanagementd \
   -socket-path /tmp/sub2api-datamanagement.sock \
-  -sqlite-path /var/lib/sub4api/datamanagement/datamanagementd.db \
+  -sqlite-path /var/lib/sub2api/datamanagement/datamanagementd.db \
   -version 1.0.0
 ```
 
 ## 3. systemd 托管（推荐）
 
-仓库已提供示例服务文件：`deploy/sub4api-datamanagementd.service`
+仓库已提供示例服务文件：`deploy/sub2api-datamanagementd.service`
 
 ```bash
-sudo cp deploy/sub4api-datamanagementd.service /etc/systemd/system/
+sudo cp deploy/sub2api-datamanagementd.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now sub4api-datamanagementd
-sudo systemctl status sub4api-datamanagementd
+sudo systemctl enable --now sub2api-datamanagementd
+sudo systemctl status sub2api-datamanagementd
 ```
 
 查看日志：
 
 ```bash
-sudo journalctl -u sub4api-datamanagementd -f
+sudo journalctl -u sub2api-datamanagementd -f
 ```
 
 也可以使用一键安装脚本（自动安装二进制 + 注册 systemd）：
@@ -51,16 +51,16 @@ sudo journalctl -u sub4api-datamanagementd -f
 sudo ./deploy/install-datamanagementd.sh --binary /path/to/datamanagementd
 
 # 方式二：从源码构建后安装
-sudo ./deploy/install-datamanagementd.sh --source /path/to/sub4api
+sudo ./deploy/install-datamanagementd.sh --source /path/to/sub2api
 ```
 
 ## 4. Docker 部署联动
 
-若 `sub4api` 运行在 Docker 容器中，需要将宿主机 Socket 挂载到容器同路径：
+若 `sub2api` 运行在 Docker 容器中，需要将宿主机 Socket 挂载到容器同路径：
 
 ```yaml
 services:
-  sub4api:
+  sub2api:
     volumes:
       - /tmp/sub2api-datamanagement.sock:/tmp/sub2api-datamanagement.sock
 ```

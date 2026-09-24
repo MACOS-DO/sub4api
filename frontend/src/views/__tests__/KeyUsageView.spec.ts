@@ -93,7 +93,7 @@ vi.mock('@/stores', () => ({
     get cachedPublicSettings() {
       return appStoreState.cachedPublicSettings
     },
-    siteName: 'Sub4API',
+    siteName: 'Sub2API',
     siteLogo: '',
     docUrl: '',
     publicSettingsLoaded: true,

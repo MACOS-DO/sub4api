@@ -116,7 +116,7 @@ func googleSecurityAuditError(c *gin.Context, decision *securityaudit.Decision) 
 		"code": status, "message": securityAuditMessage(decision), "status": googleStatus,
 		"details": []gin.H{{
 			"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
-			"reason": securityAuditErrorCode(decision), "domain": "sub4api.securityaudit",
+			"reason": securityAuditErrorCode(decision), "domain": "sub2api.securityaudit",
 			"metadata": gin.H{"request_id": requestID},
 		}},
 	}})

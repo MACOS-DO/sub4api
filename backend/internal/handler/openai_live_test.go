@@ -98,11 +98,11 @@ func TestLiveAttestationErrorIsExplicit(t *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 
 	(&OpenAIGatewayHandler{}).writeLiveCreateError(context, &service.LiveAttestationUnavailableError{
-		Reason: "Live attestation is only supported when Sub4API runs on macOS",
+		Reason: "Live attestation is only supported when Sub2API runs on macOS",
 	})
 
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "Sub4API runs on macOS")
+	require.Contains(t, recorder.Body.String(), "Sub2API runs on macOS")
 }
 
 func jsonPathString(t *testing.T, raw json.RawMessage, keys ...string) string {

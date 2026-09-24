@@ -1,0 +1,39 @@
+UPDATE accounts
+SET extra = extra - 'openai_request_timezone'
+WHERE platform = 'openai'
+  AND extra ? 'openai_request_timezone'
+  AND (
+    jsonb_typeof(extra->'openai_request_timezone') IS DISTINCT FROM 'string'
+    OR extra->>'openai_request_timezone' NOT IN (
+      'Africa/Cairo',
+      'Africa/Johannesburg',
+      'America/Argentina/Buenos_Aires',
+      'America/Chicago',
+      'America/Denver',
+      'America/Los_Angeles',
+      'America/Mexico_City',
+      'America/New_York',
+      'America/Sao_Paulo',
+      'America/Toronto',
+      'America/Vancouver',
+      'Asia/Bangkok',
+      'Asia/Dubai',
+      'Asia/Ho_Chi_Minh',
+      'Asia/Jakarta',
+      'Asia/Kolkata',
+      'Asia/Kuala_Lumpur',
+      'Asia/Manila',
+      'Asia/Seoul',
+      'Asia/Singapore',
+      'Asia/Tokyo',
+      'Australia/Perth',
+      'Australia/Sydney',
+      'Europe/Berlin',
+      'Europe/Istanbul',
+      'Europe/London',
+      'Europe/Moscow',
+      'Europe/Paris',
+      'Pacific/Auckland',
+      'Pacific/Honolulu'
+    )
+  );

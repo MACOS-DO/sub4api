@@ -1,8 +1,8 @@
-# Sub4API Configuration File
-# Sub4API 配置文件
+# Sub2API Configuration File
+# Sub2API 配置文件
 #
-# Copy this file to /etc/sub4api/config.yaml and modify as needed
-# 复制此文件到 /etc/sub4api/config.yaml 并根据需要修改
+# Copy this file to /etc/sub2api/config.yaml and modify as needed
+# 复制此文件到 /etc/sub2api/config.yaml 并根据需要修改
 #
 # Documentation / 文档: https://github.com/MACOS-DO/sub4api
 
@@ -37,10 +37,10 @@ server:
   # Keep-Alive 空闲连接超时（秒）。
   idle_timeout: 120
   # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
-  # List only the exact proxy addresses that connect directly to Sub4API.
+  # List only the exact proxy addresses that connect directly to Sub2API.
   # Set [] explicitly to disable forwarded-IP trust in high-security mode.
   # security.trust_forwarded_ip_for_api_key_acl=false 时使用的可信代理。
-  # 只填写直接连接 Sub4API 的精确代理地址；显式设置 [] 可在高安全模式下
+  # 只填写直接连接 Sub2API 的精确代理地址；显式设置 [] 可在高安全模式下
   # 禁用转发 IP 信任。
   trusted_proxies:
     - 127.0.0.1/32
@@ -82,10 +82,10 @@ server:
 # 填写浏览器访问使用的完整 Origin。
 webauthn:
   enabled: false
-  rp_display_name: "Sub4API"
-  # Example / 示例: "sub4api.example.com"
+  rp_display_name: "Sub2API"
+  # Example / 示例: "sub2api.example.com"
   rp_id: ""
-  # Example / 示例: ["https://sub4api.example.com"]
+  # Example / 示例: ["https://sub2api.example.com"]
   rp_origins: []
 
 # =============================================================================
@@ -99,6 +99,14 @@ webauthn:
 # - simple: Hides SaaS features and skips billing/balance checks
 # - simple: 隐藏 SaaS 功能，跳过计费和余额校验
 run_mode: "standard"
+
+simple_mode:
+  # 仅控制简易模式启动时补齐默认分组；false 不删除已有分组，不改变运行时自动绑定或管理员并发设置。
+  # 环境变量：SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS
+  auto_create_default_groups: true
+
+# Enforce API-key 5h/1d/7d spending windows in simple mode; other billing stays disabled.
+simple_mode_key_rate_limit_enabled: false
 
 # =============================================================================
 # CORS Configuration
@@ -325,14 +333,8 @@ gateway:
   openai_codex_ticket:
     enabled: false
     target_length: 292
-    # 票据有效期（秒），最小 60；后台「系统设置 → 网关 → Codex 设置 → 票据过期时间」可覆盖，默认 200。
-    ttl_seconds: 200
-    # 兼容保留字段：取得新票据后固定等待 30~60 秒的随机间隔开始下一轮打票，本字段不再参与调度。
+    ttl_seconds: 3600
     refresh_before_seconds: 600
-    # 票据过期后是否仍沿用上次票据；后台「过期仍沿用上次票据」可覆盖，默认 true。
-    reuse_expired: true
-    # 过期后最长复用时长（秒），默认 600；0 表示不限制。后台「过期后最长复用时长」可覆盖。
-    reuse_expired_max_seconds: 600
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
     harvest_proxy_url: ""
@@ -626,7 +628,7 @@ log:
   format: "console"
   # Service name field written into each log line
   # 每条日志都会附带 service 字段
-  service_name: "sub4api"
+  service_name: "sub2api"
   # Environment field written into each log line
   # 每条日志都会附带 env 字段
   env: "production"
@@ -644,11 +646,11 @@ log:
     # 启用文件输出（默认路径自动推导）
     to_file: true
     # Empty means:
-    # - DATA_DIR set: {{DATA_DIR}}/logs/sub4api.log
-    # - otherwise: /app/data/logs/sub4api.log
+    # - DATA_DIR set: {{DATA_DIR}}/logs/sub2api.log
+    # - otherwise: /app/data/logs/sub2api.log
     # 留空时：
-    # - 设置 DATA_DIR：{{DATA_DIR}}/logs/sub4api.log
-    # - 否则：/app/data/logs/sub4api.log
+    # - 设置 DATA_DIR：{{DATA_DIR}}/logs/sub2api.log
+    # - 否则：/app/data/logs/sub2api.log
     file_path: ""
   rotation:
     # Max file size before rotation (MB)
@@ -870,7 +872,7 @@ database:
   password: "your_secure_password_here"
   # Database name
   # 数据库名称
-  dbname: "sub4api"
+  dbname: "sub2api"
   # SSL mode: disable, prefer, require, verify-ca, verify-full
   # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
   # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
@@ -966,7 +968,7 @@ totp:
 
 # =============================================================================
 # LinuxDo Connect OAuth Login (SSO)
-# LinuxDo Connect OAuth 登录（用于 Sub4API 用户登录）
+# LinuxDo Connect OAuth 登录（用于 Sub2API 用户登录）
 # =============================================================================
 linuxdo_connect:
   enabled: false
@@ -991,7 +993,7 @@ linuxdo_connect:
 
 # =============================================================================
 # Generic OIDC OAuth Login (SSO)
-# 通用 OIDC OAuth 登录（用于 Sub4API 用户登录）
+# 通用 OIDC OAuth 登录（用于 Sub2API 用户登录）
 # =============================================================================
 oidc_connect:
   enabled: false
@@ -1163,8 +1165,8 @@ turnstile:
 # Gemini OAuth (Required for Gemini accounts)
 # Gemini OAuth 配置（Gemini 账户必需）
 # =============================================================================
-# Sub4API supports TWO Gemini OAuth modes:
-# Sub4API 支持两种 Gemini OAuth 模式：
+# Sub2API supports TWO Gemini OAuth modes:
+# Sub2API 支持两种 Gemini OAuth 模式：
 #
 # 1. Code Assist OAuth (requires GCP project_id)
 # 1. Code Assist OAuth（需要 GCP project_id）

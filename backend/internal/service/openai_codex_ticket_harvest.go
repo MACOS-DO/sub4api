@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"hash/fnv"
 	"maps"
 	"net/http"
@@ -19,23 +20,14 @@ var (
 	ErrCodexTicketBusy        = errors.New("codex ticket attempt already running")
 	ErrCodexTicketNoProxy     = errors.New("no available ticket proxy")
 	ErrCodexTicketModel       = errors.New("unsupported ticket model")
+	ErrCodexTicketRateLimited = errors.New("account or model is rate limited")
 )
 
 const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
 const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
 
-const (
-	// 取得新票据后，固定等待 30~60 秒的随机间隔开始下一轮自动打票。
-	codexTicketHarvestIntervalMin = 30 * time.Second
-	codexTicketHarvestIntervalMax = 60 * time.Second
-	// 打票失败后的重试节奏（未命中 / 仍持有有效票据）。
-	codexTicketValidRetryMin = 30 * time.Second
-	codexTicketValidRetryMax = 40 * time.Second
-	codexTicketMissingRetry  = 30 * time.Second
-)
-
 func CodexTicketHarvestEnabled(account *Account, model string) bool {
-	if account == nil || !isOpenAICodexTicketAccount(account) {
+	if account == nil || !isOpenAICodexTicketAccount(account) || !codexTicketEligibleModel(model) {
 		return false
 	}
 	if account.Extra[codexTicketAccountEnabledKey] == false {
@@ -63,11 +55,6 @@ func (s *OpenAIGatewayService) codexTicketSupportedModel(model string) bool {
 
 func (s *OpenAIGatewayService) chooseCodexTicketProxy(ctx context.Context, accountID int64, model string) (string, *Proxy, error) {
 	if s.settingService == nil {
-		// Legacy tests construct the gateway without settings. Production always
-		// has settings and exclusively uses the managed proxy pool.
-		if s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.HarvestProxyURL != "" {
-			return strings.TrimSpace(s.cfg.Gateway.OpenAICodexTicket.HarvestProxyURL), nil, nil
-		}
 		return "", nil, ErrCodexTicketNoProxy
 	}
 	proxies, err := s.settingService.AvailableCodexTicketProxies(ctx)
@@ -103,45 +90,48 @@ func codexTicketJitter(key string, at time.Time, min, max time.Duration) time.Du
 	return min + time.Duration(h.Sum64()%uint64(max-min+1))
 }
 
-// codexTicketNextHarvestAt 返回成功捕获票据后的下一次自动打票时间：固定为捕获后
-// 30~60 秒的随机时刻（按 账号+模型+捕获时间 确定性哈希，同一张票只产生一个值）。
-// 无捕获时间时返回零值，调用方视为立即到期。
-func codexTicketNextHarvestAt(ticket *openAICodexTicket) time.Time {
-	if ticket == nil || ticket.CapturedAt.IsZero() {
-		return time.Time{}
-	}
-	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
-	return ticket.CapturedAt.Add(codexTicketJitter(key, ticket.CapturedAt, codexTicketHarvestIntervalMin, codexTicketHarvestIntervalMax))
-}
-
 func (s *OpenAIGatewayService) scheduleCodexTicketAfterSuccess(ticket *openAICodexTicket) {
 	if ticket == nil {
 		return
 	}
-	next := codexTicketNextHarvestAt(ticket)
-	if next.IsZero() {
+	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
+	seconds := s.codexTicketCadence(context.Background()).RefreshSeconds
+	if seconds <= 0 {
+		s.openaiCodexTicketNextAttempt.Delete(key)
 		return
 	}
-	s.openaiCodexTicketNextAttempt.Store(openAICodexTicketKey(ticket.AccountID, ticket.Model), next)
+	s.openaiCodexTicketNextAttempt.Store(key, ticket.CapturedAt.Add(time.Duration(seconds)*time.Second))
 }
 
 func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model string, now time.Time) bool {
 	key := openAICodexTicketKey(account.ID, model)
+	var previous *openAICodexTicket
+	if raw, ok := s.openaiCodexTickets.Load(key); ok {
+		previous, _ = raw.(*openAICodexTicket)
+	}
+	ticket := s.lookupOpenAICodexTicket(account, model)
+	if previous != nil && (ticket == nil || previous.GenerationID != ticket.GenerationID) {
+		s.openaiCodexTicketNextAttempt.Delete(key)
+	}
 	if value, ok := s.openaiCodexTicketNextAttempt.Load(key); ok {
 		if next, valid := value.(time.Time); valid && now.Before(next) {
 			return false
 		}
 		return true
 	}
-	ticket := s.lookupOpenAICodexTicket(account, model)
-	if due := codexTicketNextHarvestAt(ticket); !due.IsZero() {
-		s.openaiCodexTicketNextAttempt.Store(key, due)
-		return !now.Before(due)
+	if ticket.usable(now, 0, false, 0) {
+		s.scheduleCodexTicketAfterSuccess(ticket)
+		refreshSeconds := s.codexTicketCadence(context.Background()).RefreshSeconds
+		return refreshSeconds > 0 && !now.Before(ticket.CapturedAt.Add(time.Duration(refreshSeconds)*time.Second))
 	}
 	return true
 }
 
-func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, account *Account, model, trigger string) (result CodexTicketHarvestResult, err error) {
+func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, account *Account, model, trigger string) (CodexTicketHarvestResult, error) {
+	return s.runCodexTicketAttemptWithChallengeGenerator(ctx, account, model, trigger, NewModelTraceChallenge)
+}
+
+func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx context.Context, account *Account, model, trigger string, generateChallenge func() (ModelTraceChallenge, error)) (result CodexTicketHarvestResult, err error) {
 	key := openAICodexTicketKey(account.ID, model)
 	if _, loaded := s.openaiCodexTicketInFlight.LoadOrStore(key, true); loaded {
 		return result, ErrCodexTicketBusy
@@ -157,21 +147,22 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		}
 		defer unlock()
 	}
-	proxyURL, proxy, err := s.chooseCodexTicketProxy(ctx, account.ID, model)
+	current, err := s.accountRepo.GetByID(ctx, account.ID)
 	if err != nil {
 		return result, err
 	}
-	if s.httpUpstream == nil {
+	if current == nil || current.Status != StatusActive || !CodexTicketHarvestEnabled(current, model) {
 		return result, ErrCodexTicketUnavailable
 	}
+	if openAICodexTicketHarvestLimited(current, model, time.Now()) {
+		return result, ErrCodexTicketRateLimited
+	}
+	account = current
 	cfg := s.openAICodexTicketConfig()
 	start := time.Now()
-	hadValidTicket := s.lookupOpenAICodexTicket(account, model).usable(start, openAICodexTicketTargetLength(account, cfg.TargetLength), cfg.ReuseExpired, openAICodexTicketReuseWindow(cfg))
 	a := &result.CodexTicketAttempt
 	a.AccountID, a.Model, a.Trigger = account.ID, model, trigger
-	if proxy != nil {
-		a.ProxyID, a.ProxyName = &proxy.ID, proxy.Name
-	}
+	a.VerificationMethod, a.FingerprintCommit = "modeltrace_v1", ModelTraceBankCommit()
 	defer func() {
 		a.OccurredAt = time.Now()
 		a.DurationMS = int(a.OccurredAt.Sub(start).Milliseconds())
@@ -184,27 +175,43 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 				result.HistoryRecorded = true
 			}
 		}
-		if trigger == "automatic" && a.Outcome != "success" {
-			delay := codexTicketMissingRetry
-			if hadValidTicket {
-				delay = codexTicketJitter(key, a.OccurredAt, codexTicketValidRetryMin, codexTicketValidRetryMax)
-			}
-			s.openaiCodexTicketNextAttempt.Store(key, a.OccurredAt.Add(delay))
+		if a.Outcome != "success" {
+			cadence := s.codexTicketCadence(context.Background())
+			min := time.Duration(cadence.RetryMinSeconds) * time.Second
+			max := time.Duration(cadence.RetryMaxSeconds) * time.Second
+			s.openaiCodexTicketNextAttempt.Store(key, a.OccurredAt.Add(codexTicketJitter(key, a.OccurredAt, min, max)))
 		}
+
 	}()
+	proxyURL, proxy, proxyErr := s.chooseCodexTicketProxy(ctx, account.ID, model)
+	if proxyErr != nil {
+		a.Outcome, a.ReasonCode = "error", "proxy_unavailable"
+		return result, proxyErr
+	}
+	a.ProxyID, a.ProxyName = &proxy.ID, proxy.Name
+	if s.httpUpstream == nil {
+		a.Outcome, a.ReasonCode = "error", "upstream_unavailable"
+		return result, ErrCodexTicketUnavailable
+	}
 	token, _, tokenErr := s.GetAccessToken(ctx, account)
 	if tokenErr != nil || strings.TrimSpace(token) == "" {
 		a.Outcome, a.ReasonCode = "error", "credentials"
 		return result, nil
 	}
-	state, cookie, status, probeErr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL,
-		time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
+	challenge, challengeErr := generateChallenge()
+	if challengeErr != nil {
+		a.Outcome, a.ReasonCode = "error", "challenge_generation_failed"
+		return result, nil
+	}
+	a.ChallengeExpectedCount = new(challenge.ExpectedCount)
+	output, state, cookie, status, probeErr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL,
+		challenge, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
 	if status != 0 {
 		a.HTTPStatus = &status
-	}
-	length := len(state)
-	if status != 0 {
+		length := len(state)
 		a.TicketLength = &length
+		turnPresent, cookiePresent := strings.TrimSpace(state) != "", strings.TrimSpace(cookie) != ""
+		a.TurnStatePresent, a.CookiePresent = &turnPresent, &cookiePresent
 	}
 	if probeErr != nil {
 		a.Outcome, a.ReasonCode = "error", "request"
@@ -213,26 +220,48 @@ func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, accoun
 		}
 		return result, nil
 	}
-	if !openAICodexTicketResponseValid(account, cfg.TargetLength, status, state) {
-		a.Outcome, a.ReasonCode = "miss", "invalid_ticket"
-		if status != http.StatusOK && status != http.StatusTooManyRequests {
-			a.ReasonCode = "http_status"
-		}
+	if status != http.StatusOK {
+		a.Outcome, a.ReasonCode = "miss", "http_status"
+		return result, nil
+	}
+	prediction, commit, predictErr := ModelTracePredictCommitted(output, challenge.ExpectedCount)
+	a.FingerprintCommit = commit
+	count := prediction.ParsedCount
+	a.ParsedNumberCount = &count
+	if predictErr != nil {
+		a.Outcome, a.ReasonCode = "miss", "insufficient_numbers"
+		return result, nil
+	}
+	a.FingerprintPredictedModel = prediction.Model
+	a.FingerprintProbability = &prediction.Probability
+	matched := prediction.Model == model
+	a.FingerprintMatched = &matched
+	if !matched {
+		a.Outcome, a.ReasonCode = "miss", "fingerprint_mismatch"
+		return result, nil
+	}
+	if strings.TrimSpace(state) == "" && strings.TrimSpace(cookie) == "" {
+		a.Outcome, a.ReasonCode = "miss", "missing_credentials"
 		return result, nil
 	}
 	now := time.Now()
+	generation := uuid.NewString()
 	ticket := &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state),
-		CapturedAt: now, ExpiresAt: now.Add(time.Duration(cfg.TTLSeconds) * time.Second),
-		Attempts: 1, HTTPStatus: status, Cookie: cookie}
-	s.storeOpenAICodexTicket(ctx, account, ticket)
+		GenerationID: generation, VerificationMethod: "modeltrace_v1", FingerprintCommit: commit,
+		CapturedAt: now, Attempts: 1, HTTPStatus: status, Cookie: cookie}
+	if err := s.storeOpenAICodexTicket(ctx, account, ticket); err != nil {
+		a.Outcome, a.ReasonCode = "error", "persistence"
+		return result, nil
+	}
 	s.scheduleCodexTicketAfterSuccess(ticket)
 	account.Extra = maps.Clone(account.Extra)
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
 	account.Extra[openAICodexTicketExtraKey(model)] = ticket
-	a.Outcome, a.ExpiresAt = "success", &ticket.ExpiresAt
+	a.Outcome, a.TicketGenerationID = "success", &generation
 	return result, nil
+
 }
 
 func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, accountID int64, model string) (CodexTicketHarvestResult, error) {
@@ -250,12 +279,16 @@ func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, acc
 	if account.Status != StatusActive || !CodexTicketHarvestEnabled(account, model) {
 		return empty, ErrCodexTicketUnavailable
 	}
+	if openAICodexTicketHarvestLimited(account, model, time.Now()) {
+		return empty, ErrCodexTicketRateLimited
+	}
 	result, err := s.runCodexTicketAttempt(ctx, account, model, "manual")
 	if err != nil {
 		return result, err
 	}
 	cfg := s.openAICodexTicketConfig()
 	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
+	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil)
 	status := OpenAICodexTicketStatuses(account, cfg, time.Now())
 	for _, item := range status {
 		if item.Model == model {
@@ -268,7 +301,7 @@ func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, acc
 
 func (s *OpenAIGatewayService) CodexTicketHistory(ctx context.Context, accountID int64, model string, successOnly bool, page, size int) ([]CodexTicketAttempt, int64, OpenAICodexTicketStatus, error) {
 	var empty OpenAICodexTicketStatus
-	if !s.codexTicketSupportedModel(model) {
+	if model != "" && !modelTraceKnownGPTModel(model) {
 		return nil, 0, empty, ErrCodexTicketModel
 	}
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -287,6 +320,7 @@ func (s *OpenAIGatewayService) CodexTicketHistory(ctx context.Context, accountID
 	}
 	cfg := s.openAICodexTicketConfig()
 	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
+	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil)
 	for _, status := range OpenAICodexTicketStatuses(account, cfg, time.Now()) {
 		if status.Model == model {
 			empty = status
@@ -317,4 +351,32 @@ func (s *OpenAIGatewayService) SetCodexTicketParticipation(ctx context.Context, 
 		codexTicketAccountEnabledKey: enabled,
 		codexTicketModelsEnabledKey:  values,
 	})
+}
+
+func (s *OpenAIGatewayService) ListCodexTicketInvalidations(ctx context.Context, accountID int64, model string, start, end time.Time, page, size int) ([]CodexTicketInvalidationSummary, int64, error) {
+	if s.openaiCodexTicketLifecycle == nil {
+		return nil, 0, ErrCodexTicketUnavailable
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !isOpenAICodexTicketAccount(account) || model != "" && !modelTraceKnownGPTModel(model) {
+		return nil, 0, ErrCodexTicketUnavailable
+	}
+	return s.openaiCodexTicketLifecycle.ListInvalidations(ctx, accountID, model, start, end, page, size)
+}
+
+func (s *OpenAIGatewayService) GetCodexTicketInvalidation(ctx context.Context, accountID, eventID int64) (*CodexTicketInvalidation, error) {
+	if s.openaiCodexTicketLifecycle == nil {
+		return nil, ErrCodexTicketUnavailable
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if !isOpenAICodexTicketAccount(account) {
+		return nil, ErrCodexTicketUnavailable
+	}
+	return s.openaiCodexTicketLifecycle.GetInvalidation(ctx, accountID, eventID)
 }
