@@ -216,49 +216,14 @@ func (runner *CodexHypothesisRunner) buildRequest(ctx context.Context, challenge
 	if challenge.System != "" {
 		body["instructions"] = challenge.System
 	}
-	var turnMetadata string
+	var replayHeaders http.Header
 	if replay := runner.options.Replay; replay != nil {
-		turnID, err := uuid.NewV7()
+		identity, err := newCodexReplayIdentity(replay.InstallationID, runner.sessionID, runner.windowID, time.Now())
 		if err != nil {
-			return nil, fmt.Errorf("generate replay turn ID: %w", err)
+			return nil, fmt.Errorf("generate replay identity: %w", err)
 		}
-		metadata, err := json.Marshal(map[string]any{
-			"installation_id":         replay.InstallationID,
-			"session_id":              runner.sessionID,
-			"thread_id":               runner.sessionID,
-			"turn_id":                 turnID.String(),
-			"window_id":               runner.windowID,
-			"turn_started_at_unix_ms": time.Now().UnixMilli(),
-			"request_kind":            "turn",
-		})
-		if err != nil {
-			return nil, fmt.Errorf("encode replay turn metadata: %w", err)
-		}
-		turnMetadata = string(metadata)
-		body["instructions"] = replay.Instructions
-		body["prompt_cache_key"] = runner.sessionID
-		body["client_metadata"] = map[string]string{
-			"session_id":              runner.sessionID,
-			"thread_id":               runner.sessionID,
-			"turn_id":                 turnID.String(),
-			"x-codex-installation-id": replay.InstallationID,
-			"x-codex-window-id":       runner.windowID,
-			"x-codex-turn-metadata":   turnMetadata,
-		}
-		input := make([]any, 0, len(replay.Messages)+1)
-		for _, message := range replay.Messages {
-			parts := make([]any, 0, len(message.Parts))
-			for _, part := range message.Parts {
-				parts = append(parts, map[string]string{"type": "input_text", "text": strings.ReplaceAll(part, CodexHypothesisPromptPlaceholder, userText)})
-			}
-			input = append(input, map[string]any{"role": message.Role, "content": parts})
-		}
-		if challenge.System != "" {
-			lastMessage := input[len(input)-1]
-			input[len(input)-1] = map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": challenge.System}}}
-			input = append(input, lastMessage)
-		}
-		body["input"] = input
+		body, replayHeaders = buildCodexReplayRequest(replay, runner.options.Model, challenge.System, identity,
+			strings.NewReplacer(CodexHypothesisPromptPlaceholder, userText).Replace)
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -271,13 +236,9 @@ func (runner *CodexHypothesisRunner) buildRequest(ctx context.Context, challenge
 	if err != nil || runner.options.Replay == nil {
 		return request, err
 	}
-	request.Header.Set("session_id", runner.sessionID)
-	request.Header.Set("session-id", runner.sessionID)
-	request.Header.Set("thread-id", runner.sessionID)
-	request.Header.Set("x-client-request-id", runner.sessionID)
-	request.Header.Set("x-codex-installation-id", runner.options.Replay.InstallationID)
-	request.Header.Set("x-codex-window-id", runner.windowID)
-	request.Header.Set("x-codex-turn-metadata", turnMetadata)
+	for name, values := range replayHeaders {
+		request.Header[name] = values
+	}
 	request.Header.Del("conversation_id")
 	if err := runner.checkReplayIdentity(request); err != nil {
 		return nil, err

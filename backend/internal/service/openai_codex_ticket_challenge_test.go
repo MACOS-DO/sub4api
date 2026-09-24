@@ -92,7 +92,8 @@ func TestCodexTicketChallengeRequestHistoryAndPredictionAgree(t *testing.T) {
 	upstream := &codexTicketFuncUpstream{do: func(req *http.Request) (*http.Response, error) {
 		body, err := io.ReadAll(req.Body)
 		require.NoError(t, err)
-		prompts = append(prompts, gjson.GetBytes(body, "input.0.content.0.text").String())
+		assertCodexProbeIdentity(t, body, req.Header)
+		prompts = append(prompts, gjson.GetBytes(body, "input.4.content.0.text").String())
 		return challengeHarvestResponse(t, output), nil
 	}}
 	svc, account, history := challengeHarvestService(t, upstream)

@@ -4,11 +4,11 @@ import { nextTick, ref } from 'vue'
 import CodexTicketDashboard from '../CodexTicketDashboard.vue'
 import type { Account } from '@/types'
 
-const { events, fingerprint, ownKeys, invalidation, diagnose, getById } = vi.hoisted(() => ({
-  events: vi.fn(), fingerprint: vi.fn(), ownKeys: vi.fn(), invalidation: vi.fn(), diagnose: vi.fn(), getById: vi.fn()
+const { events, fingerprint, ownKeys, invalidation, diagnose, getById, harvest } = vi.hoisted(() => ({
+  events: vi.fn(), fingerprint: vi.fn(), ownKeys: vi.fn(), invalidation: vi.fn(), diagnose: vi.fn(), getById: vi.fn(), harvest: vi.fn()
 }))
 vi.mock('@/api/admin/codexTickets', () => ({
-  events, fingerprint, ownKeys, invalidation, diagnose, harvest: vi.fn(), refreshFingerprint: vi.fn()
+  events, fingerprint, ownKeys, invalidation, diagnose, harvest, refreshFingerprint: vi.fn()
 }))
 vi.mock('@/api/admin', () => ({ adminAPI: { accounts: { getById } } }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN'), t: (key: string) => key }) }))
@@ -20,9 +20,9 @@ const account = {
 const attempt = { id: 1, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T08:00:00Z', kind: 'miss', reason_code: 'fingerprint_mismatch' }
 const expired = { id: 2, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T09:00:00Z', kind: 'invalidation', reason_code: 'upstream_new_turn_state' }
 
-function mountDashboard(initialDiagnostic = false) {
+function mountDashboard(initialDiagnostic = false, value: Account = account) {
   return mount(CodexTicketDashboard, {
-    props: { show: true, account, initialDiagnostic },
+    props: { show: true, account: value, initialDiagnostic },
     attachTo: document.body,
     global: {
       stubs: {
@@ -88,6 +88,28 @@ describe('Codex ticket dashboard', () => {
     await flushPromises()
     expect(invalidation).toHaveBeenCalledWith(19, 2)
     expect(wrapper.text()).toContain('old-secret')
+    wrapper.unmount()
+  })
+
+  it('allows checking a missing ticket with account and model harvesting disabled', async () => {
+    const noTicket = {
+      ...account,
+      extra: { codex_ticket_harvest_enabled: false, codex_ticket_harvest_models: { 'gpt-5.6-sol': false } },
+      codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: false, harvest_enabled: false, turn_state_present: false, cookie_present: false }]
+    } as Account
+    getById.mockResolvedValue(noTicket)
+    diagnose.mockResolvedValue({ items: [{ model: 'gpt-5.6-sol', status: 'normal' }] })
+    const wrapper = mountDashboard(true, noTicket)
+    await flushPromises()
+    configure(wrapper, ['gpt-5.6-sol'])
+    await nextTick()
+    const start = wrapper.findAll('button').find(button => button.text().startsWith('开始检测'))!
+    expect(start.attributes('disabled')).toBeUndefined()
+    await start.trigger('click')
+    await flushPromises()
+    expect(diagnose).toHaveBeenCalledWith(19, 4, ['gpt-5.6-sol'], expect.any(AbortSignal))
+    expect(harvest).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-model="gpt-5.6-sol"]').attributes('data-status')).toBe('normal')
     wrapper.unmount()
   })
 
@@ -160,6 +182,20 @@ describe('Codex ticket dashboard', () => {
     expect(expanded.text()).toContain('<img src=x onerror=alert(1)> request failed')
     expect(expanded.find('img').exists()).toBe(false)
     expect(wrapper.get('[data-model="gpt-5.5"]').attributes('data-status')).toBe('normal')
+    wrapper.unmount()
+  })
+
+  it('explains the shared template and shows an actionable template failure', async () => {
+    diagnose.mockResolvedValueOnce({ items: [{ model: 'gpt-5.6-sol', status: 'failed', reason: 'template_invalid' }] })
+    const wrapper = mountDashboard(true)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Codex 打票与降智检测模板')
+    await configure(wrapper, ['gpt-5.6-sol']).runDiagnostic()
+    await flushPromises()
+    const failed = wrapper.get('[data-model="gpt-5.6-sol"]')
+    expect(failed.attributes('data-status')).toBe('failed')
+    await failed.get('button[aria-expanded]').trigger('click')
+    expect(wrapper.text()).toContain('共享模板配置无效，请在系统设置中修正后重试。')
     wrapper.unmount()
   })
 

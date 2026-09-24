@@ -14,7 +14,7 @@ const mountPicker = (selected: string[] = []) => mount(CodexDiagnosticModelPicke
 describe('Codex diagnostic model picker', () => {
   it('groups ticket and direct models and selects without native checkboxes', async () => {
     const wrapper = mountPicker()
-    expect(wrapper.text()).toContain('需要打票')
+    expect(wrapper.text()).toContain('支持打票')
     expect(wrapper.text()).toContain('无需打票')
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
 

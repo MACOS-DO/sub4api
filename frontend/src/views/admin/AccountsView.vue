@@ -604,6 +604,8 @@ const showEdit = ref(false)
 const showCodexTickets = ref(false)
 const codexTicketAcc = ref<Account | null>(null)
 const codexDiagnostic = ref(false)
+const codexTicketGloballyEnabled = ref(false)
+let codexTicketSettingsRequestId = 0
 function openEditCodexTickets() { if (edAcc.value) { showEdit.value = false; openCodexTickets(edAcc.value, false) } }
 function openCodexTickets(account: Account, diagnostic: boolean) { codexTicketAcc.value = account; codexDiagnostic.value = diagnostic; showCodexTickets.value = true }
 function ticketSummary(account: Account) {
@@ -1462,6 +1464,7 @@ const refreshAccountsIncrementally = async () => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
+  const ticketSettingsRefresh = loadCodexTicketGlobalState()
   try {
     const result = await adminAPI.accounts.listWithEtag(
       pagination.page,
@@ -1495,14 +1498,28 @@ const refreshAccountsIncrementally = async () => {
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
+    await ticketSettingsRefresh
     autoRefreshFetching.value = false
   }
 }
 
 const handleManualRefresh = async () => {
-  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
+  await Promise.all([load(), loadUpstreamBillingProbeGlobalState(), loadCodexTicketGlobalState()])
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
+}
+
+const loadCodexTicketGlobalState = async () => {
+  const requestId = ++codexTicketSettingsRequestId
+  try {
+    const settings = await adminAPI.settings.getSettings()
+    if (requestId !== codexTicketSettingsRequestId) return
+    codexTicketGloballyEnabled.value = settings.openai_codex_ticket_enabled === true
+  } catch (error) {
+    if (requestId !== codexTicketSettingsRequestId) return
+    // Keep the last confirmed state; an initial failure leaves the column hidden.
+    console.error('Failed to load Codex ticket settings:', error)
+  }
 }
 
 const loadUpstreamBillingProbeGlobalState = async () => {
@@ -1809,7 +1826,9 @@ const allColumns = computed(() => {
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
-    { key: 'codex_ticket', label: t('admin.accounts.columns.codexTicket'), sortable: false },
+    ...(codexTicketGloballyEnabled.value
+      ? [{ key: 'codex_ticket', label: t('admin.accounts.columns.codexTicket'), sortable: false }]
+      : []),
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
@@ -2557,6 +2576,7 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
+  void loadCodexTicketGlobalState()
   const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
     adminAPI.groups.getAll()
@@ -2584,6 +2604,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  codexTicketSettingsRequestId += 1
   upstreamBillingRateAbortController?.abort()
   if (usageBatchFlushTimer !== null) {
     clearTimeout(usageBatchFlushTimer)

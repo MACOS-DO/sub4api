@@ -157,63 +157,20 @@ func (h *AccountHandler) diagnoseCodexModels(c *gin.Context, generateChallenge f
 		}
 		seen[model] = true
 	}
-	ticketModels, err := service.ModelTraceTicketModels()
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	ticketEligible := make(map[string]bool, len(ticketModels))
-	for _, model := range ticketModels {
-		ticketEligible[model] = true
-	}
 	results := make([]codexDiagnosticItem, 0, len(input.Models))
 	for _, model := range input.Models {
 		if c.Request.Context().Err() != nil {
 			break
 		}
 		item := codexDiagnosticItem{Model: model, Status: "failed"}
-		limited, err := h.codexTicketGateway.CodexTicketDiagnosticLimited(c.Request.Context(), accountID, model)
-		if err != nil {
-			item.Reason = "account_lookup_failed"
+		probeCtx, templateErr := h.codexTicketGateway.PrepareCodexProbeContext(c.Request.Context())
+		if templateErr != nil {
+			item.Reason = "template_unavailable"
+			if errors.Is(templateErr, service.ErrCodexProbeTemplateInvalid) {
+				item.Reason = "template_invalid"
+			}
 			results = append(results, item)
 			continue
-		}
-		if limited {
-			item.Reason = "rate_limited"
-			results = append(results, item)
-			continue
-		}
-		generation := ""
-		if ticketEligible[model] {
-			generation, err = h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
-		}
-		if err != nil {
-			item.Reason = "ticket_lookup_failed"
-			results = append(results, item)
-			continue
-		}
-		if ticketEligible[model] && generation == "" {
-			harvest, err := h.codexTicketGateway.DiagnosticCodexTicketHarvest(c.Request.Context(), accountID, model)
-			if err != nil {
-				item.Reason = "harvest_unavailable"
-				if errors.Is(err, service.ErrCodexTicketRateLimited) {
-					item.Reason = "rate_limited"
-				}
-				results = append(results, item)
-				continue
-			}
-			item.Harvest = &harvest.CodexTicketAttempt
-			if harvest.Outcome != "success" {
-				item.Reason = "harvest_" + harvest.ReasonCode
-				results = append(results, item)
-				continue
-			}
-			generation, err = h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
-			if err != nil || generation == "" {
-				item.Reason = "ticket_lookup_failed"
-				results = append(results, item)
-				continue
-			}
 		}
 		challenge, challengeErr := generateChallenge()
 		if challengeErr != nil {
@@ -221,14 +178,27 @@ func (h *AccountHandler) diagnoseCodexModels(c *gin.Context, generateChallenge f
 			results = append(results, item)
 			continue
 		}
-		body, _ := json.Marshal(map[string]any{"model": model, "stream": true, "store": false, "input": []any{map[string]any{"role": "user", "content": challenge.Prompt}}})
-		modelCtx, cancel := context.WithTimeout(service.WithCodexTicketDiagnostic(c.Request.Context(), accountID), 120*time.Second)
+		body, probeHeaders, buildErr := h.codexTicketGateway.BuildCodexDiagnosticRequest(probeCtx, accountID, model, challenge)
+		if buildErr != nil {
+			item.Reason = "request_build_failed"
+			if errors.Is(buildErr, service.ErrCodexProbeIdentity) {
+				item.Reason = "identity_resolution_failed"
+			}
+			results = append(results, item)
+			continue
+		}
+		// The normal gateway owns ticket policy, scheduling, injection and invalidation.
+		// Diagnostics only pin the target account and analyze the model response.
+		modelCtx, cancel := context.WithTimeout(service.WithCodexTicketDiagnostic(probeCtx, accountID), 120*time.Second)
 		request, requestErr := http.NewRequestWithContext(modelCtx, http.MethodPost, "/v1/responses", bytes.NewReader(body))
 		if requestErr != nil {
 			cancel()
 			item.Reason = "request_build_failed"
 			results = append(results, item)
 			continue
+		}
+		for name, values := range probeHeaders {
+			request.Header[name] = values
 		}
 		request.Header.Set("Authorization", "Bearer "+key.Key)
 		request.Header.Set("Content-Type", "application/json")
@@ -239,16 +209,6 @@ func (h *AccountHandler) diagnoseCodexModels(c *gin.Context, generateChallenge f
 		h.codexTicketRouter.ServeHTTP(writer, request)
 		cancel()
 		item.HTTPStatus = writer.Code
-		currentGeneration, lookupErr := "", error(nil)
-		if ticketEligible[model] {
-			currentGeneration, lookupErr = h.codexTicketGateway.HasCodexTicket(c.Request.Context(), accountID, model)
-		}
-		if lookupErr != nil || currentGeneration != generation {
-			item.Status, item.Reason = "uncertain", "ticket_invalidated_during_test"
-			_, _ = h.codexTicketGateway.DiagnosticCodexTicketHarvest(c.Request.Context(), accountID, model)
-			results = append(results, item)
-			continue
-		}
 		if writer.Code < 200 || writer.Code >= 300 {
 			item.Reason = "gateway_request_failed"
 			item.GatewayErrorCode = codexDiagnosticGatewayError(writer.Body.Bytes())

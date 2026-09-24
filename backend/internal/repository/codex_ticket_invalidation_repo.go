@@ -13,7 +13,8 @@ import (
 
 func (r *codexTicketAttemptRepository) CurrentTicket(ctx context.Context, accountID int64, model string) (json.RawMessage, error) {
 	var raw json.RawMessage
-	err := r.db.QueryRowContext(ctx, `SELECT extra->$2 FROM accounts WHERE id=$1 AND deleted_at IS NULL`, accountID, "codex_turn_ticket:"+model).Scan(&raw)
+	// A missing JSONB key is SQL NULL, which cannot be scanned into RawMessage.
+	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(extra->$2, 'null'::jsonb) FROM accounts WHERE id=$1 AND deleted_at IS NULL`, accountID, "codex_turn_ticket:"+model).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -57,10 +58,10 @@ func (r *codexTicketAttemptRepository) Invalidate(ctx context.Context, event *se
 	err = tx.QueryRowContext(ctx, `INSERT INTO codex_ticket_invalidations
 		(account_id,model,ticket_generation_id,occurred_at,reason_code,response_http_status,request_kind,request_route,invalidated_current,
 		 original_ticket,original_cookie,returned_ticket,returned_cookie,returned_set_cookies)
-		VALUES ($1,$2,$3,$4,'upstream_new_turn_state',$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		VALUES ($1,$2,$3,$4,$14,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (ticket_generation_id) DO NOTHING RETURNING id`,
 		event.AccountID, event.Model, event.TicketGenerationID, event.OccurredAt, event.ResponseHTTPStatus, event.RequestKind, event.RequestRoute,
-		current.Valid && current.String == event.TicketGenerationID, originalTicket, originalCookie, event.ReturnedTicket, returnedCookie, cookies).Scan(&insertedID)
+		current.Valid && current.String == event.TicketGenerationID, originalTicket, originalCookie, event.ReturnedTicket, returnedCookie, cookies, event.ReasonCode).Scan(&insertedID)
 	if errors.Is(err, sql.ErrNoRows) {
 		_, updateErr := tx.ExecContext(ctx, `UPDATE codex_ticket_invalidations SET
 			occurred_at=$2,response_http_status=$3,request_kind=$4,request_route=$5,

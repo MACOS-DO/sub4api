@@ -304,6 +304,13 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 			if _, ok := account.Extra[service.CodexTicketReadyModelsExtraKey]; !ok {
 				return nil, false, nil
 			}
+			// Older projections omitted participation and could wrongly block excluded accounts.
+			if _, ok := account.Extra["codex_ticket_harvest_enabled"].(bool); !ok {
+				return nil, false, nil
+			}
+			if _, ok := account.Extra["codex_ticket_harvest_models"].(map[string]any); !ok {
+				return nil, false, nil
+			}
 			account.SchedulerTicketProjection = true
 		}
 		if err := applySchedulerLastUsed(account, lastUsedValues[i]); err != nil {
@@ -875,6 +882,9 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 			extra = make(map[string]any)
 		}
 		extra[service.CodexTicketReadyModelsExtraKey] = service.OpenAICodexTicketReadyModels(&account)
+		// Materialize the default so readers can distinguish old projections from accounts with default participation.
+		extra["codex_ticket_harvest_enabled"] = account.Extra["codex_ticket_harvest_enabled"] != false
+		extra["codex_ticket_harvest_models"] = filterSchedulerCodexTicketModels(account.Extra["codex_ticket_harvest_models"])
 	}
 	return service.Account{
 		ID:                      account.ID,
@@ -905,6 +915,24 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		Credentials:             filterSchedulerCredentials(account.Credentials),
 		Extra:                   extra,
 	}
+}
+
+// Always emit an object, including for absent settings, so old projections can be rebuilt.
+func filterSchedulerCodexTicketModels(raw any) map[string]bool {
+	models := make(map[string]bool)
+	switch values := raw.(type) {
+	case map[string]bool:
+		for model, enabled := range values {
+			models[model] = enabled
+		}
+	case map[string]any:
+		for model, value := range values {
+			if enabled, ok := value.(bool); ok {
+				models[model] = enabled
+			}
+		}
+	}
+	return models
 }
 
 func filterSchedulerAccountGroups(accountGroups []service.AccountGroup) []service.AccountGroup {
@@ -1037,6 +1065,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"codex_fingerprint_mode",
 		"codex_fingerprint_seed",
 		"codex_allow_without_ticket",
+		"codex_ticket_harvest_enabled",
+		"codex_ticket_harvest_models",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
 		"codex_5h_reset_at",

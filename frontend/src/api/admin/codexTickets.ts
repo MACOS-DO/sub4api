@@ -110,3 +110,13 @@ export async function cadence(): Promise<{ retry_min_seconds: number; retry_max_
 export async function saveCadence(value: { retry_min_seconds: number; retry_max_seconds: number; refresh_seconds: number }): Promise<void> {
   await apiClient.put('/admin/accounts/codex-ticket-cadence', value)
 }
+
+export interface TicketParticipation {
+  enabled: boolean
+  models: Record<string, boolean>
+}
+
+export async function saveParticipation(id: number, value: TicketParticipation): Promise<TicketParticipation> {
+  const { data } = await apiClient.put(`${base(id)}/codex-ticket-participation`, value)
+  return data
+}

@@ -19,7 +19,6 @@ import (
 	"github.com/MACOS-DO/sub4api/internal/config"
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/MACOS-DO/sub4api/internal/pkg/openai"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
@@ -204,7 +203,7 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 			status.CookiePresent = ticket.Cookie != ""
 			status.FingerprintCommit = ticket.FingerprintCommit
 		}
-		status.Blocked = cfg.Enabled && !OpenAICodexAllowsWithoutTicket(account, !cfg.FailClosed) && !status.Ready
+		status.Blocked = cfg.Enabled && !OpenAICodexAllowsWithoutTicket(account, model, !cfg.FailClosed) && !status.Ready
 		out = append(out, status)
 	}
 	return out
@@ -304,8 +303,8 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 }
 
 // applyOpenAICodexTicket 在出站请求上覆盖 x-codex-turn-state。
-// 请求路径只注入已捕获的有效门票，不现场打票；无票则返回
-// ErrOpenAICodexTicketUnavailable。打票由后台 harvester 完成。
+// 请求路径只注入已捕获的有效门票，不现场打票；仅在无票策略禁止时返回
+// ErrOpenAICodexTicketUnavailable。关闭全局、账号或当前模型参与时不限制无票请求。
 func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) error {
 	_, err := s.applyOpenAICodexTicketWithGeneration(ctx, account, model, h)
 	return err
@@ -344,7 +343,7 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicketWithGeneration(ctx context.
 		applyOpenAICodexTicketCookie(h, ticket)
 		return ticket, nil
 	}
-	if s.openAICodexAllowsWithoutTicket(ctx, account) {
+	if s.openAICodexAllowsWithoutTicket(ctx, account, model) {
 		return nil, nil
 	}
 	return nil, ErrOpenAICodexTicketUnavailable
@@ -403,10 +402,10 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 	if s == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabled() {
 		return false
 	}
-	if s.openAICodexAllowsWithoutTicket(context.Background(), account) {
+	model := normalizeOpenAICodexTicketModel(outboundModel)
+	if s.openAICodexAllowsWithoutTicket(context.Background(), account, model) {
 		return false
 	}
-	model := normalizeOpenAICodexTicketModel(outboundModel)
 	if !s.openAICodexTicketGatedModel(model) {
 		return false
 	}
@@ -427,7 +426,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, challenge ModelTraceChallenge, attemptTimeout time.Duration) (output string, state string, cookie string, status int, err error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
 	defer cancel()
-	body, err := json.Marshal(map[string]any{"model": model, "store": false, "stream": true, "input": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": challenge.Prompt}}}}})
+	body, replayHeaders, err := s.buildCodexProbeRequest(attemptCtx, account, model, challenge)
 	if err != nil {
 		return "", "", "", 0, err
 	}
@@ -442,7 +441,9 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("session_id", uuid.NewString())
+	for name, values := range replayHeaders {
+		req.Header[name] = values
+	}
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(attemptCtx, s.accountRepo, req.Header, account); err != nil {
 		return "", "", "", 0, err
 	}
@@ -558,6 +559,7 @@ func (s *OpenAIGatewayService) StartOpenAICodexTicketHarvester() {
 	done := make(chan struct{})
 	s.openaiCodexTicketCancel = cancel
 	s.openaiCodexTicketDone = done
+	s.openaiCodexTicketWake = make(chan struct{}, 1)
 	go func() {
 		defer close(done)
 		s.openAICodexTicketHarvestLoop(ctx)
@@ -584,6 +586,20 @@ func (s *OpenAIGatewayService) StopOpenAICodexTicketHarvester() {
 	}
 }
 
+// Coalesce invalidations into the existing scheduler; the caller never waits
+// for model requests and all participation, quota and concurrency gates remain.
+func (s *OpenAIGatewayService) notifyOpenAICodexTicketHarvester() {
+	s.openaiCodexTicketLifecycleMu.Lock()
+	defer s.openaiCodexTicketLifecycleMu.Unlock()
+	if s.openaiCodexTicketStopped || s.openaiCodexTicketWake == nil {
+		return
+	}
+	select {
+	case s.openaiCodexTicketWake <- struct{}{}:
+	default:
+	}
+}
+
 func (s *OpenAIGatewayService) openAICodexTicketHarvestLoop(ctx context.Context) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -593,6 +609,14 @@ func (s *OpenAIGatewayService) openAICodexTicketHarvestLoop(ctx context.Context)
 		select {
 		case <-ctx.Done():
 			return
+		case <-s.openaiCodexTicketWake:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(0)
 		case <-timer.C:
 			if s.settingService != nil && time.Since(lastBankCheck) >= time.Hour {
 				lastBankCheck = time.Now()
@@ -823,9 +847,13 @@ func RedactOpenAICodexTicketExtra(extra map[string]any) map[string]any {
 	return redacted
 }
 
-// OpenAICodexAllowsWithoutTicket applies an explicit account override to the global default.
-func OpenAICodexAllowsWithoutTicket(account *Account, globalDefault bool) bool {
+// OpenAICodexAllowsWithoutTicket bypasses the missing-ticket gate when the account
+// or outbound model is excluded; otherwise the account override wins over the global default.
+func OpenAICodexAllowsWithoutTicket(account *Account, model string, globalDefault bool) bool {
 	if account != nil {
+		if !codexTicketParticipationEnabled(account, model) {
+			return true
+		}
 		if allow, ok := account.Extra["codex_allow_without_ticket"].(bool); ok {
 			return allow
 		}
@@ -833,10 +861,10 @@ func OpenAICodexAllowsWithoutTicket(account *Account, globalDefault bool) bool {
 	return globalDefault
 }
 
-func (s *OpenAIGatewayService) openAICodexAllowsWithoutTicket(ctx context.Context, account *Account) bool {
+func (s *OpenAIGatewayService) openAICodexAllowsWithoutTicket(ctx context.Context, account *Account, model string) bool {
 	allow := !s.openAICodexTicketConfig().FailClosed
 	if s.settingService != nil {
 		allow = s.settingService.GetOpenAICodexTicketAllowWithoutTicket(ctx, allow)
 	}
-	return OpenAICodexAllowsWithoutTicket(account, allow)
+	return OpenAICodexAllowsWithoutTicket(account, model, allow)
 }

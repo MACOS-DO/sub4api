@@ -94,11 +94,11 @@ onUnmounted(() => { ++measurementSerial; resizeObserver?.disconnect() })
 const labels = computed(() => locale.value.startsWith('zh') ? {
   more: '还有', expand: '个，展开', collapse: '收起已选模型',
   selected: '已选择', count: '个模型', clear: '清空选择', remove: '移除', search: '搜索模型名称', models: 'GPT 模型',
-  ticket: '需要打票', ticketHint: '按指纹库打票', direct: '无需打票', directHint: '直接检测', empty: '没有匹配的模型'
+  ticket: '支持打票', ticketHint: '按网关策略请求', direct: '无需打票', directHint: '直接检测', empty: '没有匹配的模型'
 } : {
   more: 'Show', expand: 'more', collapse: 'Collapse selected models',
   selected: 'Selected', count: 'models', clear: 'Clear selection', remove: 'Remove', search: 'Search models', models: 'GPT models',
-  ticket: 'Ticket required', ticketHint: 'Fingerprint ticket', direct: 'No ticket', directHint: 'Direct check', empty: 'No matching models'
+  ticket: 'Ticket support', ticketHint: 'Gateway policy', direct: 'No ticket', directHint: 'Direct check', empty: 'No matching models'
 })
 const groups = computed(() => {
   const search = query.value.trim().toLowerCase()

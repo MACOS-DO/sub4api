@@ -9,7 +9,7 @@
             <p v-if="activeTab !== 'diagnostic'" class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ text.retention }}</p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
-            <button type="button" class="btn btn-secondary !px-3 !py-1.5 !text-xs" :disabled="loading" @click="reload">{{ text.refresh }}</button>
+            <button type="button" class="btn btn-secondary !px-3 !py-1.5 !text-xs" :disabled="loading || accountLoading || savingParticipation" @click="reload">{{ text.refresh }}</button>
             <button type="button" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700" :aria-label="text.close" @click="emit('close')">✕</button>
           </div>
         </header>
@@ -24,17 +24,32 @@
           </div>
 
           <section v-if="activeTab === 'tickets'" :aria-label="text.current">
+            <div class="mb-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ text.accountParticipation }}</span>
+                <Toggle :model-value="participation.enabled" :disabled="participationDisabled" :aria-label="text.accountParticipation" class="disabled:cursor-not-allowed disabled:opacity-50" @update:model-value="saveParticipation($event)" />
+              </div>
+              <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ text.participationHint }}</p>
+              <p v-if="savingParticipation" role="status" class="mt-2 text-xs text-gray-500">{{ text.savingParticipation }}</p>
+              <p v-else-if="participationSaved" role="status" class="mt-2 text-xs text-primary-600">{{ text.participationSaved }}</p>
+              <p v-if="participationError" role="alert" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ participationError }}</p>
+            </div>
             <div v-if="!statuses.length" class="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800">{{ text.noModels }}</div>
             <div v-else class="grid gap-3 md:grid-cols-2">
               <article v-for="status in statuses" :key="status.model" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800 sm:p-5">
                 <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="min-w-0 break-all font-mono text-sm font-semibold text-gray-900 dark:text-white">{{ status.model }}</h3><span class="rounded-md px-2 py-1 text-xs font-medium" :class="statusClass(status)">{{ statusLabel(status) }}</span></div>
+                <div class="mt-4 flex items-center justify-between gap-4">
+                  <span class="text-xs text-gray-700 dark:text-dark-200">{{ text.modelParticipation }}</span>
+                  <Toggle :model-value="participation.models[status.model] !== false" :disabled="participationDisabled" :aria-label="text.modelParticipation + ' · ' + status.model" class="disabled:cursor-not-allowed disabled:opacity-50" @update:model-value="saveParticipation($event, status.model)" />
+                </div>
+                <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ status.harvest_enabled ? text.harvestActive : text.harvestInactive }}</p>
                 <dl class="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
                   <div><dt class="text-gray-500 dark:text-dark-400">{{ text.acquired }}</dt><dd class="mt-1 text-gray-800 dark:text-dark-200">{{ formatTime(status.captured_at) }}</dd></div>
                   <div><dt class="text-gray-500 dark:text-dark-400">{{ text.length }}</dt><dd class="mt-1 font-medium tabular-nums text-gray-800 dark:text-dark-200">{{ status.length ?? '—' }}</dd></div>
                   <div><dt class="text-gray-500 dark:text-dark-400">turn-state</dt><dd class="mt-1 text-gray-800 dark:text-dark-200">{{ status.turn_state_present ? text.present : text.absent }}</dd></div>
                   <div><dt class="text-gray-500 dark:text-dark-400">Cookie</dt><dd class="mt-1 text-gray-800 dark:text-dark-200">{{ status.cookie_present ? text.present : text.absent }}</dd></div>
                 </dl>
-                <button type="button" class="btn btn-secondary mt-4 !px-3 !py-1.5 !text-xs" :disabled="busyModel !== '' || !status.harvest_enabled" @click="harvestModel(status.model)">{{ busyModel === status.model ? text.running : text.manual }}</button>
+                <button type="button" class="btn btn-secondary mt-4 !px-3 !py-1.5 !text-xs" :disabled="busyModel !== '' || participationDisabled || !participation.enabled || participation.models[status.model] === false || !status.harvest_enabled" @click="harvestModel(status.model)">{{ busyModel === status.model ? text.running : text.manual }}</button>
               </article>
             </div>
           </section>
@@ -99,7 +114,7 @@
                     <button type="button" class="ml-8 mt-2 text-[11px] font-medium text-primary-600 hover:underline dark:text-primary-400" :aria-expanded="entry.expanded" :aria-controls="'codex-diagnostic-detail-' + entryIndex" @click="entry.expanded = !entry.expanded">{{ entry.expanded ? text.hideResultDetails : text.resultDetails }}</button>
                     <dl v-if="entry.expanded" :id="'codex-diagnostic-detail-' + entryIndex" class="ml-8 mt-2 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs dark:border-dark-700 dark:bg-dark-900">
                       <div><dt class="text-gray-500 dark:text-dark-400">{{ text.prediction }}</dt><dd class="mt-1 break-all text-gray-800 dark:text-dark-200">{{ entry.result.predicted_model || '—' }} · {{ entry.result.probability == null ? '—' : (entry.result.probability * 100).toFixed(1) + '%' }}</dd></div>
-                      <div v-if="entry.result.reason"><dt class="text-gray-500 dark:text-dark-400">{{ text.reason }}</dt><dd class="mt-1 whitespace-pre-wrap break-words text-gray-800 dark:text-dark-200 [overflow-wrap:anywhere]">{{ entry.result.reason }}</dd></div>
+                      <div v-if="entry.result.reason"><dt class="text-gray-500 dark:text-dark-400">{{ text.reason }}</dt><dd class="mt-1 whitespace-pre-wrap break-words text-gray-800 dark:text-dark-200 [overflow-wrap:anywhere]">{{ entry.result.reason === 'template_invalid' ? text.templateInvalid : entry.result.reason }}</dd></div>
                       <div v-if="entry.result.gateway_error_code || entry.result.http_status"><dt class="text-gray-500 dark:text-dark-400">{{ text.gateway }}</dt><dd class="mt-1 break-all text-gray-800 dark:text-dark-200">{{ [entry.result.gateway_error_code, entry.result.http_status ? 'HTTP ' + entry.result.http_status : ''].filter(Boolean).join(' · ') }}</dd></div>
                     </dl>
                   </template>
@@ -116,7 +131,7 @@
           <div class="flex items-center justify-between gap-3"><h3 class="break-all text-lg font-semibold text-gray-900 dark:text-white">{{ text.details }} · {{ detail.model }}</h3><button type="button" class="p-2 text-gray-500" :aria-label="text.close" @click="closeDetail">✕</button></div>
           <p class="mt-1 text-xs text-gray-500">{{ formatTime(detail.occurred_at) }} · {{ kindLabel(detail.kind) }}</p>
           <div v-if="detail.kind === 'invalidation'" class="mt-5">
-            <p class="mb-3 text-xs text-gray-500">{{ detail.request_kind }} · {{ detail.request_route }} · HTTP {{ detail.response_http_status ?? '—' }}</p>
+            <p class="mb-3 text-xs text-gray-500">{{ reasonLabel(detail.reason_code) }} · {{ detail.request_kind }} · {{ detail.request_route }} · HTTP {{ detail.response_http_status ?? '—' }}</p>
             <div v-if="detailLoading" class="text-sm text-gray-500">{{ text.loading }}</div>
             <div v-else-if="detailError" class="text-sm text-red-600">{{ detailError }}</div>
             <div v-else-if="rawDetail" class="grid gap-4 md:grid-cols-2"><div v-for="field in credentialFields" :key="field.label" class="min-w-0 rounded-xl border border-gray-200 p-4 dark:border-dark-600"><div class="flex items-center justify-between gap-2"><span class="text-xs font-semibold text-gray-500">{{ field.label }}</span><button v-if="field.value" type="button" class="text-xs font-semibold text-primary-600" @click="copy(field.value)">{{ text.copy }}</button></div><pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-gray-800 dark:text-dark-200">{{ field.value || (field.original ? text.notCarried : text.notReturned) }}</pre></div></div>
@@ -135,6 +150,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import * as tickets from '@/api/admin/codexTickets'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import CodexDiagnosticModelPicker from './CodexDiagnosticModelPicker.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -145,21 +161,27 @@ const emit = defineEmits<{ close: []; updated: [account: Account] }>()
 const { locale } = useI18n()
 const text = computed(() => locale.value.startsWith('zh') ? {
   title: '票据中心', retention: '流水保留 90 天 · 失效凭据仅管理员可查看', refresh: '刷新', close: '关闭',
-  available: '可用票 / 参与模型', fingerprint: '指纹版本', updateBank: '校验并更新', tabs: '票据中心导航',
+  available: '可用票 / 模型', fingerprint: '指纹版本', updateBank: '校验并更新', tabs: '票据中心导航',
   current: '当前票据', attempts: '打票流水', invalidations: '票据过期历史', diagnostic: '降智检测',
-  noModels: '当前没有参与打票的模型', length: '票据长度', acquired: '获取于', present: '已携带', absent: '未携带',
+  noModels: '当前没有需要打票的模型', length: '票据长度', acquired: '获取于', present: '已携带', absent: '未携带',
+  accountParticipation: '此账号参与打票', modelParticipation: '此模型参与打票',
+  participationHint: '开关表示保存的参与设置，切换即保存。关闭账号参与后仍可编辑模型选择。关闭账号或单个模型参与时，对应请求跳过无票限制；重新开启后恢复原无票策略。实际打票还受全局开关、账号状态和现有运行条件约束。',
+  savingParticipation: '正在保存参与设置…', participationSaved: '参与设置已保存', participationRefreshError: '参与设置已保存，但账号详情刷新失败，请点击刷新重试。',
+  harvestActive: '运行状态：已允许打票', harvestInactive: '运行状态：当前未允许打票',
+  credentialsChanged: 'turn-state 与 __oailb 同时变化', legacyStateChanged: '旧规则：turn-state 变化',
   ready: '可用', missing: '无票', paused: '暂停', manual: '手动打票', running: '运行中…',
-  attemptsDesc: '成功、未命中与执行错误只在这里展示，不代表当前票失效。', invalidationsDesc: '仅记录上游返回新 turn-state 的失效事件，不表示推算的 TTL 到期。',
+  attemptsDesc: '成功、未命中与执行错误只在这里展示，不代表当前票失效。', invalidationsDesc: '新版仅在已携带票据的请求中，turn-state 与 __oailb 同时变化时记录失效。旧版仅比较 turn-state；两类记录均不表示推算的 TTL 到期。',
   filter: '结果', model: '模型', all: '全部结果', success: '打票成功', failure: '失败与错误', invalidation: '票据失效', allModels: '全部模型',
   loading: '正在加载…', empty: '没有符合条件的记录（最多保留 90 天）', records: '条记录', legacy: '旧版长度校验',
   details: '流水详情', copy: '复制', notCarried: '未携带', notReturned: '上游未返回',
-  setup: '创建一次检测', diagnosticDesc: '选择计费 Key 和模型，开始后直接查看检测进度与结果。',
+  setup: '创建一次检测', diagnosticDesc: '使用所选计费 Key 和系统设置中的「Codex 打票与降智检测模板」，向选中账号发起正常网关请求。是否允许无票请求由网关策略决定；检测不会单独补票，也不受打票参与开关限制。',
   key: '用于计费的 API Key', chooseKey: '选择 API Key', noKey: '没有可用的本人 API Key', chooseModels: '选择检测模型',
   modelHint: '可多选；无需打票的旧模型直接检测。', start: '开始检测', count: '个模型', cancel: '取消后续检测', paid: '正常计费',
   viewResults: '查看本次结果', editSetup: '修改配置', finished: '已完成', cancelled: '已取消', progress: '检测进度',
   pending: '等待中', stopped: '已停止等待', not_run: '未执行', checking: '检测中', waitingHint: '等待前一个模型完成', checkingHint: '正在处理本次检测',
   serialHint: '按所选顺序检测，结果逐项更新', keepResults: '已完成的结果仍然保留', stoppedSummary: '后续检测已停止', finishedSummary: '本次检测已结束',
   resultDetails: '查看详情 +', hideResultDetails: '收起详情 −', prediction: '预测模型 / 匹配概率', reason: '原因', gateway: '网关响应',
+  templateInvalid: '共享模板配置无效，请在系统设置中修正后重试。',
   failureHint: '请求失败与疑似降智分别展示。具体原因可展开查看。', failedHint: '请求未完成，不代表降智', stoppedHint: '未收到检测结论', notRunHint: '取消后未发起请求', missingResult: '未返回此模型的检测结果',
   results: '检测结果', completed: '已完成', testing: '正在检测', normal: '正常', degraded: '疑似降智', uncertain: '不确定', failed: '失败', error: '操作失败'
 } : {
@@ -167,18 +189,24 @@ const text = computed(() => locale.value.startsWith('zh') ? {
   available: 'Ready / models', fingerprint: 'Fingerprint version', updateBank: 'Verify & update', tabs: 'Ticket center navigation',
   current: 'Current tickets', attempts: 'Ticket attempts', invalidations: 'Ticket expiry history', diagnostic: 'Model degradation check',
   noModels: 'No models currently require tickets', length: 'Ticket length', acquired: 'Acquired', present: 'Present', absent: 'Absent',
+  accountParticipation: 'Include this account in ticket harvesting', modelParticipation: 'Include this model in ticket harvesting',
+  participationHint: 'Switches show saved participation settings and save immediately. Model choices remain editable when account participation is off. Disabling account or model participation bypasses missing-ticket restrictions for the affected requests. Re-enabling restores the saved policy. Harvesting also depends on the global switch, account status and existing runtime conditions.',
+  savingParticipation: 'Saving participation…', participationSaved: 'Participation saved', participationRefreshError: 'Participation was saved, but account details could not be refreshed. Select Refresh to retry.',
+  harvestActive: 'Runtime: harvesting allowed', harvestInactive: 'Runtime: harvesting currently disabled',
+  credentialsChanged: 'Both turn-state and __oailb changed', legacyStateChanged: 'Legacy rule: turn-state changed',
   ready: 'Ready', missing: 'Missing', paused: 'Paused', manual: 'Harvest', running: 'Running…',
-  attemptsDesc: 'Success, misses and errors are shown here; failed attempts do not mean the current ticket is invalid.', invalidationsDesc: 'Upstream returned a new turn-state; this is not an inferred TTL expiry.',
+  attemptsDesc: 'Success, misses and errors are shown here; failed attempts do not mean the current ticket is invalid.', invalidationsDesc: 'New events require both turn-state and __oailb to change on a request carrying a saved ticket. Legacy events only compared turn-state. Neither is an inferred TTL expiry.',
   filter: 'Result', model: 'Model', all: 'All results', success: 'Success', failure: 'Failures & errors', invalidation: 'Invalidation', allModels: 'All models',
   loading: 'Loading…', empty: 'No matching records (90-day retention)', records: 'records', legacy: 'Legacy length check',
   details: 'Event details', copy: 'Copy', notCarried: 'Not carried', notReturned: 'Not returned by upstream',
-  setup: 'Create a check', diagnosticDesc: 'Choose a billing key and models, then follow progress and results as each check completes.',
+  setup: 'Create a check', diagnosticDesc: 'Uses the selected billing key and the shared Codex ticket and degradation check template from system settings to send normal gateway requests to the selected account. The gateway decides whether requests without tickets are allowed. Checks do not harvest tickets or require harvesting participation.',
   key: 'Billing API key', chooseKey: 'Select API key', noKey: 'No eligible own API key', chooseModels: 'Select models',
   modelHint: 'Select multiple models; older models without tickets are checked directly.', start: 'Check', count: 'models', cancel: 'Cancel remaining checks', paid: 'Normal billing applies',
   viewResults: 'View current results', editSetup: 'Edit setup', finished: 'Completed', cancelled: 'Cancelled', progress: 'Check progress',
   pending: 'Waiting', stopped: 'Stopped waiting', not_run: 'Not started', checking: 'Checking', waitingHint: 'Waiting for the previous model', checkingHint: 'Processing this check',
   serialHint: 'Checking models in order; results appear as they complete', keepResults: 'Completed results are retained', stoppedSummary: 'Remaining checks stopped', finishedSummary: 'This check has ended',
   resultDetails: 'View details +', hideResultDetails: 'Hide details −', prediction: 'Predicted model / probability', reason: 'Reason', gateway: 'Gateway response',
+  templateInvalid: 'The shared template is invalid. Correct it in system settings and retry.',
   failureHint: 'Request failures and possible degradation are shown separately. Expand a result for details.', failedHint: 'Request failed; this does not imply degradation', stoppedHint: 'No conclusion received', notRunHint: 'Request not sent after cancellation', missingResult: 'No result was returned for this model',
   results: 'Results', completed: 'completed', testing: 'Checking', normal: 'Normal', degraded: 'Possible degradation', uncertain: 'Uncertain', failed: 'Failed', error: 'Operation failed'
 })
@@ -204,6 +232,15 @@ const fingerprintCommit = ref('')
 const refreshingBank = ref(false)
 const models = ref<string[]>([])
 const accountDetail = ref<Account | null>(null)
+const participation = ref<tickets.TicketParticipation>({ enabled: true, models: {} })
+const accountLoaded = ref(false)
+const accountLoading = ref(false)
+const savingParticipation = ref(false)
+const participationSaved = ref(false)
+const participationError = ref('')
+const participationDisabled = computed(() => !accountLoaded.value || accountLoading.value || savingParticipation.value)
+let accountLoadSerial = 0
+let bankLoadSerial = 0
 const busyModel = ref('')
 const keys = ref<Awaited<ReturnType<typeof tickets.ownKeys>>>([])
 const selectedKey = ref<number | null>(null)
@@ -291,8 +328,13 @@ async function showDiagnosticStage(stage: DiagnosticStage) {
   const heading = stage === 'results' ? resultsHeading.value : setupHeading.value
   heading?.focus({ preventScroll: true })
 }
+function reasonLabel(reason?: string) {
+  if (reason === 'upstream_turn_state_and_oailb_changed') return text.value.credentialsChanged
+  if (reason === 'upstream_new_turn_state') return text.value.legacyStateChanged
+  return reason || ''
+}
 function eventSummary(event: tickets.TicketEvent) {
-  return [event.reason_code, event.ticket_length != null ? `${text.value.length} ${event.ticket_length}` : '',
+  return [reasonLabel(event.reason_code), event.ticket_length != null ? `${text.value.length} ${event.ticket_length}` : '',
     (event.http_status ?? event.response_http_status) != null ? `HTTP ${event.http_status ?? event.response_http_status}` : '',
     event.duration_ms != null ? `${event.duration_ms}ms` : '', event.proxy_name,
     event.fingerprint_predicted_model ? `top-1 ${event.fingerprint_predicted_model}` : ''].filter(Boolean).join(' · ') || '—'
@@ -313,7 +355,7 @@ const attemptFields = computed(() => {
     { label: 'Challenge / parsed', value: `${event.challenge_expected_count ?? '—'} / ${event.parsed_number_count ?? '—'}` },
     { label: 'Top-1 / probability', value: `${event.fingerprint_predicted_model || '—'} / ${event.fingerprint_probability == null ? '—' : `${(event.fingerprint_probability * 100).toFixed(2)}%`}` },
     { label: 'Fingerprint / version', value: `${event.verification_method || text.value.legacy} · ${event.fingerprint_commit || '—'}` },
-    { label: 'Reason / HTTP', value: `${event.reason_code || '—'} · ${event.http_status ?? '—'}` },
+    { label: 'Reason / HTTP', value: `${reasonLabel(event.reason_code) || '—'} · ${event.http_status ?? '—'}` },
     { label: 'Duration / proxy', value: `${event.duration_ms ?? '—'} ms · ${event.proxy_name || '—'}` }
   ]
 })
@@ -324,7 +366,7 @@ function switchTab(tab: Tab) {
   if (tab === 'attempts' || tab === 'invalidations') { page.value = 1; loadEvents() }
 }
 async function loadEvents() {
-  if (!props.account || (activeTab.value !== 'attempts' && activeTab.value !== 'invalidations')) return
+  if (!props.show || !props.account || (activeTab.value !== 'attempts' && activeTab.value !== 'invalidations')) return
   const serial = ++loadSerial
   loading.value = true
   error.value = ''
@@ -343,41 +385,102 @@ async function loadEvents() {
     if (serial === loadSerial) error.value = extractApiErrorMessage(cause, text.value.error)
   } finally { if (serial === loadSerial) loading.value = false }
 }
-async function updateFingerprint() {
-  refreshingBank.value = true
-  error.value = ''
-  try {
-    const bank = await tickets.refreshFingerprint()
-    fingerprintCommit.value = bank.commit
-    models.value = bank.models
-    await reload()
-  } catch (cause) { error.value = extractApiErrorMessage(cause, text.value.error) }
-  finally { refreshingBank.value = false }
+function savedParticipation(account: Account): tickets.TicketParticipation {
+  const raw = account.extra?.codex_ticket_harvest_models
+  const models = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? Object.fromEntries(Object.entries(raw).map(([model, enabled]) => [model, enabled !== false])) : {}
+  return { enabled: account.extra?.codex_ticket_harvest_enabled !== false, models }
 }
-async function reload() {
-  if (!props.account) return
+function isCurrentAccount(session: number, id: number) {
+  return session === accountSessionSerial && props.show && props.account?.id === id
+}
+async function loadAccount(afterSave = false) {
+  if (!props.show || !props.account || (savingParticipation.value && !afterSave)) return
   const id = props.account.id
   const session = accountSessionSerial
+  const serial = ++accountLoadSerial
+  const isCurrent = () => serial === accountLoadSerial && isCurrentAccount(session, id)
+  accountLoading.value = true
+  participationError.value = ''
   try {
-    const [bank, updated] = await Promise.all([tickets.fingerprint(), adminAPI.accounts.getById(id)])
-    if (session !== accountSessionSerial || props.account?.id !== id || !props.show) return
-    fingerprintCommit.value = bank.commit
-    models.value = bank.models
+    const updated = await adminAPI.accounts.getById(id)
+    if (!isCurrent()) return
+    accountDetail.value = updated
+    participation.value = savedParticipation(updated)
+    accountLoaded.value = true
+    emit('updated', updated)
+  } catch (cause) {
+    if (isCurrent()) participationError.value = afterSave ? text.value.participationRefreshError : extractApiErrorMessage(cause, text.value.error)
+  } finally { if (isCurrent()) accountLoading.value = false }
+}
+async function saveParticipation(enabled: boolean, model?: string) {
+  if (participationDisabled.value || !props.show || !props.account) return
+  const id = props.account.id
+  const session = accountSessionSerial
+  const before = participation.value
+  const next = { enabled: model ? before.enabled : enabled, models: { ...before.models } }
+  if (model) next.models[model] = enabled
+  participation.value = next
+  savingParticipation.value = true
+  participationSaved.value = false
+  participationError.value = ''
+  ++accountLoadSerial
+  try {
+    const saved = await tickets.saveParticipation(id, next)
+    if (!isCurrentAccount(session, id)) return
+    participation.value = { enabled: saved.enabled, models: { ...saved.models } }
+    participationSaved.value = true
+    // Commit the successful PUT locally before refreshing. A failed GET must
+    // not roll back settings which are already stored on the server.
+    const updated = { ...(accountDetail.value ?? props.account), extra: {
+      ...(accountDetail.value ?? props.account).extra,
+      codex_ticket_harvest_enabled: saved.enabled, codex_ticket_harvest_models: { ...saved.models }
+    } } as Account
     accountDetail.value = updated
     emit('updated', updated)
-  } catch (cause) { if (session === accountSessionSerial) error.value = extractApiErrorMessage(cause, text.value.error) }
-  if (session === accountSessionSerial) await loadEvents()
+    await loadAccount(true)
+  } catch (cause) {
+    if (isCurrentAccount(session, id)) {
+      participation.value = before
+      participationError.value = extractApiErrorMessage(cause, text.value.error)
+    }
+  } finally { if (isCurrentAccount(session, id)) savingParticipation.value = false }
+}
+async function loadFingerprint(refresh = false) {
+  const session = accountSessionSerial
+  const serial = ++bankLoadSerial
+  const isCurrent = () => session === accountSessionSerial && serial === bankLoadSerial && props.show
+  if (refresh) refreshingBank.value = true
+  try {
+    const bank = await (refresh ? tickets.refreshFingerprint() : tickets.fingerprint())
+    if (!isCurrent()) return
+    fingerprintCommit.value = bank.commit
+    models.value = bank.models
+  } catch (cause) { if (isCurrent()) error.value = extractApiErrorMessage(cause, text.value.error) }
+  finally { if (isCurrent()) refreshingBank.value = false }
+}
+async function updateFingerprint() {
+  error.value = ''
+  await Promise.all([loadFingerprint(true), loadAccount()])
+}
+async function reload() {
+  if (!props.show || !props.account) return
+  error.value = ''
+  await Promise.all([loadAccount(), loadFingerprint(), loadEvents()])
 }
 async function harvestModel(model: string) {
-  if (!props.account) return
+  if (!props.account || busyModel.value || participationDisabled.value) return
+  const id = props.account.id
+  const session = accountSessionSerial
   busyModel.value = model
   error.value = ''
   try {
-    const attempt = await tickets.harvest(props.account.id, model)
+    const attempt = await tickets.harvest(id, model)
+    if (!isCurrentAccount(session, id)) return
     await reload()
-    if (attempt.outcome !== 'success') error.value = attempt.reason_code || attempt.outcome
-  } catch (cause) { error.value = extractApiErrorMessage(cause, text.value.error) }
-  finally { busyModel.value = '' }
+    if (isCurrentAccount(session, id) && attempt.outcome !== 'success') error.value = attempt.reason_code || attempt.outcome
+  } catch (cause) { if (isCurrentAccount(session, id)) error.value = extractApiErrorMessage(cause, text.value.error) }
+  finally { if (isCurrentAccount(session, id)) busyModel.value = '' }
 }
 async function openDiagnostic() {
   if (keys.value.length || keysLoading.value) return
@@ -461,6 +564,17 @@ function closeDetail() { detail.value = null; rawDetail.value = null }
 async function copy(value?: string | null) { if (value) await navigator.clipboard.writeText(value) }
 watch(() => [props.show, props.account?.id], () => {
   ++accountSessionSerial
+  ++accountLoadSerial
+  ++bankLoadSerial
+  accountLoaded.value = false
+  accountLoading.value = false
+  savingParticipation.value = false
+  participationSaved.value = false
+  participationError.value = ''
+  refreshingBank.value = false
+  busyModel.value = ''
+  fingerprintCommit.value = ''
+  models.value = []
   cancelDiagnostic()
   diagnosticRun.value = null
   diagnosticStage.value = 'setup'
@@ -479,6 +593,7 @@ watch(() => [props.show, props.account?.id], () => {
   startDay.value = ''
   endDay.value = ''
   accountDetail.value = props.account
+  participation.value = savedParticipation(props.account)
   keys.value = []
   reload()
   if (activeTab.value === 'diagnostic') openDiagnostic()

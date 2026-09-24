@@ -618,7 +618,7 @@ export default {
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',
         requestTimezone: 'Request timezone',
-        requestTimezoneDesc: 'Environment date and timezone for this OpenAI account. Defaults to Singapore; existing language headers are sent in English.',
+        requestTimezoneDesc: 'Timezone in environment context for this OpenAI account. Defaults to Singapore; preserves original client dates, times and language preferences.',
         requestTimezoneLoadFailed: 'Timezone choices could not be loaded. The default Singapore timezone remains available.',
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
@@ -698,7 +698,7 @@ export default {
         codexFingerprintFull: 'Full convergence',
         codexDiagnostic: 'Model degradation check',
         codexTicketAccountPolicy: 'Requests without a ticket',
-        codexTicketAccountPolicyDesc: 'For gated Codex models only; available tickets are still injected. Account overrides take precedence over the global default.',
+        codexTicketAccountPolicyDesc: 'Missing-ticket restrictions apply only when global harvesting is enabled and both this account and the current model participate. Account overrides take precedence over the global default; existing tickets follow the normal injection rules.',
         codexTicketPolicyInherit: 'Inherit global default',
         codexTicketPolicyAllow: 'Allow without a ticket',
         codexTicketPolicyDeny: 'Require a ticket',

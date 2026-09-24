@@ -736,7 +736,7 @@ export default {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
         requestTimezone: '请求时区',
-        requestTimezoneDesc: '此 OpenAI 账号的环境日期与时区，默认新加坡；原有语言请求头统一为英文。',
+        requestTimezoneDesc: '此 OpenAI 账号环境上下文中的时区，默认新加坡；保留客户端原始日期、时间和语言偏好。',
         requestTimezoneLoadFailed: '时区列表加载失败，仍可使用默认的新加坡时区。',
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
@@ -807,7 +807,7 @@ export default {
         codexFingerprintFull: '完全收敛',
         codexDiagnostic: '降智检测',
         codexTicketAccountPolicy: '无票请求策略',
-        codexTicketAccountPolicyDesc: '仅影响需要打票的 Codex 模型；有票时仍会注入。账号设置优先于全局默认。',
+        codexTicketAccountPolicyDesc: '无票限制仅在全局打票开启且此账号及当前模型均参与打票时生效，账号设置优先于全局默认；已有票据仍按原规则注入。',
         codexTicketPolicyInherit: '继承全局默认',
         codexTicketPolicyAllow: '允许无票',
         codexTicketPolicyDeny: '必须有票',

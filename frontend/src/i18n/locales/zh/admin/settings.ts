@@ -555,9 +555,16 @@ export default {
         codexHardeningTitle: 'Codex 设置',
         codexTicketEnabled: '292 打票',
         codexTicketEnabledDesc:
-          '关闭后不打票、不注入 x-codex-turn-state，按原链路转发。开启后后台打票，并在业务请求中覆盖该头。',
+          '打票默认关闭，需要时手动开启。关闭后按原链路转发；开启后按账号和模型参与设置后台打票，并在业务请求中注入票据。升级到 1.1.4 时会一次性关闭此开关；之后手动开启的选择会保留。',
+        codexProbeTemplate: 'Codex 打票与降智检测模板',
+        codexProbeTemplateReset: '恢复默认',
+        codexProbeTemplateDesc: '打票和降智检测共用此 JSONL 模板。保留消息结构、标签和占位符，最大 256 KiB；恢复默认后点击保存生效。默认固定文案为英文，动态随机挑战仍为中文。',
+        codexProbeTimezone: '账号请求时区',
+        codexProbeDate: '账号时区下的当前日期',
+        codexProbeModel: '目标模型',
+        codexProbeChallenge: '本次随机挑战',
         codexTicketAllowWithoutTicket: '默认允许无票请求',
-        codexTicketAllowWithoutTicketDesc: '关闭后，OpenAI OAuth 类账号请求受门控模型时必须有该模型的票，除非账号明确允许无票请求。',
+        codexTicketAllowWithoutTicketDesc: '未配置时默认开启，缺票不会阻断正常请求；已有全局和账号策略会保留。无票限制仅在全局打票开启且账号及当前模型均参与打票时生效，账号单独设置优先生效。',
         codexTicketHarvestProxy: '292 打票代理',
         codexTicketHarvestProxyDesc:
           '仅在门票功能开启时用于打票，保存后后续探测会使用新代理，无需重启。日常业务仍走账号自己的住宅代理。填写完整代理 URL（http 或 socks5h，含用户名和密码）。代理服务商需自行负责出口 IP 轮换。留空并保存表示不改已保存的值。',

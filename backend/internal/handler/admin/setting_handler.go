@@ -310,6 +310,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexTicketAllowWithoutTicket:                    settings.OpenAICodexTicketAllowWithoutTicket,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
+		OpenAICodexTicketPromptTemplate:                        service.EffectiveCodexProbeTemplate(settings.OpenAICodexTicketPromptTemplate),
+		OpenAICodexTicketPromptTemplateDefault:                 service.DefaultCodexProbeTemplate(),
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,
