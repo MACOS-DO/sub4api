@@ -309,3 +309,4 @@ underscores_in_headers on;
 本项目采用 [GNU LGPL v3.0 或更高版本](LICENSE) 许可证。
 
 Copyright (c) 2026 Wesley Liddick
+Copyright (c) 2026 MACOS DO
