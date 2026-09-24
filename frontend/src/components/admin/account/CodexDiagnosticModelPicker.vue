@@ -4,11 +4,14 @@
       <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ labels.selected }} <strong class="text-primary-600 dark:text-primary-400">{{ modelValue.length }}</strong> {{ labels.count }}</span>
       <button type="button" class="text-xs font-medium text-primary-600 hover:underline disabled:opacity-40 dark:text-primary-400" :disabled="disabled || !modelValue.length" @click="emit('update:modelValue', [])">{{ labels.clear }}</button>
     </div>
-    <div v-if="modelValue.length" class="flex flex-wrap gap-2 px-4 pt-3" aria-live="polite">
-      <span v-for="model in modelValue" :key="model" class="inline-flex max-w-full items-center gap-1.5 rounded-md bg-primary-50 px-2 py-1 font-mono text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-        <span class="truncate">{{ model }}</span>
-        <button type="button" class="rounded p-0.5 hover:bg-primary-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50 dark:hover:bg-primary-900" :disabled="disabled" :aria-label="`${labels.remove} ${model}`" @click="toggle(model)">×</button>
-      </span>
+    <div v-if="modelValue.length" class="px-4 pt-3">
+      <div ref="chipsElement" class="flex flex-wrap gap-2" :class="expanded ? '' : 'max-h-16 overflow-hidden'">
+        <span v-for="(model, modelIndex) in modelValue" :key="model" class="max-w-full items-center gap-1.5 rounded-md bg-primary-50 px-2 py-1 font-mono text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300" :class="!expanded && modelIndex >= visibleChipCount ? 'hidden' : 'inline-flex'">
+          <span class="truncate" :title="model">{{ model }}</span>
+          <button type="button" class="shrink-0 rounded p-0.5 hover:bg-primary-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:opacity-50 dark:hover:bg-primary-900" :disabled="disabled" :aria-label="labels.remove + ' ' + model" @click="toggle(model)">×</button>
+        </span>
+      </div>
+      <button v-if="expanded || hiddenChipCount" type="button" class="mt-2 text-xs font-medium text-primary-600 hover:underline disabled:opacity-50 dark:text-primary-400" :aria-expanded="expanded" :disabled="disabled" @click="expanded = !expanded">{{ expanded ? labels.collapse : labels.more + ' ' + hiddenChipCount + ' ' + labels.expand }}</button>
     </div>
     <div class="p-3">
       <div class="relative">
@@ -42,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -55,10 +58,45 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [models: string[]] }>()
 const { locale } = useI18n()
 const query = ref('')
+const chipsElement = ref<HTMLElement | null>(null)
+const expanded = ref(false)
+const visibleChipCount = ref(props.modelValue.length)
+const hiddenChipCount = computed(() => Math.max(0, props.modelValue.length - visibleChipCount.value))
+let measurementSerial = 0
+let resizeObserver: ResizeObserver | null = null
+async function measureChips() {
+  const serial = ++measurementSerial
+  visibleChipCount.value = props.modelValue.length
+  await nextTick()
+  if (serial !== measurementSerial || !chipsElement.value || !chipsElement.value.clientWidth) return
+  const chips = Array.from(chipsElement.value.children) as HTMLElement[]
+  const rows = [...new Set(chips.map(chip => chip.offsetTop))].sort((first, second) => first - second)
+  if (rows.length > 2) visibleChipCount.value = chips.filter(chip => chip.offsetTop <= rows[1]).length
+}
+watch(chipsElement, element => {
+  resizeObserver?.disconnect()
+  if (!element) return
+  let previousWidth = element.clientWidth
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width ?? 0
+      if (width !== previousWidth) { previousWidth = width; void measureChips() }
+    })
+    resizeObserver.observe(element)
+  }
+  void measureChips()
+}, { flush: 'post' })
+watch(() => props.modelValue.slice(), () => {
+  if (!props.modelValue.length) expanded.value = false
+  void measureChips()
+}, { flush: 'post' })
+onUnmounted(() => { ++measurementSerial; resizeObserver?.disconnect() })
 const labels = computed(() => locale.value.startsWith('zh') ? {
+  more: '还有', expand: '个，展开', collapse: '收起已选模型',
   selected: '已选择', count: '个模型', clear: '清空选择', remove: '移除', search: '搜索模型名称', models: 'GPT 模型',
   ticket: '需要打票', ticketHint: '按指纹库打票', direct: '无需打票', directHint: '直接检测', empty: '没有匹配的模型'
 } : {
+  more: 'Show', expand: 'more', collapse: 'Collapse selected models',
   selected: 'Selected', count: 'models', clear: 'Clear selection', remove: 'Remove', search: 'Search models', models: 'GPT models',
   ticket: 'Ticket required', ticketHint: 'Fingerprint ticket', direct: 'No ticket', directHint: 'Direct check', empty: 'No matching models'
 })
