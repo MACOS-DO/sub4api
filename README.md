@@ -1,770 +1,311 @@
+**社区地址：[macos.do](https://macos.do)**
+
+**TG 交流群：[t.me/macosdo](https://t.me/macosdo)**
+
 <div align="center">
 
-<img src="assets/logo.svg" alt="Sub4API Logo" width="128" />
+<img src="assets/logo.svg" alt="Sub4API 标志" width="128" />
 
 # Sub4API
 
-[![Go](https://img.shields.io/badge/Go-1.27.0-00ADD8.svg)](https://golang.org/)
-[![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
-
-
-**AI API Gateway Platform for Subscription Quota Distribution**
-
-English | [中文](README_CN.md) | [日本語](README_JA.md)
+**兼容 sub2api，增强 Codex 使用体验**
 
 </div>
 
-## About This Fork
+Sub4API 基于 sub2api 二次开发，完全兼容 sub2api，并会持续同步合并 sub2api 的版本更新。
 
-Sub4API is a fork of sub2api. This project restores the 292 ticket-generation feature (292 打票) that was withdrawn in sub2api version 0.2.6, which can resolve Codex intelligence degradation issues.
+在原有 API 网关与账号管理能力的基础上，Sub4API 重点增强 **Codex 打票与票据管理、请求时区替换以及请求头语言统一**，并提供票据流水和降智检测，方便管理与排查账号状态。
 
-## Community
+已部署 sub2api 的用户，只需将应用镜像替换为 `macosdo/sub4api:latest` 并重新创建应用容器，即可沿用原有配置与数据切换到 Sub4API。
 
-- **Telegram Group**: [t.me/macosdo](https://t.me/macosdo)
-- **Discussion Forum**: [macos.do](https://macos.do)
+## 相比 sub2api 的主要改进
 
-## ⚠️ Important Notice
+### 1. Codex 打票与票据管理
 
-Please read the following carefully before using this project:
+为支持的 OpenAI OAuth 类账号和模型获取、校验并使用票据，支持自动打票和手动打票，以及按账号、按模型管理参与打票的范围。
 
-- **🚨 Terms of Service Risk**: Using this project may violate the terms of service of Anthropic and other upstream providers. Please review the relevant providers' user agreements before use; all risks arising from such use are borne solely by the user.
-- **⚖️ Compliant Use**: Use this project only in compliance with the laws and regulations of your country or region. Any unlawful use is strictly prohibited.
-- **📖 Disclaimer**: This project is provided for technical learning and research purposes only. The authors assume no liability for account bans, service interruptions, data loss, or any other direct or indirect damages resulting from the use of this project.
-- **🚫 No Commercial Authorization**: The developers of this project have never authorized any individual or organization to conduct any form of commercial operation based on this project. Any commercial activity conducted in the name of or based on this project is unrelated to this project and its developers, and all resulting disputes, losses, and legal liabilities shall be borne solely by the party conducting such activity.
+- **模型指纹校验**：结合模型指纹校验打票结果，保存可用票据供后续请求使用。
+- **打票代理池**：复用「IP 设置」中的可用代理，支持使用全部可用代理或自定义选择，并在池内轮换；没有可用代理时不会直接连接打票。
+- **失败重试与主动刷新**：失败后按配置的间隔随机重试；主动刷新默认每 30 分钟一次，可调整间隔，设置为 `0` 可关闭主动刷新。
+- **票据与流水**：集中查看当前票据、打票成功与失败流水、票据失效历史。打票流水与失效历史均保留最近 90 天。
+- **多模型降智检测**：可选择多个模型，依次通过正式请求链路检测，查看正常、疑似降智、不确定或失败等结果。检测会产生正常请求费用，结果用于辅助排查。
 
-## Overview
+**使用入口：**
 
-Sub4API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
+| 功能 | 后台入口 |
+| --- | --- |
+| 打票总开关、重试与刷新间隔 | 系统设置中的「Codex 设置」，开启「292 打票」并保存设置 |
+| 打票代理池 | 「IP 设置」中的「Codex 打票代理池」 |
+| 账号与模型打票、票据流水 | 「账号管理」中点击账号的「打票」列，进入票据中心 |
+| 降智检测 | 票据中心的「降智检测」页，或账号操作菜单中的「降智检测」 |
 
-## Features
+### 2. 请求时区替换
 
-- **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)
-- **API Key Distribution** - Generate and manage API Keys for users
-- **Precise Billing** - Token-level usage tracking and cost calculation
-- **Smart Scheduling** - Intelligent account selection with sticky sessions
-- **Concurrency Control** - Per-user and per-account concurrency limits
-- **Rate Limiting** - Configurable request and token rate limits
-- **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
-- **Admin Dashboard** - Web interface for monitoring and management
-- **Composite Groups** - Admin routing layer that resolves requested models to concrete providers for multi-provider groups ([Operator Guide](docs/COMPOSITE_GROUPS.md))
-- **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
+OpenAI 账号可以单独设置请求时区，默认使用新加坡时区 `Asia/Singapore`。转发请求时，会按账号配置统一请求中的环境日期与时区。
 
-## Ecosystem
+- 仅处理明确标记为环境上下文的内容，替换其中已有的 `timezone`，并按目标时区更新已有的 `current_date`。
+- 同步替换网页搜索工具中已有的 `user_location.timezone`。
+- 普通对话文本不会被全局替换，也不会修改服务器或数据库的时区。
+- 可选时区列表不包含中国大陆和港澳台时区。
 
-Community projects that extend or integrate with Sub4API:
+例如，账号使用默认时区，且新加坡当前日期为 `2026-09-24` 时，以下已标记的环境上下文：
 
-| Project | Description | Features |
-|---------|-------------|----------|
-| ~~[Sub4ApiPay](https://github.com/touwaeriol/sub4apipay)~~ | ~~Self-service payment system~~ | **Now Built-in** — Payment is now integrated into Sub4API, no separate deployment needed. See [Payment Configuration Guide](docs/PAYMENT.md) |
-| [sub4api-mobile](https://github.com/ckken/sub4api-mobile) | Mobile admin console | Cross-platform app (iOS/Android/Web) for user management, account management, monitoring dashboard, and multi-backend switching; built with Expo + React Native |
+```xml
+<environment_context>
+  <current_date>2026-09-23</current_date>
+  <timezone>America/New_York</timezone>
+</environment_context>
+```
 
-## Tech Stack
+转发时会更新为：
 
-| Component | Technology |
-|-----------|------------|
-| Backend | Go 1.27.0, Gin, Ent |
-| Frontend | Vue 3.4+, Vite 5+, TailwindCSS |
-| Database | PostgreSQL 15+ |
-| Cache/Queue | Redis 7+ |
+```xml
+<environment_context>
+  <current_date>2026-09-24</current_date>
+  <timezone>Asia/Singapore</timezone>
+</environment_context>
+```
 
----
+**使用入口：** 在「账号管理」中创建或编辑 OpenAI 账号，通过「请求时区」选择目标时区并保存。
 
-## Nginx Reverse Proxy Note
+### 3. 请求头语言替换
 
-When using Nginx as a reverse proxy for Sub4API (or CRS) with Codex CLI, add the following to the `http` block in your Nginx configuration:
+转发 OpenAI 上游请求时，将已有的 `Accept-Language` 请求头统一为：
+
+```http
+Accept-Language: en-US,en;q=0.9
+```
+
+原请求没有该请求头时，不会主动添加。该处理只统一请求头中的语言偏好，不会翻译用户消息，也不会强制模型使用英文回答。
+
+**使用方式：** 随 OpenAI 账号的请求转发自动处理，无需额外配置。
+
+## 部署与切换
+
+Docker 镜像统一使用 `macosdo/sub4api:latest`。为沿用现有部署配置，Compose 服务名和 Linux 安装脚本的 systemd 服务名仍为 `sub2api`。
+
+### 从 sub2api 一键切换到 Sub4API
+
+在原部署目录中操作，继续使用原来的 Compose 文件和项目名。切换前按原部署方式备份数据库与配置。
+
+**第一步：修改应用镜像。**
+
+找到现有 Compose 文件中的 `sub2api` 服务，将 `image` 改为：
+
+```yaml
+services:
+  sub2api:
+    image: macosdo/sub4api:latest
+```
+
+上面仅展示需要修改的片段，其余配置继续沿用。保留原服务名、端口、数据目录与数据卷，以及原 `.env` 中的数据库、Redis 连接、`JWT_SECRET` 和 `TOTP_ENCRYPTION_KEY`，无需重新初始化或导入账号。
+
+**第二步：一条命令拉取镜像并更新应用容器。**
+
+```bash
+docker compose pull sub2api && docker compose up -d --no-deps sub2api
+```
+
+该命令只更新应用服务，继续使用现有 PostgreSQL 和 Redis 服务。
+
+如果原来使用 `docker-compose.local.yml`，继续带上相同的 `-f` 参数：
+
+```bash
+docker compose -f docker-compose.local.yml pull sub2api && docker compose -f docker-compose.local.yml up -d --no-deps sub2api
+```
+
+如果原命令还使用了 `-p`、`--env-file` 或多个 `-f` 参数，切换及后续维护时也应保留这些参数，确保使用原有配置与数据卷。
+
+**第三步：确认启动结果。**
+
+```bash
+docker compose ps sub2api
+docker compose logs --tail=100 sub2api
+```
+
+使用自定义 Compose 参数时，上面的检查命令也应带上相同参数。服务启动后，访问原管理后台地址，使用原管理员账号登录并确认账号与数据正常。
+
+### Docker Compose 部署
+
+适合首次部署，默认配置包含应用、PostgreSQL 18 和 Redis 8。需要 Docker、Docker Compose v2 或更新版本，以及 `curl` 和 `openssl`。
+
+#### 准备配置
+
+```bash
+mkdir -p sub4api-deploy
+cd sub4api-deploy
+
+# 下载 Compose 配置并生成首次部署所需的密钥和数据目录
+curl -fsSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/docker-deploy.sh | bash
+chmod 600 .env
+```
+
+脚本将下载 `docker-compose.local.yml` 并保存为 `docker-compose.yml`，同时生成 `.env`、数据库密码、JWT 密钥和 TOTP 加密密钥。已有 sub2api 实例请使用前面的切换步骤。
+
+打开生成的 `docker-compose.yml`，将 `sub2api` 服务的镜像改为：
+
+```yaml
+image: macosdo/sub4api:latest
+```
+
+随后检查 `.env`，按需设置 `ADMIN_EMAIL`、`ADMIN_PASSWORD` 和 `SERVER_PORT`。这里仅修改应用镜像，其余服务及数据挂载保持生成的配置。
+
+#### 启动与首次登录
+
+```bash
+docker compose up -d
+docker compose ps
+docker compose logs -f sub2api
+```
+
+浏览器访问 `http://服务器IP:8080`；如果修改了 `SERVER_PORT`，使用对应端口。Docker 部署会根据环境变量自动完成初始化。
+
+使用 `.env` 中设置的管理员邮箱与密码登录。如果 `ADMIN_PASSWORD` 留空，首次初始化会生成密码，可在应用启动日志中查看。
+
+#### 升级与查看日志
+
+```bash
+# 拉取最新应用镜像并重新创建应用容器
+docker compose pull sub2api && docker compose up -d --no-deps sub2api
+
+# 查看最近的应用日志
+docker compose logs --tail=100 sub2api
+
+# 持续查看应用日志
+docker compose logs -f sub2api
+```
+
+### Linux 脚本安装
+
+适用于 amd64 或 arm64 Linux 服务器。需要 Bash 4 或更新版本、root 或 sudo 权限，以及可连接的 PostgreSQL 和 Redis。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/install.sh | sudo bash
+
+# 启动服务并设置开机启动
+sudo systemctl enable --now sub2api
+```
+
+安装脚本从本项目的 GitHub Releases 下载程序，安装目录为 `/opt/sub2api`，服务名为 `sub2api`。首次访问 `http://服务器IP:8080`，按向导配置数据库、Redis 和管理员账号。
+
+常用管理命令：
+
+```bash
+# 查看运行状态
+sudo systemctl status sub2api
+
+# 查看日志
+sudo journalctl -u sub2api -f
+
+# 重启服务
+sudo systemctl restart sub2api
+```
+
+### 源码编译
+
+需要 Go 1.27.0、Node.js 24、pnpm 9，以及可连接的 PostgreSQL 和 Redis。Go 版本与当前 `backend/go.mod` 一致，Node.js 与 pnpm 版本与仓库 Docker 构建保持一致。
+
+```bash
+git clone https://github.com/MACOS-DO/sub4api.git
+cd sub4api
+
+# 安装 pnpm 并构建前端
+npm install --global pnpm@9
+cd frontend
+pnpm install --frozen-lockfile
+pnpm run build
+
+# 构建后端，将前端资源嵌入程序
+cd ../backend
+VERSION="$(./scripts/resolve-version.sh)"
+go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub4api ./cmd/server
+
+# 首次运行，进入初始化向导
+./sub4api
+```
+
+访问 `http://localhost:8080`，通过向导设置数据库、Redis 和管理员账号，并生成 `config.yaml`。首次安装时应由向导生成配置，提前复制配置文件会跳过初始化向导。
+
+初始化完成后，可参考 [完整配置示例](deploy/config.example.yaml) 调整配置。`-tags embed` 用于嵌入前端资源，提供管理界面。
+
+### macOS Apple container
+
+适用于搭载 Apple 芯片、运行 macOS 26 或更新版本的 Mac，需要 Apple `container` 1.1.0 或更新版本及 `openssl`。
+
+```bash
+git clone https://github.com/MACOS-DO/sub4api.git
+cd sub4api/deploy
+
+# 生成首次部署配置
+./apple-container.sh init
+```
+
+编辑生成的 `.env`，设置应用镜像：
+
+```dotenv
+APPLE_CONTAINER_SUB2API_IMAGE=macosdo/sub4api:latest
+```
+
+随后启动并检查服务：
+
+```bash
+./apple-container.sh up
+./apple-container.sh status
+./apple-container.sh logs app
+```
+
+浏览器访问 `http://localhost:8080`。完整的生命周期命令、数据持久化、升级方式和运行限制见 [Apple container 部署说明](deploy/APPLE_CONTAINER.md)，应用镜像使用上面的 Sub4API 配置。
+
+### 常用配置与维护
+
+#### 环境变量
+
+Docker Compose 使用部署目录下的 `.env`。常用配置如下：
+
+| 配置项 | 用途 |
+| --- | --- |
+| `POSTGRES_PASSWORD` | PostgreSQL 密码；首次部署脚本自动生成，已有实例沿用原值 |
+| `JWT_SECRET` | 登录令牌签名密钥，升级或切换时保留原值 |
+| `TOTP_ENCRYPTION_KEY` | 双重验证加密密钥，升级或切换时保留原值 |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | 首次初始化时创建管理员所用的邮箱和密码 |
+| `SERVER_PORT` | 对外访问端口，默认 `8080` |
+| `BIND_HOST` | 宿主机监听地址 |
+
+应用配置项见 [配置示例](deploy/config.example.yaml)，Docker 环境变量见 [环境变量示例](deploy/.env.example)。账号的「请求时区」仅作用于发往上游的请求，与服务器时区配置分别管理。
+
+#### 备份与迁移
+
+上面的新部署脚本使用本地目录保存应用、PostgreSQL 和 Redis 数据。对于这种部署方式，可以先停止服务，再备份整个部署目录，包含 `.env` 和数据目录：
+
+```bash
+# 在 sub4api-deploy 目录中执行
+docker compose stop
+cd ..
+sudo tar -czf "sub4api-backup-$(date +%Y%m%d-%H%M%S).tar.gz" sub4api-deploy/
+
+# 备份完成后恢复原服务
+cd sub4api-deploy
+docker compose start
+```
+
+迁移到新服务器时，复制并解压备份，保留原 `.env`、目录结构和数据库及 Redis 版本，在部署目录执行 `docker compose up -d`。使用自定义 Compose 参数时继续沿用原参数。
+
+使用具名数据卷或外部数据库的实例，需要同时备份对应数据卷或数据库；仅备份部署目录不包含这些数据。
+
+#### Nginx 请求头配置
+
+使用 Nginx 反向代理并接入 Codex 客户端时，在 Nginx 的 `http` 配置块中启用：
 
 ```nginx
 underscores_in_headers on;
 ```
 
-Nginx drops headers containing underscores by default (e.g. `session_id`), which breaks sticky session routing in multi-account setups.
+这样可以保留 `session_id` 等带下划线的请求头，供粘性会话路由使用。修改后检查 Nginx 配置并重新加载。
 
----
+## 致谢与许可证
 
-## Deployment
+感谢 sub2api 项目及其贡献者提供的基础能力。Sub4API 将持续同步合并上游版本更新，并在此基础上维护本项目的增强功能。
 
-### Method 1: Script Installation (Recommended)
-
-One-click installation script that downloads pre-built binaries from GitHub Releases.
-
-#### Prerequisites
-
-- Linux server (amd64 or arm64)
-- PostgreSQL 15+ (installed and running)
-- Redis 7+ (installed and running)
-- Root privileges
-
-#### Installation Steps
-
-```bash
-curl -sSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/install.sh | sudo bash
-```
-
-The script will:
-1. Detect your system architecture
-2. Download the latest release
-3. Install binary to `/opt/sub4api`
-4. Create systemd service
-5. Configure system user and permissions
-
-#### Post-Installation
-
-```bash
-# 1. Start the service
-sudo systemctl start sub4api
-
-# 2. Enable auto-start on boot
-sudo systemctl enable sub4api
-
-# 3. Open Setup Wizard in browser
-# http://YOUR_SERVER_IP:8080
-```
-
-The Setup Wizard will guide you through:
-- Database configuration
-- Redis configuration
-- Admin account creation
-
-#### Upgrade
-
-You can upgrade directly from the **Admin Dashboard** by clicking the **Check for Updates** button in the top-left corner.
-
-The web interface will:
-- Check for new versions automatically
-- Download and apply updates with one click
-- Support rollback if needed
-
-#### Useful Commands
-
-```bash
-# Check status
-sudo systemctl status sub4api
-
-# View logs
-sudo journalctl -u sub4api -f
-
-# Restart service
-sudo systemctl restart sub4api
-
-# Uninstall
-curl -sSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/install.sh | sudo bash -s -- uninstall -y
-```
-
----
-
-### Method 2: Docker Compose (Recommended)
-
-Deploy with Docker Compose, including PostgreSQL and Redis containers.
-
-#### Prerequisites
-
-- Docker 20.10+
-- Docker Compose v2+
-
-#### Quick Start (One-Click Deployment)
-
-Use the automated deployment script for easy setup:
-
-```bash
-# Create deployment directory
-mkdir -p sub4api-deploy && cd sub4api-deploy
-
-# Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/MACOS-DO/sub4api/main/deploy/docker-deploy.sh | bash
-
-# Start services
-docker compose up -d
-
-# View logs
-docker compose logs -f sub4api
-```
-
-**What the script does:**
-- Downloads `docker-compose.local.yml` (saved as `docker-compose.yml`) and `.env.example`
-- Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
-- Creates `.env` file with auto-generated secrets
-- Creates data directories (uses local directories for easy backup/migration)
-- Displays generated credentials for your reference
-
-#### Manual Deployment
-
-If you prefer manual setup:
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/MACOS-DO/sub4api.git
-cd sub4api/deploy
-
-# 2. Copy environment configuration
-cp .env.example .env
-chmod 600 .env
-
-# 3. Edit configuration (generate secure passwords)
-nano .env
-```
-
-**Required configuration in `.env`:**
-
-```bash
-# PostgreSQL password (REQUIRED)
-POSTGRES_PASSWORD=your_secure_password_here
-
-# JWT Secret (RECOMMENDED - keeps users logged in after restart)
-JWT_SECRET=your_jwt_secret_here
-
-# TOTP Encryption Key (RECOMMENDED - preserves 2FA after restart)
-TOTP_ENCRYPTION_KEY=your_totp_key_here
-
-# Optional: Admin account
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=your_admin_password
-
-# Optional: Custom port
-SERVER_PORT=8080
-```
-
-**Generate secure secrets:**
-```bash
-# Generate JWT_SECRET
-openssl rand -hex 32
-
-# Generate TOTP_ENCRYPTION_KEY
-openssl rand -hex 32
-
-# Generate POSTGRES_PASSWORD
-openssl rand -hex 32
-```
-
-```bash
-# 4. Create data directories (for local version)
-mkdir -p data postgres_data redis_data
-
-# 5. Start all services
-# Option A: Local directory version (recommended - easy migration)
-docker compose -f docker-compose.local.yml up -d
-
-# Option B: Named volumes version (simple setup)
-docker compose up -d
-
-# 6. Check status
-docker compose -f docker-compose.local.yml ps
-
-# 7. View logs
-docker compose -f docker-compose.local.yml logs -f sub4api
-```
-
-#### Deployment Versions
-
-| Version | Data Storage | Migration | Best For |
-|---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories | ✅ Easy (tar entire directory) | Production, frequent backups |
-| **docker-compose.yml** | Named volumes | ⚠️ Requires docker commands | Simple setup |
-
-**Recommendation:** Use `docker-compose.local.yml` (deployed by script) for easier data management.
-
-#### Access
-
-Open `http://YOUR_SERVER_IP:8080` in your browser.
-
-If admin password was auto-generated, find it in logs:
-```bash
-docker compose -f docker-compose.local.yml logs sub4api | grep "admin password"
-```
-
-#### Upgrade
-
-```bash
-# Pull latest image and recreate container
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
-```
-
-#### Easy Migration (Local Directory Version)
-
-When using `docker-compose.local.yml`, migrate to a new server easily:
-
-```bash
-# On source server
-docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub4api-complete.tar.gz sub4api-deploy/
-
-# Transfer to new server
-scp sub4api-complete.tar.gz user@new-server:/path/
-
-# On new server
-tar xzf sub4api-complete.tar.gz
-cd sub4api-deploy/
-docker compose -f docker-compose.local.yml up -d
-```
-
-#### Useful Commands
-
-```bash
-# Stop all services
-docker compose -f docker-compose.local.yml down
-
-# Restart
-docker compose -f docker-compose.local.yml restart
-
-# View all logs
-docker compose -f docker-compose.local.yml logs -f
-
-# Remove all data (caution!)
-docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
-```
-
----
-
-### Method 3: Apple container (macOS)
-
-Apple-silicon Macs running macOS 26 can run the full Sub4API, PostgreSQL, and Redis stack with Apple `container` 1.1.0 or newer:
-
-```bash
-git clone https://github.com/MACOS-DO/sub4api.git
-cd sub4api/deploy
-./apple-container.sh init
-./apple-container.sh up
-./apple-container.sh status
-```
-
-This is an operator-managed local workflow; Docker Compose remains the recommended production path. See [deploy/APPLE_CONTAINER.md](deploy/APPLE_CONTAINER.md) for lifecycle commands, persistence, upgrades, and runtime limitations.
-
----
-
-### Method 4: Build from Source
-
-Build and run from source code for development or customization.
-
-#### Prerequisites
-
-- Go 1.21+
-- Node.js 18+
-- PostgreSQL 15+
-- Redis 7+
-
-#### Build Steps
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/MACOS-DO/sub4api.git
-cd sub4api
-
-# 2. Install pnpm (if not already installed)
-npm install -g pnpm
-
-# 3. Build frontend
-cd frontend
-pnpm install
-pnpm run build
-# Output will be in ../backend/internal/web/dist/
-
-# 4. Build backend with embedded frontend
-cd ../backend
-VERSION="$(./scripts/resolve-version.sh)"
-go build -tags embed -ldflags="-X main.Version=${VERSION}" -o sub4api ./cmd/server
-
-# 5. Create configuration file
-cp ../deploy/config.example.yaml ./config.yaml
-
-# 6. Edit configuration
-nano config.yaml
-```
-
-> **Note:** The `-tags embed` flag embeds the frontend into the binary. Without this flag, the binary will not serve the frontend UI.
-
-**Key configuration in `config.yaml`:**
-
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-  mode: "release"
-
-database:
-  host: "localhost"
-  port: 5432
-  user: "postgres"
-  password: "your_password"
-  dbname: "sub4api"
-
-redis:
-  host: "localhost"
-  port: 6379
-  username: ""
-  password: ""
-
-jwt:
-  secret: "change-this-to-a-secure-random-string"
-  expire_hour: 24
-
-default:
-  user_concurrency: 5
-  user_balance: 0
-  api_key_prefix: "sk-"
-  rate_multiplier: 1.0
-```
-
-Additional security-related options are available in `config.yaml`:
-
-- `cors.allowed_origins` for CORS allowlist
-- `security.url_allowlist` for upstream/pricing/CRS host allowlists
-- `security.url_allowlist.enabled` to disable URL validation (use with caution)
-- `security.url_allowlist.allow_insecure_http` to allow HTTP URLs when validation is disabled
-- `security.url_allowlist.allow_private_hosts` to allow private/local IP addresses
-- `security.response_headers.enabled` to enable configurable response header filtering (disabled uses default allowlist)
-- `security.csp` to control Content-Security-Policy headers
-- `billing.circuit_breaker` to fail closed on billing errors
-- `security.trust_forwarded_ip_for_api_key_acl` enables legacy raw forwarded-header takeover (enabled by default for upgrade compatibility); disable it to enforce `server.trusted_proxies`, which should contain only the exact proxy CIDRs that connect directly to Sub4API
-- `security.forwarded_client_ip_headers` configures up to 16 third-party CDN client-IP header names; they are checked in order before the built-in headers only while legacy takeover is enabled
-- `turnstile.required` to require Turnstile in release mode
-
-Custom client-IP headers can be set in YAML or as a comma-separated environment variable:
-
-```bash
-SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
-```
-
-Header names are validated, canonicalized, and de-duplicated. The admin security settings can update the list without a restart; new installations persist YAML/environment defaults and existing installations backfill a missing database value. When legacy takeover is disabled, all custom and built-in raw forwarding headers are ignored and Gin uses only `server.trusted_proxies`. While takeover is enabled, firewall the origin to CDN/proxy addresses and make the edge overwrite every trusted client-IP header. See [`deploy/EDGE_SECURITY.md`](deploy/EDGE_SECURITY.md) for the complete migration and trust-boundary rules.
-
-**⚠️ Security Warning: HTTP URL Configuration**
-
-When `security.url_allowlist.enabled=false`, the system performs minimal URL validation and **allows HTTP URLs by default** (dev-friendly mode; Docker Compose deployments use the same default). For production, explicitly tighten this to HTTPS-only:
-
-```yaml
-security:
-  url_allowlist:
-    enabled: false                # Disable allowlist checks
-    allow_insecure_http: false    # HTTPS only (recommended for production)
-```
-
-**Or via environment variable:**
-
-```bash
-SECURITY_URL_ALLOWLIST_ENABLED=false
-SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
-```
-
-**Risks of allowing HTTP:**
-- API keys and data transmitted in **plaintext** (vulnerable to interception)
-- Susceptible to **man-in-the-middle (MITM) attacks**
-- **NOT suitable for production** environments
-
-**When to use HTTP:**
-- ✅ Development/testing with local servers (http://localhost)
-- ✅ Internal networks with trusted endpoints
-- ✅ Testing account connectivity before obtaining HTTPS
-- ❌ Production environments (use HTTPS only)
-
-**Example error for HTTP URLs when `allow_insecure_http: false` is set:**
-```
-Invalid base URL: invalid url scheme: http
-```
-
-If you disable URL validation or response header filtering, harden your network layer:
-- Enforce an egress allowlist for upstream domains/IPs
-- Block private/loopback/link-local ranges
-- Enforce TLS-only outbound traffic
-- Strip sensitive upstream response headers at the proxy
-
-#### OpenAI Responses WebSocket ingress limits
-
-`gateway.openai_ws` bounds the lifetime and aggregate count of client-facing
-Responses WebSocket sessions. These safeguards apply independently from
-per-turn user and account concurrency slots, which are released between turns.
-
-```yaml
-gateway:
-  openai_ws:
-    # Total time to receive and decompress the first client message.
-    client_first_message_timeout_seconds: 30
-    # Close a client socket idle between completed turns; 0 disables this safeguard.
-    ingress_inter_turn_idle_timeout_seconds: 300
-    # Distributed API-key limit for live client ingress sessions; 0 disables it.
-    max_ingress_connections_per_api_key: 64
-```
-
-The first-message timeout is a total read deadline. Deployments that accept
-large contexts or image-heavy requests over slower links can raise it to
-120-300 seconds. It expires before HTTP bridge routing, so bridge mode does not
-override this limit.
-
-The connection cap is coordinated through Redis using a 60-second lease that
-is refreshed every 20 seconds. A process that cannot confirm a lease for a
-full lease lifetime closes its local WebSocket rather than continuing outside
-the global cap.
-
-Enable the v2 mode router before selecting an account-level WS mode such as
-`http_bridge`:
-
-```yaml
-gateway:
-  openai_ws:
-    mode_router_v2_enabled: true
-```
-
-Or set `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true` in the environment.
-Use `http_bridge` for client-WebSocket/upstream-HTTP operation when rolling out
-or mitigating upstream WebSocket issues.
-
-#### Force OpenAI upstream HTTP/SSE
-
-When an egress proxy or network repeatedly reconnects OpenAI Responses
-WebSockets, set the global fallback in the persisted deployment configuration:
-
-```yaml
-gateway:
-  openai_ws:
-    force_http: true
-```
-
-For Compose and Apple container deployments, the equivalent `.env` setting is:
-
-```bash
-GATEWAY_OPENAI_WS_FORCE_HTTP=true
-```
-
-This selects HTTP/SSE for OpenAI upstream Responses traffic that would
-otherwise use WebSocket. It does not change the client-facing protocol or force
-HTTP/1.1; configure `gateway.openai_http2.enabled` (or
-`GATEWAY_OPENAI_HTTP2_ENABLED=false`) separately when a proxy is incompatible
-with HTTP/2. Unlike the account-level `http_bridge` mode, this global fallback
-takes effect without enabling `mode_router_v2_enabled`. Keep the setting in the
-deployment's persisted `.env` or `config.yaml`, rather than inside a running
-container, so it is read again after an image update or container recreation.
-
-#### ⚠️ Important: Creating the Admin Account
-
-The initial admin account is **only created via the setup wizard** (served at `http://<host>:8080` on first run). The `default.admin_email` / `default.admin_password` fields in `config.yaml` are **not used** to create it — they exist in the template for historical reasons.
-
-Because step 5 above pre-creates `config.yaml`, the setup wizard will be **skipped on first run**: the server detects an existing config and boots straight into normal mode with an empty `users` table, so the first login attempt fails with `invalid email or password`.
-
-**Two ways to create the admin account:**
-
-1. **Recommended — let the wizard generate `config.yaml`:** Skip step 5 (do not run the `cp`). Start `./sub4api` directly; the setup wizard at `http://localhost:8080` walks you through database, Redis, and admin account setup, then writes `config.yaml` for you.
-
-2. **If you already created `config.yaml`:** Temporarily move it aside so the wizard can trigger on first run, then restore it afterwards:
-   ```bash
-   mv config.yaml config.yaml.bak
-   ./sub4api        # wizard runs at http://localhost:8080 and writes a fresh config.yaml
-   # stop the server (Ctrl+C) once the wizard completes, then restore your config:
-   mv config.yaml.bak config.yaml
-   ./sub4api        # restart in normal mode and log in with the admin you just created
-   ```
-
-```bash
-# 6. Run the application
-./sub4api
-```
-
-#### Development Mode
-
-```bash
-# Backend (with hot reload)
-cd backend
-go run ./cmd/server
-
-# Frontend (with hot reload)
-cd frontend
-pnpm run dev
-```
-
-#### Code Generation
-
-When editing `backend/ent/schema`, regenerate Ent + Wire:
-
-```bash
-cd backend
-go generate ./ent
-go generate ./cmd/server
-```
-
----
-
-## Simple Mode
-
-Simple Mode is designed for individual developers or internal teams who want quick access without full SaaS features.
-
-- Enable: Set environment variable `RUN_MODE=simple`
-- Difference: Hides SaaS-related features and skips billing process
-- Security note: In production, you must also set `SIMPLE_MODE_CONFIRM=true` to allow startup
-
----
-
-## Asynchronous Image Tasks
-
-Long-running OpenAI/Grok image generation and editing can be submitted through `/v1/images/generations/async` or `/v1/images/edits/async`, then polled at `/v1/images/tasks/{task_id}` without holding a CDN connection open. See [Asynchronous Image Tasks](docs/ASYNC_IMAGE_TASKS.md) for request and response examples.
-
----
-
-## Grok / xAI Support
-
-Sub4API supports both Grok subscription accounts through xAI OAuth and standard xAI API-key accounts. Both account types forward OpenAI-compatible Responses traffic to xAI.
-
-### Supported Scope
-
-- Platform name: `grok`
-- Account types: OAuth subscription accounts and xAI API-key accounts
-- Public Responses targets: `/v1/responses`, `/responses`, and `/backend-api/codex/responses`, forwarded to the Grok subscription proxy for OAuth accounts or `https://api.x.ai/v1/responses` for API-key accounts
-- Public Claude-compatible target: `/v1/messages`, converted to xAI Responses and returned as Anthropic Messages output for Claude CLI style clients
-- Public Chat Completions targets: `/v1/chat/completions` and `/chat/completions`, forwarded to the account-type-specific xAI upstream
-- Codex CLI style Responses WebSocket ingress is accepted on the Responses targets and bridged to xAI HTTP/SSE Responses upstream
-- Text models: `grok-4.5`, `grok-4.3`, `grok-build-0.1`, `grok-composer-2.5-fast`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
-- Media targets for Grok groups: `/v1/images/generations`, `/images/generations`, `/v1/images/edits`, `/images/edits`, `/v1/videos/generations`, `/videos/generations`, `/v1/videos/edits`, `/videos/edits`, `/v1/videos/extensions`, `/videos/extensions`, `/v1/videos/{request_id}`, and `/videos/{request_id}`. Generation, editing, and extension requests require the group image-generation permission.
-- Media models: `grok-imagine`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-imagine-image-2.0`, `grok-imagine-edit`, `grok-imagine-video`, and `grok-imagine-video-1.5`
-- JSON image-edit and video-generation requests accept image references in `image`, `images`, `reference_images`, and `mask` objects. Use `url` for xAI-compatible payloads; the legacy `image_url` field remains accepted and is normalized to `url` before forwarding.
-- Out of scope for this provider: TTS, transcription, browser automation, cookies, and Grok web scraping
-
-### OAuth Configuration
-
-The Grok OAuth flow uses PKCE and does not require committing private secrets. The default client details follow the public xAI OAuth flow used by compatible clients, and every value can be overridden by environment variable:
-
-| Variable | Default |
-|----------|---------|
-| `XAI_OAUTH_CLIENT_ID` | Public xAI OAuth client ID |
-| `XAI_OAUTH_SCOPE` | `openid profile email offline_access grok-cli:access api:access` |
-| `XAI_OAUTH_REDIRECT_URI` | `http://127.0.0.1:56121/callback` |
-| `XAI_OAUTH_AUTHORIZE_URL` | `https://auth.x.ai/oauth2/authorize` |
-| `XAI_OAUTH_TOKEN_URL` | `https://auth.x.ai/oauth2/token` |
-| `XAI_BASE_URL` | `https://api.x.ai/v1`; runtime-diagnostics override (account `base_url` controls request forwarding) |
-| `XAI_GROK_CLI_VERSION` | `0.2.114`; optional override for the client identity sent to `cli-chat-proxy.grok.com`. The pinned value is also the floor: an override below it is dropped |
-
-Administrators can create Grok OAuth or API-key accounts from the dashboard. OAuth authorization and reauthorization are also available through the admin API:
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/v1/admin/grok/oauth/auth-url` | Generate an xAI OAuth authorization URL |
-| `POST /api/v1/admin/grok/oauth/exchange-code` | Exchange a callback URL, query string, or code for OAuth credentials |
-| `POST /api/v1/admin/grok/oauth/refresh-token` | Validate or refresh a Grok refresh token |
-| `POST /api/v1/admin/grok/accounts/:id/refresh` | Refresh an existing Grok account |
-
-OAuth credential storage reuses the existing account JSON fields: `access_token`, `refresh_token`, `token_type`, `expires_at`, `base_url`, optional `email`, optional `subscription_tier`, and `entitlement_status`. OAuth inference defaults to `https://cli-chat-proxy.grok.com/v1`; existing OAuth accounts that stored the old `https://api.x.ai/v1` default are redirected to the subscription proxy at runtime. Explicit custom upstreams remain unchanged.
-
-For API-key accounts, select **Grok → API Key** in the create-account dialog. The official base URL defaults to `https://api.x.ai/v1`; credentials use the existing `base_url` and `api_key` account fields. OAuth accounts continue to use the subscription flow above.
-
-### Grok Build CLI Configuration
-
-1. In the Sub4API admin dashboard, add either a `grok` OAuth account and complete xAI authorization, or add a Grok API-key account.
-2. Create a Grok group, attach the account to it, then create a Sub4API API key assigned to that group.
-3. In the user API-key page, click **Use Key** and select **Grok CLI**. The modal generates the correct file and base URL for macOS/Linux or Windows. It also provides an OpenCode configuration on the **OpenCode** tab.
-4. If configuring manually, save the following as `~/.grok/config.toml` (Windows: `%USERPROFILE%\.grok\config.toml`):
-
-```toml
-[models]
-default = "grok"
-web_search = "grok"
-
-[model."grok"]
-model = "grok-4.5"
-base_url = "https://your-sub4api.example.com/v1"
-name = "Grok 4.5"
-api_key = "sk-your-sub4api-key"
-api_backend = "responses"
-context_window = 1000000
-supports_backend_search = true
-```
-
-Back up an existing `config.toml` before merging the entry. The file contains a Sub4API API key, so keep it private and restrict its permissions where supported. Verify the effective configuration and make a smoke request:
-
-```bash
-grok inspect
-grok -p "Reply with sub4api-ok" -m grok
-```
-
-The `base_url` above is the public Sub4API URL ending in `/v1`, not `api.x.ai` or the internal xAI OAuth proxy URL.
-
-### Usage And Quota Display
-
-xAI quota is passive. Sub4API does not invent subscription quota values; it records whitelisted xAI rate-limit headers from successful or rate-limited upstream responses when xAI sends them. Before the first usable upstream response, the dashboard shows quota as unknown and still displays local Sub4API usage stats.
-
-`401` responses temporarily remove accounts with invalid credentials from scheduling. `403` responses are treated as access or entitlement failures instead of token-refresh loops. `429` responses use `Retry-After` or a short cooldown to temporarily remove the account from scheduling.
-
-New Grok image and video generation requests use a media-specific eligibility check. API-key accounts remain eligible. OAuth accounts with explicit Free or forbidden billing evidence are excluded from new media generation. Missing or malformed observations are probed before dispatch; a successful but incomplete billing response is treated as `billing_inconclusive` and remains eligible for backwards compatibility, because an unknown billing schema is not proof that the account lacks media entitlement. Operators can quarantine a known-bad account with `extra.grok_media_eligible=false` or force-enable a verified account with `true`. Imports run the billing-first quota probe proactively. Chat requests and video status lookups are not affected by this media-only quarantine. If no eligible account remains, the media endpoint returns HTTP `503` with error type `grok_media_no_eligible_account`.
-
-Administrators can override automatic media eligibility through the account create/update API by setting `extra.grok_media_eligible` to `false` (exclude) or `true` (force eligible). On update, set it to `null` to remove the override and return to automatic probe-based behavior; omitting the field preserves the current override. A weekly allowance period alone is not treated as a paid tier signal. Successful image responses must contain at least one actual image output; empty HTTP `200` responses trigger account failover instead of being counted and returned as successful generations.
-
----
-
-## Antigravity Support
-
-Sub4API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
-
-### Dedicated Endpoints
-
-| Endpoint | Model |
-|----------|-------|
-| `/antigravity/v1/messages` | Claude models |
-| `/antigravity/v1beta/` | Gemini models |
-
-### Claude Code Configuration
-
-```bash
-export ANTHROPIC_BASE_URL="http://localhost:8080/antigravity"
-export ANTHROPIC_AUTH_TOKEN="sk-xxx"
-```
-
-### Hybrid Scheduling Mode
-
-Antigravity accounts support optional **hybrid scheduling**. When enabled, the general endpoints `/v1/messages` and `/v1beta/` will also route requests to Antigravity accounts.
-
-> **⚠️ Warning**: Anthropic Claude and Antigravity Claude **cannot be mixed within the same conversation context**. Use groups to isolate them properly.
-
----
-
-## Project Structure
-
-```
-sub4api/
-├── backend/                  # Go backend service
-│   ├── cmd/server/           # Application entry
-│   ├── internal/             # Internal modules
-│   │   ├── config/           # Configuration
-│   │   ├── model/            # Data models
-│   │   ├── service/          # Business logic
-│   │   ├── handler/          # HTTP handlers
-│   │   └── gateway/          # API gateway core
-│   └── resources/            # Static resources
-│
-├── frontend/                 # Vue 3 frontend
-│   └── src/
-│       ├── api/              # API calls
-│       ├── stores/           # State management
-│       ├── views/            # Page components
-│       └── components/       # Reusable components
-│
-└── deploy/                   # Deployment files
-    ├── docker-compose.yml    # Docker Compose configuration
-    ├── .env.example          # Environment variables for Docker Compose
-    ├── config.example.yaml   # Full config file for binary deployment
-    └── install.sh            # One-click installation script
-```
-
-## Star History
-
-<a href="https://star-history.dera.page/#MACOS-DO/sub4api&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=MACOS-DO/sub4api&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=MACOS-DO/sub4api&type=Date" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=MACOS-DO/sub4api&type=Date" />
- </picture>
-</a>
-
----
-
-## License
-
-This project is licensed under the [GNU Lesser General Public License v3.0](LICENSE) (or later).
+本项目采用 [GNU LGPL v3.0 或更高版本](LICENSE) 许可证。
 
 Copyright (c) 2026 Wesley Liddick
-
----
-
-<div align="center">
-
-**If you find this project useful, please give it a star!**
-
-</div>
