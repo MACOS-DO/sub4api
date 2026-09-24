@@ -93,3 +93,32 @@ func TestCodexTicketSettingsRefreshDoesNotMutateSharedConfig(t *testing.T) {
 	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled, "runtime settings must not write the shared immutable startup configuration")
 	require.True(t, svc.GetOpenAICodexTicketEnabled(context.Background(), false))
 }
+
+func TestCodexTicketAdminDefaultsPreserveExplicitSettings(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		configured bool
+		saved      string
+		want       bool
+	}{
+		{name: "unconfigured"},
+		{name: "yaml enabled", configured: true, want: true},
+		{name: "saved enabled", saved: "true", want: true},
+		{name: "saved disabled overrides yaml", configured: true, saved: "false"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAICodexTicket.Enabled = test.configured
+			values := map[string]string{}
+			if test.saved != "" {
+				values[SettingKeyOpenAICodexTicketEnabled] = test.saved
+			}
+			repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: values}}
+			settings := NewSettingService(repo, cfg)
+			require.Equal(t, test.want, settings.parseSettings(values).OpenAICodexTicketEnabled)
+			require.True(t, settings.parseSettings(values).OpenAICodexTicketAllowWithoutTicket)
+			require.Equal(t, test.want, settings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Gateway.OpenAICodexTicket.Enabled))
+			require.Equal(t, test.saved, repo.values[SettingKeyOpenAICodexTicketEnabled])
+		})
+	}
+}

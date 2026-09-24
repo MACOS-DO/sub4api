@@ -38,12 +38,12 @@ func TestCodexTicketSchedulerProjectionIsModelSpecific(t *testing.T) {
 
 func TestCodexTicketAccountOverrideIsThreeState(t *testing.T) {
 	account := ticketTestAccount(92)
-	require.False(t, OpenAICodexAllowsWithoutTicket(account, false))
-	require.True(t, OpenAICodexAllowsWithoutTicket(account, true))
+	require.False(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", false))
+	require.True(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", true))
 	account.Extra = map[string]any{"codex_allow_without_ticket": true}
-	require.True(t, OpenAICodexAllowsWithoutTicket(account, false))
+	require.True(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", false))
 	account.Extra["codex_allow_without_ticket"] = false
-	require.False(t, OpenAICodexAllowsWithoutTicket(account, true))
+	require.False(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", true))
 	statuses := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, time.Now())
 	require.NotEmpty(t, statuses)
 	require.True(t, statuses[0].Blocked)
@@ -78,7 +78,7 @@ func (stub *codexSnapshotRefreshStub) RefreshSchedulerAccount(_ context.Context,
 
 func TestCodexTicketInvalidationRefreshesSchedulerAccount(t *testing.T) {
 	account := ticketTestAccount(93)
-	ticket := verifiedTicket(account, "gpt-5.6-sol", "old-state", "")
+	ticket := verifiedTicket(account, "gpt-5.6-sol", "old-state", "__oailb=old")
 	account.Extra = map[string]any{openAICodexTicketExtraKey(ticket.Model): ticket}
 	capture := &codexInvalidationCapture{current: ticket}
 	refresher := &codexSnapshotRefreshStub{}
@@ -88,9 +88,12 @@ func TestCodexTicketInvalidationRefreshesSchedulerAccount(t *testing.T) {
 	request, err := http.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
 	require.NoError(t, err)
 	request = request.WithContext(context.WithValue(request.Context(), codexTicketRequestContextKey{}, ticket))
+	request.Header.Set(openAICodexTurnStateHeader, ticket.State)
+	request.Header.Set("Cookie", ticket.Cookie)
 	header := http.Header{}
 	header.Set(openAICodexTurnStateHeader, "new-state")
+	header.Set("Set-Cookie", "__oailb=new; Path=/")
 	svc.observeCodexTicketResponse(request, &http.Response{StatusCode: http.StatusOK, Header: header}, account)
 	require.Equal(t, account.ID, refresher.accountID)
-	require.NotContains(t, account.Extra, openAICodexTicketExtraKey(ticket.Model))
+	require.Contains(t, account.Extra, openAICodexTicketExtraKey(ticket.Model), "shared account snapshots must not be mutated")
 }

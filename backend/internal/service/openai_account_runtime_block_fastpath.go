@@ -557,10 +557,19 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 // IsOpenAIResponsesCompactPath）：门票门控按真正出站的模型名判定，否则 compact
 // 请求会被按客户端原始模型误拦（见 openAICodexTicketOutboundModel）。
 func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string, requireCompact bool) bool {
+	return s.isOpenAIAccountRequestRuntimeBlockedContext(context.Background(), account, requestedModel, requireCompact)
+}
+
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlockedContext(ctx context.Context, account *Account, requestedModel string, requireCompact bool) bool {
 	if s == nil {
 		return false
 	}
 	outboundModel := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
+	// Capability rechecks may temporarily pass requireCompact=false. Ticket checks
+	// must still follow the actual forwarded model, including channel mappings.
+	if forward, ok := openAIForwardModelFromContext(ctx); ok {
+		outboundModel = s.openAICodexTicketOutboundModel(account, forward.model, forward.useCompactModelMapping)
+	}
 	if s.openAICodexTicketBlocksAccount(account, outboundModel) {
 		return true
 	}

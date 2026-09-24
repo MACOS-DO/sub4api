@@ -519,6 +519,7 @@ type OpenAIGatewayService struct {
 	openaiCodexTicketLifecycleMu sync.Mutex
 	openaiCodexTicketCancel      context.CancelFunc
 	openaiCodexTicketDone        chan struct{}
+	openaiCodexTicketWake        chan struct{}
 	openaiCodexTicketStopped     bool
 }
 

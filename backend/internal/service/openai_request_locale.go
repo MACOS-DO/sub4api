@@ -2,12 +2,10 @@ package service
 
 import (
 	"context"
-	"encoding/xml"
-	"io"
-	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
-	"time"
+	"unicode"
 
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
@@ -15,144 +13,145 @@ import (
 	"go.uber.org/zap"
 )
 
-type openAIRequestTimezoneReplacement struct {
-	start int
-	end   int
-	value string
-}
+// Only parse field boundaries. Environment text is XML-like, but fields such as
+// subagents and network can contain unescaped text and are opaque to this rewrite.
+var openAIEnvironmentFieldStart = regexp.MustCompile(`^<([A-Za-z_][A-Za-z0-9_.:-]*)(?:[ \t\r\n]+(?:[^<>"']|"[^"]*"|'[^']*')*)?[ \t\r\n]*/?>`)
 
-func rewriteOpenAIRequestEnvironment(text, timezone, date string) (string, *string, *string, bool, bool) {
-	trimmed := strings.TrimSpace(text)
-	if !strings.HasPrefix(trimmed, "<environment_context>") || !strings.HasSuffix(trimmed, "</environment_context>") {
-		return text, nil, nil, false, false
-	}
-	decoder := xml.NewDecoder(strings.NewReader(text))
-	depth := 0
-	activeTag := ""
-	activeStart := 0
-	var before, after *string
-	var replacements []openAIRequestTimezoneReplacement
-	for {
-		start := int(decoder.InputOffset())
-		token, err := decoder.Token()
-		if err == io.EOF {
+// Closing tags may contain whitespace before >. Match only the field name;
+// nested fields and unescaped characters in the body remain opaque.
+func findOpenAIEnvironmentFieldEnd(text, name string) (start, end int) {
+	prefix := "</" + name
+	for offset := 0; offset < len(text); {
+		index := strings.Index(text[offset:], prefix)
+		if index < 0 {
 			break
 		}
-		if err != nil {
-			return text, nil, nil, false, false
-		}
-		switch element := token.(type) {
-		case xml.StartElement:
-			depth++
-			if depth == 1 && element.Name.Local != "environment_context" {
-				return text, nil, nil, false, false
-			}
-			if depth == 2 && (element.Name.Local == "timezone" || element.Name.Local == "current_date") {
-				if activeTag != "" || (element.Name.Local == "timezone" && before != nil) {
-					return text, nil, nil, false, false
-				}
-				activeTag = element.Name.Local
-				activeStart = int(decoder.InputOffset())
-				if activeStart >= 2 && text[activeStart-2:activeStart] == "/>" {
-					return text, nil, nil, false, false
-				}
-			}
-			if depth > 2 && activeTag != "" {
-				return text, nil, nil, false, false
-			}
-		case xml.EndElement:
-			if depth == 2 && activeTag == element.Name.Local {
-				original := text[activeStart:start]
-				if strings.Contains(original, "<") {
-					return text, nil, nil, false, false
-				}
-				left := len(original) - len(strings.TrimLeft(original, " \t\n\r"))
-				right := len(strings.TrimRight(original, " \t\n\r"))
-				value := timezone
-				if activeTag == "current_date" {
-					value = date
-				} else {
-					previous := strings.TrimSpace(original)
-					if len(previous) > 128 {
-						previous = previous[:128]
-					}
-					before = &previous
-					next := timezone
-					after = &next
-				}
-				if right >= left {
-					replacement := original[:left] + value + original[right:]
-					if replacement != original {
-						replacements = append(replacements, openAIRequestTimezoneReplacement{activeStart, start, replacement})
-					}
-				}
-				activeTag = ""
-			}
-			depth--
-			if depth < 0 {
-				return text, nil, nil, false, false
-			}
+		start = offset + index
+		offset = start + len(prefix)
+		rest := strings.TrimLeft(text[offset:], " \t\r\n")
+		if strings.HasPrefix(rest, ">") {
+			return start, len(text) - len(rest) + 1
 		}
 	}
-	if depth != 0 {
-		return text, nil, nil, false, false
-	}
-	for index := len(replacements) - 1; index >= 0; index-- {
-		replacement := replacements[index]
-		text = text[:replacement.start] + replacement.value + text[replacement.end:]
-	}
-	return text, before, after, true, before != nil && *before != timezone
+	return -1, -1
 }
 
-func normalizeOpenAIRequestLocale(ctx context.Context, account *Account, body []byte, transport string, now time.Time) []byte {
+func rewriteOpenAIRequestEnvironment(text, timezone string) (rewritten, previous, reason string) {
+	trimmed := strings.TrimSpace(text)
+	root := openAIEnvironmentFieldStart.FindStringSubmatchIndex(trimmed)
+	if root == nil || trimmed[root[2]:root[3]] != "environment_context" {
+		return text, "", "no_environment_context"
+	}
+	rootCloseStart, rootCloseEnd := findOpenAIEnvironmentFieldEnd(trimmed[root[1]:], "environment_context")
+	if strings.HasSuffix(trimmed[:root[1]], "/>") || rootCloseEnd != len(trimmed)-root[1] {
+		return text, "", "invalid_environment_context"
+	}
+	content := trimmed[root[1] : root[1]+rootCloseStart]
+	valueStart, valueEnd := -1, -1
+	for offset := 0; offset < len(content); {
+		rest := strings.TrimLeftFunc(content[offset:], unicode.IsSpace)
+		offset = len(content) - len(rest)
+		if rest == "" {
+			break
+		}
+		field := openAIEnvironmentFieldStart.FindStringSubmatchIndex(rest)
+		if field == nil {
+			return text, "", "invalid_environment_context"
+		}
+		name := rest[field[2]:field[3]]
+		if name == "environment_context" {
+			return text, "", "invalid_environment_context"
+		}
+		selfClosing := strings.HasSuffix(rest[:field[1]], "/>")
+		if name == "timezone" && (valueStart >= 0 || selfClosing) {
+			return text, "", "invalid_environment_context"
+		}
+		offset += field[1]
+		if selfClosing {
+			continue
+		}
+		end, closeEnd := findOpenAIEnvironmentFieldEnd(content[offset:], name)
+		if end < 0 {
+			return text, "", "invalid_environment_context"
+		}
+		if name == "timezone" {
+			value := content[offset : offset+end]
+			previous = strings.TrimSpace(value)
+			if previous == "" || strings.Contains(value, "<") {
+				return text, "", "invalid_environment_context"
+			}
+			valueStart = offset + len(value) - len(strings.TrimLeftFunc(value, unicode.IsSpace))
+			valueEnd = offset + len(strings.TrimRightFunc(value, unicode.IsSpace))
+		}
+		offset += closeEnd
+	}
+	if valueStart < 0 {
+		return text, "", "no_timezone"
+	}
+	if previous == timezone {
+		return text, previous, "already_target"
+	}
+	// Patch only the timezone value, preserving all original tags and whitespace.
+	base := len(text) - len(strings.TrimLeftFunc(text, unicode.IsSpace)) + root[1]
+	return text[:base+valueStart] + timezone + text[base+valueEnd:], previous, "replaced"
+}
+
+func normalizeOpenAIRequestLocale(ctx context.Context, account *Account, body []byte, transport string) []byte {
 	if account == nil || !account.IsOpenAI() {
 		return body
 	}
 	timezone := account.OpenAIRequestTimezone()
-	location, _ := time.LoadLocation(timezone)
-	date := now.In(location).Format("2006-01-02")
 	before := make([]*string, 0)
 	after := make([]*string, 0)
 	matched := 0
 	replaced := 0
-	invalidXML := false
+	invalidEnvironment := false
+	rewriteText := func(path string, text gjson.Result) {
+		if text.Type != gjson.String {
+			return
+		}
+		next, previous, reason := rewriteOpenAIRequestEnvironment(text.String(), timezone)
+		if reason == "no_environment_context" {
+			return
+		}
+		matched++
+		var prior, current *string
+		switch reason {
+		case "invalid_environment_context":
+			invalidEnvironment = true
+		case "replaced", "already_target":
+			loggedPrevious := previous
+			if len(loggedPrevious) > 128 {
+				loggedPrevious = loggedPrevious[:128]
+			}
+			prior, current = &loggedPrevious, &loggedPrevious
+			if reason == "replaced" {
+				if updated, err := sjson.SetBytes(body, path, next); err == nil {
+					body = updated
+					current = &timezone
+					replaced++
+				} else {
+					invalidEnvironment = true
+				}
+			}
+		}
+		before = append(before, prior)
+		after = append(after, current)
+	}
 	input := gjson.GetBytes(body, "input")
 	if input.IsArray() {
 		for inputIndex, item := range input.Array() {
 			if item.Get("role").String() != "user" {
 				continue
 			}
-			kinds := item.Get("internal_chat_message_metadata_passthrough.content_item_kinds")
 			content := item.Get("content")
-			if !kinds.IsArray() || !content.IsArray() {
-				continue
-			}
-			kindValues := kinds.Array()
-			for contentIndex, part := range content.Array() {
-				if contentIndex >= len(kindValues) || kindValues[contentIndex].String() != "environments.environment_context" || part.Get("type").String() != "input_text" {
-					continue
-				}
-				text := part.Get("text")
-				if text.Type != gjson.String {
-					continue
-				}
-				matched++
-				next, prior, current, valid, changed := rewriteOpenAIRequestEnvironment(text.String(), timezone, date)
-				before = append(before, prior)
-				after = append(after, current)
-				if !valid {
-					invalidXML = true
-					continue
-				}
-				if next != text.String() {
-					updated, err := sjson.SetBytes(body, "input."+strconv.Itoa(inputIndex)+".content."+strconv.Itoa(contentIndex)+".text", next)
-					if err == nil {
-						body = updated
-						if changed {
-							replaced++
-						}
-					} else {
-						invalidXML = true
+			path := "input." + strconv.Itoa(inputIndex) + ".content"
+			if content.Type == gjson.String {
+				rewriteText(path, content)
+			} else if content.IsArray() {
+				for contentIndex, part := range content.Array() {
+					if part.Get("type").String() == "input_text" {
+						rewriteText(path+"."+strconv.Itoa(contentIndex)+".text", part.Get("text"))
 					}
 				}
 			}
@@ -187,11 +186,11 @@ func normalizeOpenAIRequestLocale(ctx context.Context, account *Account, body []
 			}
 		}
 	}
-	reason := "no_marked_context"
+	reason := "no_environment_context"
 	if replaced > 0 {
 		reason = "replaced"
-	} else if invalidXML {
-		reason = "invalid_xml"
+	} else if invalidEnvironment {
+		reason = "invalid_environment_context"
 	} else if matched > 0 {
 		reason = "no_timezone"
 		for _, value := range before {
@@ -208,20 +207,4 @@ func normalizeOpenAIRequestLocale(ctx context.Context, account *Account, body []
 		zap.Any("web_search_timezone_after", webSearchAfter), zap.String("target_timezone", timezone),
 		zap.Int("matched_count", matched), zap.Int("replaced_count", replaced), zap.String("reason", reason))
 	return body
-}
-
-func normalizeOpenAIRequestAcceptLanguage(account *Account, headers http.Header) {
-	if account == nil || !account.IsOpenAI() || headers == nil {
-		return
-	}
-	found := false
-	for name := range headers {
-		if strings.EqualFold(name, "Accept-Language") {
-			found = true
-			delete(headers, name)
-		}
-	}
-	if found {
-		headers.Set("Accept-Language", "en-US,en;q=0.9")
-	}
 }

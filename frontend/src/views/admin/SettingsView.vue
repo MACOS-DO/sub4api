@@ -4523,6 +4523,17 @@
                   </div>
                   <Toggle id="codex-ticket-allow-without" v-model="form.openai_codex_ticket_allow_without_ticket" />
                 </div>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between gap-3">
+                    <label for="codex-probe-template" class="text-base font-semibold text-gray-900 dark:text-white">{{ t("admin.settings.gatewayForwarding.codexProbeTemplate") }}</label>
+                    <button type="button" class="btn btn-secondary btn-sm" data-testid="codex-probe-template-reset" :disabled="saving || !form.openai_codex_ticket_prompt_template_default" @click="form.openai_codex_ticket_prompt_template = form.openai_codex_ticket_prompt_template_default">{{ t("admin.settings.gatewayForwarding.codexProbeTemplateReset") }}</button>
+                  </div>
+                  <p id="codex-probe-template-help" class="text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.gatewayForwarding.codexProbeTemplateDesc") }}</p>
+                  <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span v-for="placeholder in codexProbeTemplatePlaceholders" :key="placeholder.token"><code class="font-mono">{{ placeholder.token }}</code> — {{ t(placeholder.label) }}</span>
+                  </div>
+                  <textarea id="codex-probe-template" v-model="form.openai_codex_ticket_prompt_template" data-testid="codex-probe-template" aria-describedby="codex-probe-template-help" class="input w-full font-mono text-xs" rows="12" wrap="off" :spellcheck="false" :disabled="saving" />
+                </div>
                 <CodexTicketCadenceSettings ref="codexTicketCadenceRef" :saving="saving" />
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -10017,6 +10028,8 @@ const form = reactive<SettingsForm>({
   claude_code_version_auto_sync_enabled: true,
   openai_codex_ticket_enabled: false,
   openai_codex_ticket_allow_without_ticket: true,
+  openai_codex_ticket_prompt_template: "",
+  openai_codex_ticket_prompt_template_default: "",
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   // codex_cli_only 加固
@@ -11014,6 +11027,13 @@ const claudeSyncedVersionLabel = computed(() => {
   });
 });
 
+const codexProbeTemplatePlaceholders = [
+  { token: '{{TIMEZONE}}', label: 'admin.settings.gatewayForwarding.codexProbeTimezone' },
+  { token: '{{CURRENT_DATE}}', label: 'admin.settings.gatewayForwarding.codexProbeDate' },
+  { token: '{{MODEL}}', label: 'admin.settings.gatewayForwarding.codexProbeModel' },
+  { token: '{{MODELTRACE_PROMPT}}', label: 'admin.settings.gatewayForwarding.codexProbeChallenge' },
+];
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -11660,6 +11680,10 @@ async function saveSettings() {
         form.claude_code_version_auto_sync_enabled,
       openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
       openai_codex_ticket_allow_without_ticket: form.openai_codex_ticket_allow_without_ticket,
+      openai_codex_ticket_prompt_template:
+        form.openai_codex_ticket_prompt_template === form.openai_codex_ticket_prompt_template_default
+          ? ""
+          : form.openai_codex_ticket_prompt_template,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:

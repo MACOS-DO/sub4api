@@ -1,5 +1,7 @@
 # Codex ticket hypothesis watch
 
+Production ticket harvesting and degradation checks use the [shared administrator template](../../../docs/CODEX_PROBE_TEMPLATE.md). The experiment below shares its request-context assembly but retains its own replay source and lifecycle.
+
 This direct-upstream experiment uses the normal OAuth Responses request builder and `HTTPUpstream.Do`, pinned to Codex `0.156.1`. It does not exercise gateway ticket caching or WebSocket routing. Node 20+ runs the bundled ModelTrace browser challenge generator, scorer and fingerprint bank (commit `55a2e4a55170423b484d701e9a82ab62b268c811`) locally.
 
 Copy `.env.example` to `.env`, fill `ACCESS_TOKEN`, `CHATGPT_ACCOUNT_ID`, `MODEL`, and optionally `PROXY_URL`. Keep `.env` private. From `backend/`, run:
@@ -8,7 +10,7 @@ Copy `.env.example` to `.env`, fill `ACCESS_TOKEN`, `CHATGPT_ACCOUNT_ID`, `MODEL
 go run ./cmd/codex-ticket-hypothesis -env cmd/codex-ticket-hypothesis/.env -watch-duration 1h
 ```
 
-To replay the visible initial context from a Codex Desktop JSONL recording, add `-session-jsonl '/mnt/c/Users/mckkm/.codex/sessions/2026/09/23/rollout-2026-09-23T01-51-31-01a0cd76-85e6-7290-92dc-8b5d4f79361e.jsonl'` to the same command. The source file is read-only. Replay preserves the fixed base and app instructions, replaces the mutable memory/skills/permissions/collaboration/delegation templates with one sentence each, switches the visible timezone to `Asia/Singapore`, and replaces the recorded integer task with the fresh ModelTrace challenge. Assistant answers and reasoning are excluded. A missing or unexpected recording fails before contacting upstream. Without this flag, requests keep their original one-user-message shape.
+To replay the visible initial context from a Codex Desktop JSONL recording, add `-session-jsonl '/path/to/private/session.jsonl'` to the same command. The source file is read-only. Replay preserves the fixed base and app instructions, replaces the mutable memory/skills/permissions/collaboration/delegation templates with one sentence each, switches the visible timezone to `Asia/Singapore`, and replaces the recorded integer task with the fresh ModelTrace challenge. Assistant answers and reasoning are excluded. A missing or unexpected recording fails before contacting upstream. Without this flag, requests keep their original one-user-message shape.
 
 Replay uses one new UUIDv7 for both session and thread during a run, and a new UUIDv7 turn ID for every upstream request. It reads the Codex installation UUIDv4 from the recording's `.codex/installation_id` when available; otherwise it creates a private `.codex-installation.env` next to the dedicated `.env`. Session, thread, turn and window values are checked for consistency between request metadata and outgoing headers. The HTTP identity remains the pinned `codex-tui/0.156.1` rather than the recorded Desktop binary, so replay is an approximation of the visible context, not a guarantee of identical Desktop behavior or improved ticket yield.
 

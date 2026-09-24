@@ -54,10 +54,16 @@ func TestCodexDiagnosticOutputRequiresCompletedResponse(t *testing.T) {
 	}
 }
 
-type codexDiagnosticChallengeAccountRepo struct{ service.AccountRepository }
+type codexDiagnosticChallengeAccountRepo struct {
+	service.AccountRepository
+	account *service.Account
+}
 
 func (r *codexDiagnosticChallengeAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
-	return &service.Account{ID: id, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive}, nil
+	if r.account != nil {
+		return r.account, nil
+	}
+	return &service.Account{ID: id, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Credentials: map[string]any{"chatgpt_account_id": "diagnostic-test-account"}}, nil
 }
 
 type codexDiagnosticChallengeKeyRepo struct{ service.APIKeyRepository }
@@ -66,12 +72,21 @@ func (r *codexDiagnosticChallengeKeyRepo) GetByID(_ context.Context, id int64) (
 	return &service.APIKey{ID: id, UserID: 17, Key: "test-key", Status: service.StatusActive}, nil
 }
 
-func newCodexChallengeDiagnosticHandler(t *testing.T, models []string, router http.Handler) (*AccountHandler, *gin.Context, *httptest.ResponseRecorder) {
+func newCodexChallengeDiagnosticHandler(t *testing.T, models []string, router http.Handler, settings ...*service.SettingService) (*AccountHandler, *gin.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	cfg := &config.Config{}
+	var settingService *service.SettingService
+	if len(settings) > 0 {
+		settingService = settings[0]
+	}
+	return newCodexDiagnosticHandlerForAccount(t, models, router, cfg, nil, settingService)
+}
+
+func newCodexDiagnosticHandlerForAccount(t *testing.T, models []string, router http.Handler, cfg *config.Config, account *service.Account, settingService *service.SettingService) (*AccountHandler, *gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
 	gateway := service.NewOpenAIGatewayService(
-		&codexDiagnosticChallengeAccountRepo{}, nil, nil, nil, nil, nil, nil, cfg,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		&codexDiagnosticChallengeAccountRepo{account: account}, nil, nil, nil, nil, nil, nil, cfg,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settingService, nil,
 	)
 	handler := &AccountHandler{
 		codexTicketGateway: gateway,
@@ -99,7 +114,7 @@ func TestCodexDiagnosticChallengeRequestAndValidationUseSameDraw(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		require.Less(t, calls, len(challenges))
-		require.Equal(t, challenges[calls].Prompt, gjson.GetBytes(body, "input.0.content").String())
+		require.Equal(t, challenges[calls].Prompt, gjson.GetBytes(body, "input.4.content.0.text").String())
 		require.Equal(t, "/v1/responses", r.URL.Path)
 		calls++
 		// 170 parsed values distinguish the old fixed 292 threshold from 332.
@@ -151,7 +166,7 @@ func TestCodexDiagnosticDefaultUsesModelTraceChallenge(t *testing.T) {
 		calls++
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
-		prompt := gjson.GetBytes(body, "input.0.content").String()
+		prompt := gjson.GetBytes(body, "input.4.content.0.text").String()
 		match := regexp.MustCompile(` ([0-9]+) 个 1 到 355`).FindStringSubmatch(prompt)
 		require.Len(t, match, 2)
 		count, err := strconv.Atoi(match[1])

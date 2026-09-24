@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { h, nextTick } from 'vue'
 import BaseDialog from '../BaseDialog.vue'
 
 vi.mock('vue-i18n', () => ({
@@ -34,4 +34,17 @@ describe('BaseDialog', () => {
     expect(document.body.querySelector<HTMLElement>('.modal-body')?.scrollTop).toBe(0)
     wrapper.unmount()
   })
+  it('keeps custom headers labelled and supports an independently scrolling body', () => {
+    const wrapper = mount(BaseDialog, {
+      props: { show: true, title: 'Diagnostic', contentClass: 'diagnostic-panel', bodyClass: 'diagnostic-body' },
+      slots: { header: ({ titleId }: { titleId: string }) => h('h2', { id: titleId }, 'Custom diagnostic header') },
+      global: { stubs: { Teleport: true, Icon: true } }
+    })
+    const labelledBy = wrapper.get('[role="dialog"]').attributes('aria-labelledby')
+    expect(wrapper.get(`[id="${labelledBy}"]`).text()).toBe('Custom diagnostic header')
+    expect(wrapper.get('.modal-content').classes()).toContain('diagnostic-panel')
+    expect(wrapper.get('.modal-body').classes()).toContain('diagnostic-body')
+    wrapper.unmount()
+  })
+
 })

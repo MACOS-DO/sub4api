@@ -88,6 +88,23 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	routingModel string,
 	routingServiceTier string,
 ) (http.Header, openAIWSSessionHeaderResolution, error) {
+	headers, resolution, _, err := s.buildOpenAIWSHeadersWithTicket(ctx, c, account, token, decision, isCodexCLI, turnState, turnMetadata, promptCacheKey, routingModel, routingServiceTier)
+	return headers, resolution, err
+}
+
+func (s *OpenAIGatewayService) buildOpenAIWSHeadersWithTicket(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	token string,
+	decision OpenAIWSProtocolDecision,
+	isCodexCLI bool,
+	turnState string,
+	turnMetadata string,
+	promptCacheKey string,
+	routingModel string,
+	routingServiceTier string,
+) (http.Header, openAIWSSessionHeaderResolution, *openAICodexTicket, error) {
 	headers := make(http.Header)
 	if account == nil || !account.IsOpenAIAgentIdentity() {
 		headers.Set("authorization", "Bearer "+token)
@@ -141,8 +158,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if state := strings.TrimSpace(turnState); state != "" {
 		headers.Set(openAIWSTurnStateHeader, state)
 	}
-	if err := s.applyOpenAICodexTicket(ctx, account, routingModel, headers); err != nil {
-		return nil, sessionResolution, err
+	ticket, err := s.applyOpenAICodexTicketWithGeneration(ctx, account, routingModel, headers)
+	if err != nil {
+		return nil, sessionResolution, nil, err
 	}
 	if metadata := strings.TrimSpace(turnMetadata); metadata != "" {
 		headers.Set(openAIWSTurnMetadataHeader, metadata)
@@ -152,7 +170,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 
 	if account != nil && account.UsesOpenAICodexProtocol() {
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
-			return nil, sessionResolution, fmt.Errorf("resolve chatgpt account headers: %w", err)
+			return nil, sessionResolution, nil, fmt.Errorf("resolve chatgpt account headers: %w", err)
 		}
 		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 	}
@@ -186,7 +204,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 覆盖所有 WS 模式（ctx_pool/dedicated/passthrough）的握手头。
 	account.ApplyHeaderOverrides(headers)
-	normalizeOpenAIRequestAcceptLanguage(account, headers)
 	setOpenAICodexRoutingHint(headers, account, routingModel, routingServiceTier)
 	logOpenAIRoutingDiagnostics(
 		ctx,
@@ -198,7 +215,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		"soft_routing_hint",
 	)
 
-	return headers, sessionResolution, nil
+	return headers, sessionResolution, ticket, nil
 }
 
 func (s *OpenAIGatewayService) buildOpenAIWSCreatePayload(reqBody map[string]any, account *Account) map[string]any {

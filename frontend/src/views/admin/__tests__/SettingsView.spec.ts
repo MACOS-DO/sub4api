@@ -722,6 +722,21 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("defaults ticket harvesting to off and preserves a saved enabled value", async () => {
+    for (const enabled of [undefined, true, false]) {
+      const settings = { ...baseSettingsResponse };
+      if (enabled !== undefined) Object.assign(settings, { openai_codex_ticket_enabled: enabled });
+      getSettings.mockResolvedValueOnce(settings);
+      const wrapper = mountView();
+      await flushPromises();
+      expect((wrapper.get("#codex-ticket-enabled").element as HTMLInputElement).checked).toBe(enabled ?? false);
+      await wrapper.find("form").trigger("submit.prevent");
+      await flushPromises();
+      expect(updateSettings.mock.calls.at(-1)?.[0].openai_codex_ticket_enabled).toBe(enabled ?? false);
+      wrapper.unmount();
+    }
+  });
+
   it("submits the Codex ticket harvest toggle", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
@@ -1151,6 +1166,45 @@ describe("admin SettingsView payment visible method controls", () => {
         affiliate_admin_recharge_enabled: true,
       }),
     );
+  });
+
+  it("loads, edits and restores the shared Codex probe template", async () => {
+    const defaultTemplate = '{"type":"session_meta","payload":{"base_instructions":{"text":"Default instructions"}}}\n';
+    const customTemplate = defaultTemplate.replace("Default instructions", "Custom instructions");
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_allow_without_ticket: true,
+      openai_codex_ticket_prompt_template: defaultTemplate,
+      openai_codex_ticket_prompt_template_default: defaultTemplate,
+    });
+    updateSettings.mockImplementation(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+      openai_codex_ticket_prompt_template: payload.openai_codex_ticket_prompt_template || defaultTemplate,
+      openai_codex_ticket_prompt_template_default: defaultTemplate,
+    }));
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const editor = wrapper.get('[data-testid="codex-probe-template"]');
+    expect((editor.element as HTMLTextAreaElement).value).toBe(defaultTemplate);
+    expect(wrapper.text()).toContain("{{TIMEZONE}}");
+    await editor.setValue(customTemplate);
+    await wrapper.get("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      openai_codex_ticket_prompt_template: customTemplate,
+      openai_codex_ticket_allow_without_ticket: true,
+    }));
+    expect(updateSettings.mock.lastCall?.[0]).not.toHaveProperty("openai_codex_ticket_prompt_template_default");
+    await wrapper.get('[data-testid="codex-probe-template-reset"]').trigger("click");
+    expect((editor.element as HTMLTextAreaElement).value).toBe(defaultTemplate);
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    await wrapper.get("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ openai_codex_ticket_prompt_template: "" }));
+    expect((editor.element as HTMLTextAreaElement).value).toBe(defaultTemplate);
+    wrapper.unmount();
   });
 
   it("submits Anthropic cache TTL injection gateway setting", async () => {

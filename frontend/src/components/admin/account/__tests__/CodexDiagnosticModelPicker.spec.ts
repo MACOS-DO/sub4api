@@ -2,26 +2,31 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import CodexDiagnosticModelPicker from '../CodexDiagnosticModelPicker.vue'
+import zhAccounts from '@/i18n/locales/zh/admin/accounts'
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN') }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN'), t: (key: string, values: Record<string, string | number> = {}) => {
+  const message = key.split('.').reduce<unknown>((value, part) => value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined, { admin: zhAccounts })
+  return typeof message === 'string' ? message.replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? name)) : key
+} }) }))
 
 const models = ['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4']
 const mountPicker = (selected: string[] = []) => mount(CodexDiagnosticModelPicker, {
-  props: { models, ticketModels: ['gpt-5.6-sol'], modelValue: selected },
+  props: { models, modelValue: selected },
   global: { stubs: { Icon: true } }
 })
 
 describe('Codex diagnostic model picker', () => {
-  it('groups ticket and direct models and selects without native checkboxes', async () => {
+  it('shows one model list with search, selection order and no ticket grouping', async () => {
     const wrapper = mountPicker()
-    expect(wrapper.text()).toContain('需要打票')
-    expect(wrapper.text()).toContain('无需打票')
+    expect(wrapper.text()).not.toContain('支持打票')
+    expect(wrapper.text()).not.toContain('无需打票')
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
 
     await wrapper.find('button[aria-pressed="false"]').trigger('click')
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([['gpt-5.6-sol']])
     await wrapper.setProps({ modelValue: ['gpt-5.6-sol'] })
     expect(wrapper.find('button[aria-pressed="true"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('#1')
     await wrapper.find('input[type="search"]').setValue('5.5')
     expect(wrapper.findAll('button[aria-pressed]')).toHaveLength(1)
     expect(wrapper.text()).toContain('gpt-5.5')

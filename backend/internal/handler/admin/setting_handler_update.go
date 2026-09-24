@@ -262,6 +262,7 @@ type UpdateSettingsRequest struct {
 	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
 	OpenAICodexTicketAllowWithoutTicket    *bool   `json:"openai_codex_ticket_allow_without_ticket"`
 	OpenAICodexTicketHarvestProxyURL       string  `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAICodexTicketPromptTemplate        *string `json:"openai_codex_ticket_prompt_template"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -501,6 +502,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	auditReq := settingsAuditRequest(req)
 	omitted := omittedSettingKeys(sentFields)
+	if req.OpenAICodexTicketPromptTemplate == nil {
+		// Keep omitted templates out of the write, including concurrent partial saves.
+		omitted[service.SettingKeyOpenAICodexTicketPromptTemplate] = struct{}{}
+	}
 
 	previousSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -1808,6 +1813,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketAllowWithoutTicket
 		}(),
+		OpenAICodexTicketPromptTemplate: func() string {
+			if req.OpenAICodexTicketPromptTemplate != nil {
+				return *req.OpenAICodexTicketPromptTemplate
+			}
+			return previousSettings.OpenAICodexTicketPromptTemplate
+		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2365,6 +2376,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketAllowWithoutTicket:                    updatedSettings.OpenAICodexTicketAllowWithoutTicket,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
+		OpenAICodexTicketPromptTemplate:                        service.EffectiveCodexProbeTemplate(updatedSettings.OpenAICodexTicketPromptTemplate),
+		OpenAICodexTicketPromptTemplateDefault:                 service.DefaultCodexProbeTemplate(),
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

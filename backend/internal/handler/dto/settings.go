@@ -224,6 +224,8 @@ type SystemSettings struct {
 	OpenAICodexTicketAllowWithoutTicket     bool   `json:"openai_codex_ticket_allow_without_ticket"`
 	OpenAICodexTicketHarvestProxyURL        string `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketHarvestProxyConfigured bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
+	OpenAICodexTicketPromptTemplate         string `json:"openai_codex_ticket_prompt_template"`
+	OpenAICodexTicketPromptTemplateDefault  string `json:"openai_codex_ticket_prompt_template_default"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`
