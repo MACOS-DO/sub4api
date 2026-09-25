@@ -411,7 +411,16 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if input.Platform == PlatformOpenAIBPS {
+		creds, err := NormalizeOpenAIBPSCredentials(input.Type, input.Credentials, nil)
+		if err != nil {
+			return nil, err
+		}
+		input.Credentials = creds
+	}
+
 	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
+	delete(accountExtra, OpenAIBPSCredentialStateExtraKey)
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -536,6 +545,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
+	if err := s.validateBPSGroupBindings(ctx, account.Platform, groupIDs); err != nil {
+		return nil, err
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
@@ -602,6 +614,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 	}
+	previousBPSIdentity := OpenAIBPSCredentialSnapshotFromAccount(account)
+	previousBPSDiagnostic := account.Extra[OpenAIBPSCredentialStateExtraKey]
+	previousBPSManagedError := isManagedBPSCredentialError(account)
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
 	previousOpenCodeUsageIdentity := openCodeGoUsageIdentity(account)
@@ -637,6 +652,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Name != "" {
 		account.Name = input.Name
 	}
+	if account.IsOpenAIBPS() && input.Type != "" && input.Type != AccountTypeOAuth {
+		return nil, infraerrors.BadRequest("BPS_INVALID_ACCOUNT_TYPE", "OpenAI BPS requires an Access Token account")
+	}
 	if input.Type != "" {
 		account.Type = input.Type
 	}
@@ -648,7 +666,27 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	} else if len(input.Credentials) > 0 {
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
-		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if account.IsOpenAIBPS() {
+			creds, err := NormalizeOpenAIBPSCredentials(account.Type, input.Credentials, account.Credentials)
+			if err != nil {
+				return nil, err
+			}
+			input.Credentials = creds
+			if (previousBPSIdentity.AccessToken != stringValue(creds["access_token"]) || previousBPSIdentity.AccountID != stringValue(creds["chatgpt_account_id"])) && previousBPSManagedError {
+				account.Status = StatusActive
+				account.ErrorMessage = ""
+				// The edit form echoes the old automatic error status. A token
+				// replacement recovers it while preserving explicit disablement.
+				if input.Status == StatusError {
+					input.Status = StatusActive
+				}
+			}
+		}
+		if account.IsOpenAIBPS() {
+			account.Credentials = input.Credentials
+		} else {
+			account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		}
 		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
@@ -851,6 +889,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
 			return nil, err
 		}
+		if err := s.validateBPSGroupBindings(ctx, account.Platform, *input.GroupIDs); err != nil {
+			return nil, err
+		}
 		if err := s.ValidateAccountGroupBindings(ctx, *input.GroupIDs); err != nil {
 			return nil, err
 		}
@@ -863,6 +904,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if account.IsOpenAIBPS() {
+		// This extra key is server-managed, including updates sent from stale forms.
+		delete(account.Extra, OpenAIBPSCredentialStateExtraKey)
+		if OpenAIBPSCredentialSnapshotFromAccount(account) == previousBPSIdentity && previousBPSDiagnostic != nil {
+			if account.Extra == nil {
+				account.Extra = map[string]any{}
+			}
+			account.Extra[OpenAIBPSCredentialStateExtraKey] = previousBPSDiagnostic
+		}
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -931,6 +982,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	updates = MergeOpenAICodexTicketExtra(updates, nil)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
+	delete(updates, OpenAIBPSCredentialStateExtraKey)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(updates, UpstreamBillingProbeExtraKey)
@@ -957,6 +1009,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	delete(input.Extra, OpenAIBPSCredentialStateExtraKey)
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = MergeOpenAICodexTicketExtra(input.Extra, nil)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
@@ -1004,7 +1057,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || input.GroupIDs != nil || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1039,6 +1092,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// UpdateAccount 守卫对齐)。覆盖显式 IDs 与 filter 解析出的 IDs(此处 AccountIDs 已解析完成)。
 	if len(input.Credentials) > 0 {
 		for _, acc := range cachedTargets {
+			if acc != nil && acc.IsOpenAIBPS() {
+				return nil, infraerrors.BadRequest("BPS_BULK_CREDENTIALS_UNSUPPORTED", "Edit BPS credentials individually so workspace and expiry metadata are validated per account")
+			}
 			if acc != nil && acc.IsCredentialShadow() {
 				return nil, infraerrors.Newf(http.StatusBadRequest, "SPARK_SHADOW_NO_CREDENTIALS",
 					"spark shadow account %d cannot hold credentials; manage credentials on the parent account", acc.ID)
@@ -1058,6 +1114,15 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 	}
 
+	if input.GroupIDs != nil {
+		for _, a := range cachedTargets {
+			if a != nil {
+				if err := s.validateBPSGroupBindings(ctx, a.Platform, *input.GroupIDs); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	// 预加载账号平台信息（混合渠道检查需要）。
 	platformByID := map[int64]string{}
 	if needMixedChannelCheck {

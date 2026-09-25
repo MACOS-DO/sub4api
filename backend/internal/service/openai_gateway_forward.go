@@ -19,6 +19,9 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	if account.IsOpenAIBPS() {
+		return s.forwardOpenAIBPS(ctx, c, account, body)
+	}
 	beginUpstreamResponseModelObservation(c)
 	body = normalizeOpenAIRequestLocale(ctx, account, body, "http")
 	ClearActualOpenAIUpstreamEndpoint(c)

@@ -1,5 +1,35 @@
 export default {
     accounts: {
+      bps: {
+        testInterrupted: 'The BPS test stream ended without a completion result.',
+        riskTitle: "Account suspension risk",
+        riskDescription: "Using OpenAI BPS may result in account restrictions or suspension. Proceed with caution.",
+        riskConfirmTitle: "Add this OpenAI BPS account?",
+        riskConfirmMessage: "Using OpenAI BPS may result in account restrictions or suspension. Confirm that you understand this risk before adding the account.",
+        riskConfirmButton: "I understand the risk. Add account",
+        replaceToken: "Replace the access token and test the connection again.",
+        errorCode: "Error code",
+        manualResume: "Scheduling remains paused. Enable it manually if you want to use this account.",
+        newTokenPending: "This is the saved credential status. It will update after the new token is saved.",
+        requestingUpstream: "Requesting the BPS upstream; authentication has not been confirmed…",
+        upstreamResponse: "BPS upstream response received",
+        upstreamModelLabel: "Upstream request model",
+        requestIdLabel: "Request ID",
+        testSucceeded: "BPS connection test passed",
+        credentialStatus: {"unknown": "Token expiration is unknown", "not_expired": "Token has not expired (not verified)", "expired": "Token expired", "revoked": "Token revoked", "auth_failed": "Token authentication failed"},
+
+        saveAndTest: 'Save and test connection',
+        monitorHint: 'Use the Sub4API endpoint and a BPS group API key for Responses probes. Upstream quota queries are unavailable.',
+        keepToken: "Leave blank to keep the existing token",
+        tokenHint: "Paste a ChatGPT Access Token. Replace it manually when it expires; test the connection from the account list after saving.",
+        tokenRequired: "Access Token is required",
+        accountHint: "Extracted from the JWT when blank; enter an account ID to override.",
+        expiresAt: "Token expires",
+        modelsHint: "These two candidate models are allowed by default. Map client names to upstream models; removing all rules allows any model.",
+        clientModel: "Client model",
+        upstreamModel: "Upstream model",
+      },
+
       codexDiagnosticDialog: {
         "title": "Model degradation check",
         "steps": "Check steps",

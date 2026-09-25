@@ -32,6 +32,7 @@
         </div>
       </div>
 
+      <p v-if="form.provider === 'openai_bps'" class="input-hint">{{ t('admin.accounts.bps.monitorHint') }}</p>
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -469,6 +470,7 @@ interface ProviderOption {
 }
 
 const providerOptions = computed<ProviderOption[]>(() => [
+  { value: 'openai_bps', label: 'OpenAI BPS' },
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
@@ -509,14 +511,14 @@ const checkModeOptions = computed<CheckModeOption[]>(() => [
     value: CHECK_MODE_QUOTA,
     label: t('admin.channelMonitor.form.checkModeQuota'),
     hint: t('admin.channelMonitor.form.checkModeQuotaHint'),
-    disabled: false,
+    disabled: form.provider === 'openai_bps',
   },
   {
     value: CHECK_MODE_QUOTA_PROBE,
     label: t('admin.channelMonitor.form.checkModeQuotaProbe'),
     hint: t('admin.channelMonitor.form.checkModeQuotaProbeHint'),
-    // antigravity 无探活 adapter，只支持配额模式。
-    disabled: form.provider === PROVIDER_ANTIGRAVITY,
+    // BPS exposes HTTP Responses probes without an upstream quota API.
+    disabled: form.provider === PROVIDER_ANTIGRAVITY || form.provider === 'openai_bps',
   },
 ])
 
@@ -675,6 +677,10 @@ function selectProvider(provider: Provider) {
   const clearPrevDefaultEndpoint =
     !!PROVIDER_DEFAULT_ENDPOINTS[previousProvider] && form.endpoint === PROVIDER_DEFAULT_ENDPOINTS[previousProvider]
   form.provider = provider
+  if (provider === 'openai_bps') {
+    form.api_mode = API_MODE_RESPONSES
+    form.check_mode = CHECK_MODE_PROBE
+  }
   // 关联账号与平台绑定：切换 provider 时显式清空（这是唯一主动清空的入口）。
   form.account_id = null
   pinnedAccount.value = null
@@ -711,7 +717,7 @@ watch(() => form.provider, () => {
   if (suppressFormWatchers) return
   form.api_key = ''
   if (form.provider !== PROVIDER_OPENAI) {
-    form.api_mode = API_MODE_CHAT_COMPLETIONS
+    form.api_mode = form.provider === 'openai_bps' ? API_MODE_RESPONSES : API_MODE_CHAT_COMPLETIONS
   }
   clearRequestSnapshot()
 }, { flush: 'sync' })
@@ -819,7 +825,7 @@ function buildPayload(): CreateParams {
   return {
     name: form.name.trim(),
     provider: form.provider,
-    api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+    api_mode: form.provider === 'openai_bps' ? API_MODE_RESPONSES : form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
     check_mode: form.check_mode,
     account_id: usesQuotaMode.value ? form.account_id : null,
     endpoint: usesProbePart.value ? form.endpoint.trim() : '',

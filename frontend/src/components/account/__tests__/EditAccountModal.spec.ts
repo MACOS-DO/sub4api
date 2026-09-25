@@ -1712,3 +1712,18 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 })
+
+describe('EditAccountModal OpenAI BPS', () => {
+  it('keeps an empty token out of the update and tests the saved account', async () => {
+    const account = { ...buildAccount(), platform: 'openai_bps', type: 'oauth', credentials: { chatgpt_account_id: 'workspace', model_mapping: { 'gpt-6-astra': 'gpt-6-astra' } } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="bps-save-and-test"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(wrapper.emitted('test')).toEqual([[account]]))
+    expect(updateAccountMock.mock.calls[0][1].credentials).not.toHaveProperty('access_token')
+    expect(updateAccountMock.mock.calls[0][1].credentials.chatgpt_account_id).toBe('workspace')
+    wrapper.unmount()
+  })
+})

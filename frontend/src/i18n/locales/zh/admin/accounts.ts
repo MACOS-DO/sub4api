@@ -1,5 +1,35 @@
 export default {
     accounts: {
+      bps: {
+        testInterrupted: 'BPS 测试流已中断，未收到完成结果。',
+        riskTitle: "封号风险提示",
+        riskDescription: "使用 OpenAI BPS 可能存在账号被限制或封禁的风险，请谨慎使用。",
+        riskConfirmTitle: "确认添加 OpenAI BPS 账号？",
+        riskConfirmMessage: "使用 OpenAI BPS 可能导致账号被限制或封禁。请确认你已了解风险，再继续添加账号。",
+        riskConfirmButton: "我已了解风险，继续添加",
+        replaceToken: "请更换 Access Token 后重新测试。",
+        errorCode: "错误码",
+        manualResume: "调度开关仍为暂停；如需使用，请手动开启。",
+        newTokenPending: "当前显示的是已保存凭证的状态，新 Token 保存后更新。",
+        requestingUpstream: "正在请求 BPS 上游，尚未确认认证成功…",
+        upstreamResponse: "已收到 BPS 上游响应",
+        upstreamModelLabel: "上游请求模型",
+        requestIdLabel: "请求 ID",
+        testSucceeded: "BPS 连接测试通过",
+        credentialStatus: {"unknown": "Token 到期时间未知", "not_expired": "Token 未到期（不代表已通过验证）", "expired": "Token 已过期", "revoked": "Token 已被撤销", "auth_failed": "Token 认证失败"},
+
+        saveAndTest: '保存并测试连接',
+        monitorHint: '填写 Sub4API 地址和 BPS 分组的 API Key，使用 Responses 探活；不提供上游配额查询。',
+        keepToken: "留空保留现有 Token",
+        tokenHint: "手动粘贴 ChatGPT Access Token。到期后需在此替换；保存后可在账号列表测试连接。",
+        tokenRequired: "请输入 Access Token",
+        accountHint: "留空时从 JWT 自动提取；也可填写账号 ID 覆盖。",
+        expiresAt: "Token 到期时间",
+        modelsHint: "默认允许以下两个候选模型；左侧为客户端名称，右侧为上游模型。删除全部规则将允许任意模型。",
+        clientModel: "客户端模型",
+        upstreamModel: "上游模型",
+      },
+
       codexDiagnosticDialog: {
         "title": "降智检测",
         "steps": "检测步骤",

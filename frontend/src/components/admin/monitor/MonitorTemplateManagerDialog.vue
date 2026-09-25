@@ -272,6 +272,7 @@ const appStore = useAppStore()
 const { providerPickerClass } = useChannelMonitorFormat()
 
 const providerTabs = computed<{ value: Provider; label: string }[]>(() => [
+  { value: 'openai_bps', label: 'OpenAI BPS' },
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
@@ -319,7 +320,7 @@ function emptyForm(provider: Provider): TemplateForm {
     id: null,
     name: '',
     provider,
-    api_mode: API_MODE_CHAT_COMPLETIONS,
+    api_mode: provider === 'openai_bps' ? API_MODE_RESPONSES : API_MODE_CHAT_COMPLETIONS,
     description: '',
     extra_headers: {},
     body_override_mode: 'off',
@@ -389,7 +390,7 @@ async function handleSubmit() {
       await adminAPI.channelMonitorTemplate.create({
         name: form.name.trim(),
         provider: form.provider,
-        api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+        api_mode: form.provider === 'openai_bps' ? API_MODE_RESPONSES : form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
         description: form.description.trim(),
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
@@ -399,7 +400,7 @@ async function handleSubmit() {
     } else if (typeof editing.value === 'number') {
       await adminAPI.channelMonitorTemplate.update(editing.value, {
         name: form.name.trim(),
-        api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+        api_mode: form.provider === 'openai_bps' ? API_MODE_RESPONSES : form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
         description: form.description.trim(),
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
@@ -505,7 +506,7 @@ const apiModeOptions = computed<{ value: APIMode; label: string; hint: string }[
 
 watch(() => form.provider, (provider) => {
   if (provider !== PROVIDER_OPENAI) {
-    form.api_mode = API_MODE_CHAT_COMPLETIONS
+    form.api_mode = provider === 'openai_bps' ? API_MODE_RESPONSES : API_MODE_CHAT_COMPLETIONS
   }
 })
 

@@ -333,6 +333,7 @@ const codexManifestContext = computed(() => {
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
   switch (props.platform) {
+    case 'openai_bps':
     case 'openai':
       return 'codex'
     case 'grok':
@@ -437,6 +438,8 @@ const SparkleIcon = {
 const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
   switch (props.platform) {
+    case 'openai_bps':
+      return [{ id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon }]
     case 'openai': {
       const tabs: TabConfig[] = [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
@@ -1230,6 +1233,7 @@ function generateRoutedCodexFiles(
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
   const preferredModels: Partial<Record<GroupPlatform, string>> = {
     openai: 'gpt-5.5',
+    openai_bps: 'gpt-6-astra',
     anthropic: 'claude-sonnet-4-6',
     gemini: 'gemini-2.5-pro',
     antigravity: 'claude-sonnet-4-6',
@@ -1246,6 +1250,7 @@ function generateRoutedCodexFiles(
   const labels: Record<GroupPlatform, string> = {
     anthropic: 'Anthropic',
     openai: 'OpenAI',
+    openai_bps: 'OpenAI BPS',
     gemini: 'Gemini',
     antigravity: 'Antigravity',
     grok: 'Grok',
