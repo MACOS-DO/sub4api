@@ -1507,7 +1507,7 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	platforms := make(map[string]struct{})
 	for _, account := range accounts {
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
+		if platform == PlatformOpenAIBPS || !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
 			continue
 		}
 		platforms[platform] = struct{}{}

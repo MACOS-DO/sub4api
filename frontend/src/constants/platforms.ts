@@ -13,6 +13,7 @@ export interface PlatformOption<T extends string = string> {
 export const CONCRETE_PLATFORM_OPTIONS = [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
+  { value: 'openai_bps', label: 'OpenAI BPS' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'antigravity', label: 'Antigravity' },
   { value: 'grok', label: 'Grok' },

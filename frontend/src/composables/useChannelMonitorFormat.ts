@@ -68,6 +68,7 @@ export function useChannelMonitorFormat() {
   }
 
   function providerLabel(p: Provider | string): string {
+    if (p === 'openai_bps') return 'OpenAI BPS'
     if (PROVIDERS.includes(p as Provider)) {
       return t(`monitorCommon.providers.${p}`)
     }

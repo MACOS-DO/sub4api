@@ -1,5 +1,18 @@
 export default {
     accounts: {
+      bps: {
+        saveAndTest: '保存并测试连接',
+        monitorHint: '填写 Sub4API 地址和 BPS 分组的 API Key，使用 Responses 探活；不提供上游配额查询。',
+        keepToken: "留空保留现有 Token",
+        tokenHint: "手动粘贴 ChatGPT Access Token。到期后需在此替换；保存后可在账号列表测试连接。",
+        tokenRequired: "请输入 Access Token",
+        accountHint: "留空时从 JWT 自动提取；也可填写账号 ID 覆盖。",
+        expiresAt: "Token 到期时间",
+        modelsHint: "默认允许以下两个候选模型；左侧为客户端名称，右侧为上游模型。删除全部规则将允许任意模型。",
+        clientModel: "客户端模型",
+        upstreamModel: "上游模型",
+      },
+
       codexDiagnosticDialog: {
         "title": "降智检测",
         "steps": "检测步骤",

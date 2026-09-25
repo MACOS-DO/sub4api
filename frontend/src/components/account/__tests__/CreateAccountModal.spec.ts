@@ -712,3 +712,23 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 })
+
+describe('CreateAccountModal OpenAI BPS', () => {
+  it('saves the token and opens the connection tester for the saved account', async () => {
+    const saved = { id: 42, platform: 'openai_bps', type: 'oauth' }
+    createAccountMock.mockReset().mockResolvedValue(saved)
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI BPS')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('BPS account')
+    await wrapper.get('#bps-access-token').setValue('test-token')
+    await wrapper.get('#bps-account-id').setValue('workspace')
+    await wrapper.get('[data-testid="bps-save-and-test"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'openai_bps', type: 'oauth', credentials: expect.objectContaining({ access_token: 'test-token', chatgpt_account_id: 'workspace' })
+    }))
+    expect(wrapper.emitted('test')).toEqual([[saved]])
+    wrapper.unmount()
+  })
+})

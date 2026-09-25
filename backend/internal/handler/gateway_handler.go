@@ -1141,16 +1141,20 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
+		availableModels, err := h.compositeAvailableModels(c.Request.Context(), groupID)
+		if err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to load composite model catalog")
+			return
+		}
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 			source := availableModels
-			if len(source) == 0 {
+			if source == nil {
 				source = defaultModelIDsForPlatform(service.PlatformComposite)
 			}
 			writeAllowlistedModelsList(c, service.PlatformComposite, apiKey.Group.ModelAllowlist.FilterForListing(source))
 			return
 		}
-		if len(availableModels) > 0 {
+		if availableModels != nil {
 			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
@@ -1171,6 +1175,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	if platform == service.PlatformOpenAIBPS {
+		writeModelsList(c, platform, service.OpenAIBPSDefaultModels())
+		return
+	}
 	// Fallback to default models
 	if platform == service.PlatformOpenAI {
 		writeModelsListResponse(c, openai.DefaultModels)
@@ -1203,7 +1211,11 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	if value, exists := middleware2.GetForcePlatformFromContext(c); exists {
 		forcedPlatform = strings.TrimSpace(value)
 	}
-	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
+	modelIDs, err := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
+	if err != nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to load composite model catalog")
+		return
+	}
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
@@ -1225,9 +1237,9 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", body)
 }
 
-func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {
+func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) ([]string, error) {
 	if h == nil || h.gatewayService == nil || group == nil {
-		return nil
+		return nil, nil
 	}
 
 	groupID := &group.ID
@@ -1236,35 +1248,38 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		platform = group.Platform
 	}
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(ctx, groupID)
+		availableModels, err := h.compositeAvailableModels(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
 		if group.ModelAllowlistEnabled() {
 			source := availableModels
-			if len(source) == 0 {
+			if source == nil {
 				source = fallbackModels
 			}
-			return group.ModelAllowlist.FilterForListing(source)
+			return group.ModelAllowlist.FilterForListing(source), nil
 		}
-		if len(availableModels) > 0 {
-			return availableModels
+		if availableModels != nil {
+			return availableModels, nil
 		}
-		return fallbackModels
+		return fallbackModels, nil
 	}
 
 	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 	fallbackModels := defaultCodexModelIDsForPlatform(platform)
 	if group.ModelAllowlistEnabled() {
-		return group.ModelAllowlist.FilterForListing(modelListingSource(platform, availableModels, fallbackModels))
+		return group.ModelAllowlist.FilterForListing(modelListingSource(platform, availableModels, fallbackModels)), nil
 	}
 	if len(availableModels) > 0 {
-		return availableModels
+		return availableModels, nil
 	}
-	return fallbackModels
+	return fallbackModels, nil
 }
 
-func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
+func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) ([]string, error) {
 	if h == nil || h.gatewayService == nil {
-		return nil
+		return nil, nil
 	}
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
@@ -1290,11 +1305,11 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 			models = append(models, model)
 		}
 	}
-	return models
+	return h.gatewayService.CompleteCompositeBPSModelCatalog(ctx, groupID, models)
 }
 
 func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
-	if platform == service.PlatformOpenAI {
+	if platform == service.PlatformOpenAI || platform == service.PlatformOpenAIBPS {
 		writeOpenAIModelsList(c, modelIDs)
 		return
 	}
@@ -1315,7 +1330,7 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 }
 
 func writeAllowlistedModelsList(c *gin.Context, platform string, modelIDs []string) {
-	if platform == service.PlatformOpenAI {
+	if platform == service.PlatformOpenAI || platform == service.PlatformOpenAIBPS {
 		writeOpenAIModelsList(c, modelIDs)
 		return
 	}
@@ -1432,6 +1447,8 @@ func defaultCodexModelIDsForPlatform(platform string) []string {
 
 func defaultModelIDsForPlatform(platform string) []string {
 	switch platform {
+	case service.PlatformOpenAIBPS:
+		return service.OpenAIBPSDefaultModels()
 	case service.PlatformOpenAI:
 		return openai.DefaultModelIDs()
 	case service.PlatformGemini:

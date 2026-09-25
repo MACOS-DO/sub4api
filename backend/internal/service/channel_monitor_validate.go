@@ -14,6 +14,7 @@ import (
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var monitorProviders = map[string]struct{}{
+	MonitorProviderOpenAIBPS:   {},
 	MonitorProviderOpenAI:      {},
 	MonitorProviderAnthropic:   {},
 	MonitorProviderGemini:      {},
@@ -30,6 +31,7 @@ var monitorProviders = map[string]struct{}{
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var probeCapableProviders = map[string]struct{}{
+	MonitorProviderOpenAIBPS: {},
 	MonitorProviderOpenAI:    {},
 	MonitorProviderAnthropic: {},
 	MonitorProviderGemini:    {},
@@ -75,6 +77,9 @@ func monitorCheckModeUsesQuota(checkMode string) bool {
 //	antigravity（无 adapter）|  N    |  Y    |  N
 func validateCheckMode(provider, checkMode string) error {
 	checkMode = defaultCheckMode(checkMode)
+	if provider == MonitorProviderOpenAIBPS && checkMode != MonitorCheckModeProbe {
+		return ErrChannelMonitorInvalidCheckMode
+	}
 	switch checkMode {
 	case MonitorCheckModeProbe, MonitorCheckModeQuota, MonitorCheckModeQuotaProbe:
 	default:
@@ -90,6 +95,12 @@ func validateCheckMode(provider, checkMode string) error {
 // responses 只对 OpenAI 有意义；其它 provider 使用 chat_completions 作为默认占位。
 func validateAPIMode(provider, apiMode string) error {
 	apiMode = defaultAPIMode(apiMode)
+	if provider == MonitorProviderOpenAIBPS {
+		if apiMode == MonitorAPIModeResponses {
+			return nil
+		}
+		return ErrChannelMonitorInvalidAPIMode
+	}
 	switch apiMode {
 	case MonitorAPIModeChatCompletions:
 		return nil

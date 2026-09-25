@@ -228,8 +228,14 @@
             <PlatformIcon platform="opencode_go" size="sm" />
             OpenCode
           </button>
+          <button type="button" @click="form.platform = 'openai_bps'"
+            :class="['flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium', form.platform === 'openai_bps' ? 'bg-white text-green-700 shadow-sm dark:bg-dark-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400']">
+            <PlatformIcon platform="openai_bps" size="sm" />OpenAI BPS
+          </button>
         </div>
       </div>
+
+      <OpenAIBPSAccountFields v-if="form.platform === 'openai_bps'" v-model="bpsDraft" />
 
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
@@ -3589,9 +3595,14 @@
         <button @click="handleClose" type="button" class="btn btn-secondary">
           {{ t('common.cancel') }}
         </button>
+        <button v-if="form.platform === 'openai_bps'" type="submit" form="create-account-form" :disabled="submitting"
+          class="btn btn-secondary" data-testid="bps-save-and-test" @click="bpsTestAfterSave = true">
+          {{ t('admin.accounts.bps.saveAndTest') }}
+        </button>
         <button
           type="submit"
           form="create-account-form"
+          @click="bpsTestAfterSave = false"
           :disabled="submitting"
           class="btn btn-primary"
           data-tour="account-form-submit"
@@ -3897,6 +3908,8 @@
 </template>
 
 <script setup lang="ts">
+import OpenAIBPSAccountFields from './OpenAIBPSAccountFields.vue'
+import { newBPSAccountDraft, bpsCredentials } from '@/utils/openaiBps'
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -3926,6 +3939,7 @@ import type {
   AdminGroup,
   AccountPlatform,
   AccountType,
+  Account,
   CheckMixedChannelResponse,
   CreateAccountRequest,
   CodexSessionImportMessage,
@@ -4091,6 +4105,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
+  test: [account: Account]
   created: []
 }>()
 
@@ -4731,6 +4746,9 @@ const tempUnschedPresets = computed(() => [
   }
 ])
 
+const bpsDraft = ref(newBPSAccountDraft())
+const bpsTestAfterSave = ref(false)
+
 const form = reactive({
   name: '',
   notes: '',
@@ -4748,6 +4766,7 @@ const form = reactive({
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
+  if (form.platform === 'openai_bps') return false
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -5288,8 +5307,10 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       }
     }
     appStore.showSuccess(t('admin.accounts.accountCreated'))
+    const openBPSTest = payload.platform === 'openai_bps' && bpsTestAfterSave.value
     emit('created')
     handleClose()
+    if (openBPSTest) emit('test', account)
   } catch (error: any) {
     if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
       openMixedChannelDialog({
@@ -5309,6 +5330,8 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  bpsDraft.value = newBPSAccountDraft()
+  bpsTestAfterSave.value = false
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -5641,6 +5664,11 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (form.platform === 'openai_bps') {
+    if (!bpsDraft.value.token.trim()) { appStore.showError(t('admin.accounts.bps.tokenRequired')); return }
+    await createAccountAndFinish('openai_bps', 'oauth', bpsCredentials(bpsDraft.value))
+    return
+  }
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {

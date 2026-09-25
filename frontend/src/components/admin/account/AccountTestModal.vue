@@ -422,7 +422,7 @@ const uploadAudioDataURL = ref('')
 const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isOpenAIAccount = computed(() => (props.account?.platform === 'openai' || props.account?.platform === 'openai_bps'))
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
@@ -497,6 +497,7 @@ const modelOptionsForMode = computed(() => {
 })
 
 const supportsPromptInput = computed(() => {
+  if (props.account?.platform === 'openai_bps') return true
   if (!isGrokAccount.value) {
     return supportsImageTest.value
   }

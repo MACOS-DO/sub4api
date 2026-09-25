@@ -1,5 +1,18 @@
 export default {
     accounts: {
+      bps: {
+        saveAndTest: 'Save and test connection',
+        monitorHint: 'Use the Sub4API endpoint and a BPS group API key for Responses probes. Upstream quota queries are unavailable.',
+        keepToken: "Leave blank to keep the existing token",
+        tokenHint: "Paste a ChatGPT Access Token. Replace it manually when it expires; test the connection from the account list after saving.",
+        tokenRequired: "Access Token is required",
+        accountHint: "Extracted from the JWT when blank; enter an account ID to override.",
+        expiresAt: "Token expires",
+        modelsHint: "These two candidate models are allowed by default. Map client names to upstream models; removing all rules allows any model.",
+        clientModel: "Client model",
+        upstreamModel: "Upstream model",
+      },
+
       codexDiagnosticDialog: {
         "title": "Model degradation check",
         "steps": "Check steps",

@@ -1,8 +1,15 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
+    <template v-if="account.platform === 'openai_bps'">
+      <div class="text-xs text-gray-500">
+        {{ t('admin.accounts.bps.expiresAt') }}:
+        {{ account.credentials?.expires_at ? new Date(String(account.credentials.expires_at)).toLocaleString() : '—' }}
+      </div>
+      <div v-if="account.error_message" class="mt-1 text-xs text-red-500">{{ account.error_message }}</div>
+    </template>
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
-      v-if="
+      v-else-if="
         account.platform === 'anthropic' &&
         (account.type === 'oauth' || account.type === 'setup-token')
       "

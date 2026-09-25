@@ -853,6 +853,9 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 	platformOverride string,
 	modelIDs []string,
 ) ([]byte, error) {
+	if platformOverride == PlatformOpenAIBPS || (platformOverride == "" && group != nil && group.Platform == PlatformOpenAIBPS) {
+		return buildOpenAIBPSCodexModelsManifest(modelIDs)
+	}
 	if s == nil || s.accountRepo == nil || group == nil {
 		return BuildCodexModelsManifest(modelIDs)
 	}
@@ -894,6 +897,9 @@ func buildCodexModelsManifestForAccounts(
 	compositeRoutes []CompositeModelRoute,
 	compositeRoutesAvailable bool,
 ) ([]byte, error) {
+	if effectivePlatform == PlatformOpenAIBPS {
+		return buildOpenAIBPSCodexModelsManifest(modelIDs)
+	}
 	imageInputModels := make(map[string]bool, len(modelIDs))
 	searchToolModels := make(map[string]bool, len(modelIDs))
 	metadataModels := codexCatalogMetadataModels(
@@ -935,7 +941,23 @@ func buildCodexModelsManifestForAccounts(
 			modelMetadata[modelID] = metadata
 		}
 	}
-	return buildCodexModelsManifest(modelIDs, imageInputModels, searchToolModels, metadataModels, modelMetadata)
+	body, err := buildCodexModelsManifest(modelIDs, imageInputModels, searchToolModels, metadataModels, modelMetadata)
+	if err != nil || effectivePlatform != PlatformComposite {
+		return body, err
+	}
+	var catalog struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err = json.Unmarshal(body, &catalog); err != nil {
+		return nil, err
+	}
+	for _, model := range catalog.Models {
+		platform, _, ok := resolveCodexCompositeModelTarget(stringValue(model["slug"]), accounts, compositeRoutes, compositeRoutesAvailable)
+		if ok && platform == PlatformOpenAIBPS {
+			applyOpenAIBPSModelCapabilities(model)
+		}
+	}
+	return json.Marshal(catalog)
 }
 
 func buildCodexModelsManifest(
@@ -1210,7 +1232,7 @@ func resolveCodexCompositeModelTarget(
 	claimedPlatforms := make(map[string]struct{})
 	for _, account := range accounts {
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !codexExplicitModelMappingClaims(account, modelID) {
+		if platform == PlatformOpenAIBPS || !isConcreteRequestPlatform(platform) || !codexExplicitModelMappingClaims(account, modelID) {
 			continue
 		}
 		claimedPlatforms[platform] = struct{}{}

@@ -288,7 +288,7 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 // required by an image or Responses request. needsResponses includes both the
 // legacy /responses/compact endpoint and native remote compaction v2.
 func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponses bool, platform string) service.OpenAIEndpointCapability {
-	if needsResponses && platform == service.PlatformOpenAI {
+	if platform == service.PlatformOpenAIBPS || (needsResponses && platform == service.PlatformOpenAI) {
 		return service.OpenAIEndpointCapabilityResponses
 	}
 	return openAIResponsesRequiredCapability(imageIntent, platform)
@@ -323,7 +323,7 @@ func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, m
 	return compositeTargetPlatformAllowed(c, apiKey, model,
 		service.PlatformOpenAI, service.PlatformGrok,
 		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-		service.PlatformMiniMax, service.PlatformOpenCodeGo)
+		service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOpenAIBPS)
 }
 
 // isResponsesWebSocketCompositePlatform 限定 composite 分组在 Responses WebSocket
@@ -428,9 +428,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, "", false)
 	sessionHashBody := body
-	body, ok = h.normalizeOpenAIResponsesCompactRequest(c, reqLog, body)
-	if !ok {
-		return
+	if openAICompatibleRequestPlatform(c.Request.Context(), apiKey) != service.PlatformOpenAIBPS {
+		body, ok = h.normalizeOpenAIResponsesCompactRequest(c, reqLog, body)
+		if !ok {
+			return
+		}
 	}
 	legacyCompact := service.IsOpenAIResponsesCompactPath(c)
 	nativeV2 := isBareOpenAIResponsesPath(c) && isOpenAIRemoteCompactionV2Request(body)
@@ -464,11 +466,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
-	if cappedBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
-		respondOpenAIReasoningEffortPolicyError(c, err, h.errorResponse)
-		return
-	} else if changed {
-		body = cappedBody
+	if openAICompatibleRequestPlatform(c.Request.Context(), apiKey) != service.PlatformOpenAIBPS {
+		if cappedBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
+			respondOpenAIReasoningEffortPolicyError(c, err, h.errorResponse)
+			return
+		} else if changed {
+			body = cappedBody
+		}
 	}
 	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
 		body = normalizedBody
@@ -494,6 +498,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	if previousResponseID != "" && openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformOpenAIBPS {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "BPS requires complete input history; previous_response_id is not supported")
+		return
+	}
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 		reqLog = reqLog.With(
@@ -570,7 +578,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	))
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
-	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
+	if openAICompatibleRequestPlatform(c.Request.Context(), apiKey) != service.PlatformOpenAIBPS && !h.validateFunctionCallOutputRequest(c, body, reqLog) {
 		return
 	}
 
@@ -582,6 +590,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Get subscription info (may be nil)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	if requestPlatform == service.PlatformOpenAIBPS {
+		if err := h.gatewayService.PrepareOpenAIBPSRouting(c, sessionHashBody); err != nil {
+			service.WriteOpenAIBPSError(c, err)
+			return
+		}
+	}
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -673,6 +687,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if requestPlatform == service.PlatformOpenAIBPS && service.OpenAIBPSHasBinding(c.Request.Context()) {
+				service.WriteOpenAIBPSAccountUnavailable(c)
+				return
+			}
 			if len(failedAccountIDs) == 0 {
 				if legacyCompact && errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)

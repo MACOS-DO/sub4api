@@ -128,3 +128,15 @@ func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	require.Nil(t, got.Credentials)
 	require.Nil(t, got.CredentialsStatus)
 }
+
+func TestOpenAIBPSAccountDTORedactsTokenKeepsExpiry(t *testing.T) {
+	src := &service.Account{ID: 42, Platform: service.PlatformOpenAIBPS, Type: service.AccountTypeOAuth, Credentials: map[string]any{"access_token": "bps-test-secret", "chatgpt_account_id": "workspace", "expires_at": "2026-10-01T00:00:00Z"}}
+	dto := AccountFromServiceShallow(src)
+	require.NotContains(t, dto.Credentials, "access_token")
+	require.True(t, dto.CredentialsStatus["has_access_token"])
+	require.Equal(t, "workspace", dto.Credentials["chatgpt_account_id"])
+	require.Equal(t, "2026-10-01T00:00:00Z", dto.Credentials["expires_at"])
+	data, err := json.Marshal(dto)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "bps-test-secret")
+}

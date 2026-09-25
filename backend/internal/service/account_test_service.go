@@ -396,6 +396,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		}
 	}
 
+	if account.IsOpenAIBPS() {
+		return s.testOpenAIBPSAccountConnection(c, account, modelID, prompt, mode)
+	}
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
