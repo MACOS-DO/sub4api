@@ -415,6 +415,10 @@ type bpsFailureRepo struct {
 	cooldown      time.Time
 }
 
+func (r *bpsFailureRepo) SetOpenAIBPSCredentialErrorIfMatch(_ context.Context, _ int64, _ OpenAIBPSCredentialSnapshot, state OpenAIBPSCredentialState) (bool, error) {
+	r.authErrors = append(r.authErrors, OpenAIBPSCredentialErrorMessage(state))
+	return true, nil
+}
 func (r *bpsFailureRepo) SetError(_ context.Context, _ int64, message string) error {
 	r.authErrors = append(r.authErrors, message)
 	return nil

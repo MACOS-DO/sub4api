@@ -1,6 +1,6 @@
 <template>
   <BaseDialog
-    :show="show"
+    :show="show" :close-on-escape="!pendingBPSCreate"
     :title="t('admin.accounts.createAccount')"
     width="wide"
     @close="handleClose"
@@ -235,6 +235,10 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'openai_bps'" role="alert" data-testid="bps-risk-warning" class="mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 p-4 text-amber-950 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-100">
+        <div class="mb-1 flex items-center gap-2 font-bold"><Icon name="exclamationTriangle" size="md" />{{ t('admin.accounts.bps.riskTitle') }}</div>
+        <p class="text-sm font-medium">{{ t('admin.accounts.bps.riskDescription') }}</p>
+      </div>
       <OpenAIBPSAccountFields v-if="form.platform === 'openai_bps'" v-model="bpsDraft" />
 
       <!-- Account Type Selection (Anthropic) -->
@@ -3894,6 +3898,17 @@
     </template>
   </BaseDialog>
 
+  <ConfirmDialog
+    :show="pendingBPSCreate !== null"
+    :title="t('admin.accounts.bps.riskConfirmTitle')"
+    :message="t('admin.accounts.bps.riskConfirmMessage')"
+    :confirm-text="t('admin.accounts.bps.riskConfirmButton')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    data-testid="bps-risk-confirmation"
+    @confirm="confirmBPSRisk"
+    @cancel="cancelBPSRisk"
+  />
   <!-- Mixed Channel Warning Dialog -->
   <ConfirmDialog
     :show="showMixedChannelWarning"
@@ -4748,6 +4763,7 @@ const tempUnschedPresets = computed(() => [
 
 const bpsDraft = ref(newBPSAccountDraft())
 const bpsTestAfterSave = ref(false)
+const pendingBPSCreate = ref<{ payload: CreateAccountRequest; testAfterSave: boolean } | null>(null)
 
 const form = reactive({
   name: '',
@@ -5330,6 +5346,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  pendingBPSCreate.value = null
   bpsDraft.value = newBPSAccountDraft()
   bpsTestAfterSave.value = false
   step.value = 1
@@ -5451,6 +5468,8 @@ const resetForm = () => {
 }
 
 const handleClose = () => {
+  pendingBPSCreate.value = null
+  bpsTestAfterSave.value = false
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')
@@ -5573,7 +5592,28 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 }
 
 // Helper function to create account with mixed channel warning handling
-const doCreateAccount = async (payload: CreateAccountRequest) => {
+const cancelBPSRisk = () => {
+  pendingBPSCreate.value = null
+  bpsTestAfterSave.value = false
+}
+watch(() => [props.show, form.platform] as const, ([shown, platform]) => {
+  if (!shown || platform !== 'openai_bps') cancelBPSRisk()
+})
+const confirmBPSRisk = async () => {
+  const pending = pendingBPSCreate.value
+  if (!pending || submitting.value || !props.show) return
+  pendingBPSCreate.value = null
+  bpsTestAfterSave.value = pending.testAfterSave
+  await doCreateAccount(pending.payload, true)
+}
+const doCreateAccount = async (payload: CreateAccountRequest, bpsRiskConfirmed = false) => {
+  if (payload.platform === 'openai_bps') {
+    if (submitting.value || pendingBPSCreate.value) return
+    if (!bpsRiskConfirmed) {
+      pendingBPSCreate.value = { payload: JSON.parse(JSON.stringify(payload)), testAfterSave: bpsTestAfterSave.value }
+      return
+    }
+  }
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })

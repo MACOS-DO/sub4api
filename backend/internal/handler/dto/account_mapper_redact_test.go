@@ -140,3 +140,24 @@ func TestOpenAIBPSAccountDTORedactsTokenKeepsExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(data), "bps-test-secret")
 }
+
+func TestAccountFromServiceBPSCredentialStateFullAndLite(t *testing.T) {
+	now := time.Now().UTC()
+	source := &service.Account{ID: 42, Platform: service.PlatformOpenAIBPS, Type: service.AccountTypeOAuth, Status: service.StatusError, Schedulable: true, Credentials: map[string]any{"access_token": "private-bps-token", "chatgpt_account_id": "workspace", "expires_at": now.Add(time.Hour).Format(time.RFC3339)}, Extra: map[string]any{service.OpenAIBPSCredentialStateExtraKey: map[string]any{"status": "revoked", "error_code": "token_revoked", "observed_at": now.Format(time.RFC3339Nano), "managed_status_error": true, "credential_identity": "private-fingerprint"}}}
+	full := AccountFromService(source)
+	lite := AccountListItemFromAccount(full)
+	require.Equal(t, "revoked", full.BPSCredentialState.Status)
+	require.Equal(t, full.BPSCredentialState, lite.BPSCredentialState)
+	require.True(t, full.CredentialsStatus["has_access_token"])
+	require.NotContains(t, full.Credentials, "access_token")
+	require.NotContains(t, full.Extra, service.OpenAIBPSCredentialStateExtraKey)
+	data, err := json.Marshal(lite)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "private-bps-token")
+	require.NotContains(t, string(data), "private-fingerprint")
+	source.Extra = nil
+	source.Status = service.StatusActive
+	source.Credentials["expires_at"] = now.Add(-time.Hour).Format(time.RFC3339)
+	require.Equal(t, "expired", AccountFromService(source).BPSCredentialState.Status)
+	require.Equal(t, service.StatusActive, source.Status)
+}

@@ -1195,6 +1195,8 @@ export interface OpenCodeGoUsageSettings {
   debounce_minutes: number
 }
 
+export type { BPSCredentialState } from "@/utils/openaiBps"
+
 export interface Account {
   id: number
   name: string
@@ -1207,6 +1209,7 @@ export interface Account {
   // 改为通过 credentials_status.has_<key> 暴露存在性。
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
+  bps_credential_state?: import("@/utils/openaiBps").BPSCredentialState
   ollama_cloud_usage?: OllamaCloudUsageState
   opencode_go_usage?: OpenCodeGoUsageState
   codex_ticket_latest_event?: { model: string; kind: string; occurred_at: string }

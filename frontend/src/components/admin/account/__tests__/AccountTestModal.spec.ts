@@ -221,3 +221,42 @@ describe('AccountTestModal', () => {
     })
   })
 })
+
+
+describe('BPS account test feedback', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+  it('waits for real upstream status and emits completion after authentication failure', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-6-astra', display_name: 'GPT-6 Astra' }])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createStreamResponse([
+      'data: {"type":"test_start","model":"gpt-6-astra"}\n\n',
+      'data: {"type":"upstream_response","upstream_status":401,"upstream_model":"gpt-6-astra","request_id":"req_test"}\n\n',
+      'data: {"type":"error","error":"Token was revoked","code":"bps_invalid_credentials","upstream_error_code":"token_revoked"}\n\n'
+    ])))
+    const wrapper = mountModal({ id: 73, name: 'BPS', platform: 'openai_bps', type: 'oauth', status: 'active' })
+    await wrapper.setProps({ show: true }); await flushPromises()
+    const button = wrapper.findAll('button').find(b => b.text().includes('admin.accounts.startTest'))
+    expect(button).toBeDefined(); await button!.trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('admin.accounts.bps.requestingUpstream')
+    expect(wrapper.text()).not.toContain('admin.accounts.connectedToApi')
+    expect(wrapper.text()).toContain('HTTP 401'); expect(wrapper.text()).toContain('token_revoked')
+    expect(wrapper.text()).toContain('req_test'); expect(wrapper.text()).not.toContain('admin.accounts.bps.testSucceeded')
+    expect(wrapper.emitted('completed')).toEqual([[73]])
+    wrapper.unmount()
+  })
+  it('shows success only after the terminal successful event', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-6-astra', display_name: 'GPT-6 Astra' }])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createStreamResponse([
+      'data: {"type":"test_start","model":"gpt-6-astra"}\n\n',
+      'data: {"type":"upstream_response","upstream_status":200,"upstream_model":"gpt-6-astra"}\n\n',
+      'data: {"type":"content","text":"OK"}\n\n',
+      'data: {"type":"test_complete","success":true}\n\n'
+    ])))
+    const wrapper = mountModal({ id: 74, name: 'BPS', platform: 'openai_bps', type: 'oauth', status: 'active' })
+    await wrapper.setProps({ show: true }); await flushPromises()
+    const button = wrapper.findAll('button').find(b => b.text().includes('admin.accounts.startTest'))
+    expect(button).toBeDefined(); await button!.trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('HTTP 200'); expect(wrapper.text()).toContain('admin.accounts.bps.testSucceeded')
+    expect(wrapper.emitted('completed')).toEqual([[74]])
+    wrapper.unmount()
+  })
+})

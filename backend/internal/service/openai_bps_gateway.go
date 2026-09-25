@@ -76,8 +76,11 @@ func buildOpenAIBPSRequest(ctx context.Context, account *Account, body []byte) (
 
 func (s *OpenAIGatewayService) bpsHTTPError(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, model string) error {
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, openAIUpstreamErrorBodyReadLimit))
+	requestCredentials := bpsRequestCredentialSnapshot(ctx, account)
 	message := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(data))
-	message = strings.ReplaceAll(message, account.GetCredential("access_token"), "[REDACTED]")
+	if requestCredentials.AccessToken != "" {
+		message = strings.ReplaceAll(message, requestCredentials.AccessToken, "[REDACTED]")
+	}
 	if message == "" {
 		message = fmt.Sprintf("BPS returned HTTP %d", resp.StatusCode)
 	}
@@ -88,17 +91,16 @@ func (s *OpenAIGatewayService) bpsHTTPError(ctx context.Context, c *gin.Context,
 	}
 	_ = json.Unmarshal(data, &upstreamError)
 	upstreamCode := strings.ToLower(strings.TrimSpace(upstreamError.Error.Code))
-	diagnosticCode := strings.ReplaceAll(sanitizeUpstreamErrorMessage(strings.TrimSpace(upstreamError.Error.Code)), account.GetCredential("access_token"), "[REDACTED]")
+	diagnosticCode := strings.ReplaceAll(sanitizeUpstreamErrorMessage(strings.TrimSpace(upstreamError.Error.Code)), requestCredentials.AccessToken, "[REDACTED]")
 	if len(diagnosticCode) > 128 {
 		diagnosticCode = diagnosticCode[:128]
 	}
+	c.Set("bps_upstream_error_code", diagnosticCode)
 	code := "bps_upstream_error"
 	switch resp.StatusCode {
 	case 401:
 		code = "bps_invalid_credentials"
-		if s.accountRepo != nil {
-			_ = s.accountRepo.SetError(ctx, account.ID, "BPS authentication failed; replace access_token")
-		}
+		s.recordOpenAIBPSCredentialFailure(ctx, account, diagnosticCode)
 	case 403:
 		if upstreamCode == "model_not_allowed" || upstreamCode == "basispoints_model_access_changed" {
 			code = "bps_model_not_allowed"
@@ -250,11 +252,10 @@ func (s *OpenAIGatewayService) forwardOpenAIBPS(ctx context.Context, c *gin.Cont
 	if err != nil {
 		return nil, err
 	}
+	c.Set("bps_upstream_model", r.Model)
+	ctx = WithHTTPUpstreamRedirectsDisabled(ctx)
 	req, err := buildOpenAIBPSRequest(ctx, account, r.Body)
 	if err != nil {
-		if s.accountRepo != nil && account.bpsTokenExpired() {
-			_ = s.accountRepo.SetError(ctx, account.ID, "BPS access token expired; replace it manually")
-		}
 		return nil, err
 	}
 	proxyURL := ""
@@ -262,12 +263,21 @@ func (s *OpenAIGatewayService) forwardOpenAIBPS(ctx context.Context, c *gin.Cont
 		proxyURL = account.Proxy.URL()
 	}
 	SetActualOpenAIUpstreamEndpoint(c, "/basispoints/api/responses")
+	snapshot := OpenAIBPSCredentialSnapshot{AccessToken: strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "), AccountID: req.Header.Get("chatgpt-account-id")}
+	ctx = context.WithValue(ctx, bpsCredentialSnapshotContextKey{}, snapshot)
+	req = req.WithContext(ctx)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		if !bpsHasBinding(ctx) && ctx.Err() == nil {
 			return nil, &UpstreamFailoverError{StatusCode: 502, ClientMessage: "BPS upstream is temporarily unavailable"}
 		}
 		return nil, err
+	}
+	c.Set("bps_upstream_status", resp.StatusCode)
+	requestID := strings.ReplaceAll(resp.Header.Get("x-request-id"), snapshot.AccessToken, "[REDACTED]")
+	c.Set("bps_upstream_request_id", requestID)
+	if notify, ok := ctx.Value(bpsResponseObserverContextKey{}).(func(int, string, string)); ok {
+		notify(resp.StatusCode, r.Model, requestID)
 	}
 	defer resp.Body.Close()
 	// Bound silent upstream stalls. The timer only closes the reader; all

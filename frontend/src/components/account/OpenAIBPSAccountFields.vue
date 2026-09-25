@@ -11,7 +11,8 @@
       <input id="bps-account-id" v-model="draft.accountId" class="input" :placeholder="t('admin.accounts.bps.accountHint')" />
       <p class="input-hint">{{ t('admin.accounts.bps.accountHint') }}</p>
     </div>
-    <p v-if="expiresAt" class="input-hint">{{ t('admin.accounts.bps.expiresAt') }}: {{ expiresAt }}</p>
+    <BPSCredentialStatus v-if="editing" :state="savedState" />
+    <p v-if="editing && draft.token.trim()" class="input-hint">{{ t('admin.accounts.bps.newTokenPending') }}</p>
     <div>
       <label class="input-label">{{ t('admin.accounts.modelMapping') }}</label>
       <p class="input-hint">{{ t('admin.accounts.bps.modelsHint') }}</p>
@@ -27,8 +28,11 @@
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { BPSAccountDraft } from '@/utils/openaiBps'
-defineProps<{ editing?: boolean; expiresAt?: string }>()
+import type { BPSAccountDraft, BPSCredentialState } from '@/utils/openaiBps'
+import { useBPSCredentialState } from '@/composables/useBPSCredentialState'
+import BPSCredentialStatus from './BPSCredentialStatus.vue'
+const props = defineProps<{ editing?: boolean; expiresAt?: string; credentialState?: BPSCredentialState; accountStatus?: string; schedulable?: boolean }>()
+const { state: savedState } = useBPSCredentialState(() => ({ platform: 'openai_bps', credentials: { expires_at: props.expiresAt }, bps_credential_state: props.credentialState, status: props.accountStatus, schedulable: props.schedulable }))
 const draft = defineModel<BPSAccountDraft>({ required: true })
 const { t } = useI18n()
 </script>

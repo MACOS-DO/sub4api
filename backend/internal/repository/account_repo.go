@@ -533,7 +533,7 @@ func (r *accountRepository) updateLockedAccount(
 	account.Extra = extra
 
 	schedulable := account.Schedulable
-	if account.Status == service.StatusError {
+	if account.Status == service.StatusError && !account.IsOpenAIBPS() {
 		schedulable = false
 	}
 
@@ -741,6 +741,7 @@ func lockAndMergeAccountProbeExtra(
 		}
 	}
 	extra := service.MergeOpenAICodexTicketExtra(copyJSONMap(normalizeJSONMap(account.Extra)), currentExtra)
+	extra = service.MergeOpenAIBPSCredentialStateExtra(account, extra, currentExtra, identityUnchanged)
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,

@@ -75,7 +75,7 @@ func NormalizeOpenAIBPSCredentials(accountType string, incoming, existing map[st
 
 func (a *Account) IsOpenAIBPS() bool { return a != nil && a.Platform == PlatformOpenAIBPS }
 func (a *Account) bpsTokenExpired() bool {
-	t := a.GetCredentialAsTime("expires_at")
+	t := a.openAIBPSCredentialExpiry()
 	return t != nil && !t.After(time.Now())
 }
 

@@ -5,10 +5,10 @@
 ## 配置
 
 1. 创建 **OpenAI BPS** 分组，配置模型价格、倍率和白名单。上游成本由管理员设置，不从 Excel 点数或 Codex 配额推断。
-2. 创建 **OpenAI BPS** 账号，填写 `access_token`。`chatgpt_account_id` 留空时从 JWT 提取，填写时覆盖默认账号；同时提取 JWT 的到期时间。解析 JWT 只读取信息，不验证真实性。
+2. 创建 **OpenAI BPS** 账号时会显示账号限制/封禁风险提示。点击保存或保存并测试后，必须在确认弹窗中确认风险才会创建；取消会保留输入。填写 `access_token`。`chatgpt_account_id` 留空时从 JWT 提取，填写时覆盖默认账号；同时提取 JWT 的到期时间。解析 JWT 只读取信息，不验证真实性。
 3. 绑定 BPS 分组，按需要选择代理、调整模型映射。默认候选模型为 `gpt-6-astra`、`gpt-5.6-sol`；模型映射支持管理员设置别名和白名单。删除全部规则表示不限模型。
-4. 在创建或编辑窗口选择“保存并测试连接”，用保存后的账号打开测试窗口。分别选择两个模型测试文本和压缩。账号列表也保留连接测试入口。
-5. Token 到期后手动替换。编辑时留空会保留原 token；替换 token 不会解除管理员主动停用或关闭调度的状态。列表显示到期时间和账号失败原因。
+4. 在创建或编辑窗口选择“保存并测试连接”，用保存后的账号打开测试窗口。分别选择两个模型测试文本和压缩。账号列表也保留连接测试入口。测试开始只表示正在请求上游；实际响应显示 HTTP 状态、上游模型及请求 ID，失败保留原始错误码。测试结束及关闭弹窗时刷新账号状态。
+5. Token 到期或被上游撤销后需手动替换。账号状态栏、用量列和编辑窗口分别显示已过期、已撤销或认证失败；JWT 未到期不代表上游认证有效。自然到期提示每 30 秒更新，不依赖列表自动刷新。编辑时留空保留原 Token 及诊断，替换新 Token 不会解除管理员主动停用或关闭调度的状态；历史暂停账号需手动恢复调度。
 6. 使用该分组的 **Sub4API API Key** 配置 Codex，`wire_api = "responses"`，`supports_websockets = false`。API Key 使用说明提供 Codex 配置和模型目录。
 7. Composite 分组必须为 BPS 添加显式路由。模型目录仅发布启用的 Responses/通用路由且有合格 BPS 账号承接的模型；精确路由直接发布别名，前缀路由筛选可枚举的账号模型。没有有效候选时返回空列表。普通 `gpt-*` 自动识别规则仍选择 OpenAI。
 
@@ -76,3 +76,5 @@ pnpm exec vitest run src/components/account/__tests__/OpenAIBPSAccountFields.spe
 协议参考：[Nonary/ghcp_proxy 的固定版本实现](https://github.com/Nonary/ghcp_proxy/blob/ad23ce2db3b5212c0355762d981c3877322fb160/excel_upstream.py)（Unlicense）。该 BPS 协议不是公开承诺稳定的 OpenAI API 契约；真实上游兼容性以测试账号验收为准。
 
 固定版本的协议移植和对照来源见 [openai-bps-sources.md](openai-bps-sources.md)。
+
+管理接口的完整详情与精简列表提供只读 `bps_credential_state`，包含状态、Token 到期时间、最近发现时间和错误码；原有 `credentials_status` 存在性布尔字段保持不变。认证失败只更新与本次请求 AT/账号 ID 匹配的记录，旧请求不会标记新凭证失效；诊断与调度快照通知在同一事务中保存。自然过期在本地计算，上游提前撤销由正常调用或连接测试反馈，不进行后台凭证探测。

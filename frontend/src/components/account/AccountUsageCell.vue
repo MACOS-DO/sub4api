@@ -1,11 +1,7 @@
 <template>
   <div ref="rootRef" v-if="showUsageWindows">
     <template v-if="account.platform === 'openai_bps'">
-      <div class="text-xs text-gray-500">
-        {{ t('admin.accounts.bps.expiresAt') }}:
-        {{ account.credentials?.expires_at ? new Date(String(account.credentials.expires_at)).toLocaleString() : '—' }}
-      </div>
-      <div v-if="account.error_message" class="mt-1 text-xs text-red-500">{{ account.error_message }}</div>
+      <BPSCredentialStatus :state="bpsCredentialState" />
     </template>
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
@@ -675,6 +671,8 @@
 </template>
 
 <script setup lang="ts">
+import BPSCredentialStatus from "./BPSCredentialStatus.vue"
+import { useBPSCredentialState } from "@/composables/useBPSCredentialState"
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
@@ -736,6 +734,7 @@ const usageInfo = ref<AccountUsageInfo | null>(null)
 watch(usageInfo, (usage) => {
   if (usage) emit('usage-loaded', usage)
 })
+const { state: bpsCredentialState } = useBPSCredentialState(() => props.account)
 const rootRef = ref<HTMLElement | null>(null)
 const isDesktopViewport = ref(
   typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches

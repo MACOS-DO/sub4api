@@ -420,6 +420,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	}
 
 	accountExtra = MergeOpenAICodexTicketExtra(accountExtra, nil)
+	delete(accountExtra, OpenAIBPSCredentialStateExtraKey)
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -613,6 +614,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 	}
+	previousBPSIdentity := OpenAIBPSCredentialSnapshotFromAccount(account)
+	previousBPSDiagnostic := account.Extra[OpenAIBPSCredentialStateExtraKey]
+	previousBPSManagedError := isManagedBPSCredentialError(account)
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
 	previousOpenCodeUsageIdentity := openCodeGoUsageIdentity(account)
@@ -663,13 +667,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		if account.IsOpenAIBPS() {
-			oldToken := account.GetCredential("access_token")
 			creds, err := NormalizeOpenAIBPSCredentials(account.Type, input.Credentials, account.Credentials)
 			if err != nil {
 				return nil, err
 			}
 			input.Credentials = creds
-			if oldToken != stringValue(creds["access_token"]) && account.Status == StatusError && strings.HasPrefix(account.ErrorMessage, "BPS ") {
+			if (previousBPSIdentity.AccessToken != stringValue(creds["access_token"]) || previousBPSIdentity.AccountID != stringValue(creds["chatgpt_account_id"])) && previousBPSManagedError {
 				account.Status = StatusActive
 				account.ErrorMessage = ""
 				// The edit form echoes the old automatic error status. A token
@@ -901,6 +904,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if account.IsOpenAIBPS() {
+		// This extra key is server-managed, including updates sent from stale forms.
+		delete(account.Extra, OpenAIBPSCredentialStateExtraKey)
+		if OpenAIBPSCredentialSnapshotFromAccount(account) == previousBPSIdentity && previousBPSDiagnostic != nil {
+			if account.Extra == nil {
+				account.Extra = map[string]any{}
+			}
+			account.Extra[OpenAIBPSCredentialStateExtraKey] = previousBPSDiagnostic
+		}
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -969,6 +982,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	updates = MergeOpenAICodexTicketExtra(updates, nil)
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
+	delete(updates, OpenAIBPSCredentialStateExtraKey)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(updates, UpstreamBillingProbeExtraKey)
@@ -995,6 +1009,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	delete(input.Extra, OpenAIBPSCredentialStateExtraKey)
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = MergeOpenAICodexTicketExtra(input.Extra, nil)
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)

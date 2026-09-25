@@ -397,6 +397,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'completed', accountId: number): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -828,6 +829,8 @@ const scrollToBottom = async () => {
 
 const startTest = async () => {
   if (!props.account || !canStartTest.value) return
+  const testedAccountId = props.account.id
+  const testedBPS = props.account.platform === 'openai_bps'
 
   resetState()
   status.value = 'connecting'
@@ -927,6 +930,10 @@ const startTest = async () => {
         }
       }
     }
+    if (testedBPS && status.value === 'connecting') {
+      status.value = 'error'
+      errorMessage.value = t('admin.accounts.bps.testInterrupted')
+    }
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       status.value = 'idle'
@@ -936,6 +943,8 @@ const startTest = async () => {
     const msg = error instanceof Error ? error.message : t('common.unknownError')
     errorMessage.value = msg
     addLine(t('admin.accounts.errorPrefix', { message: msg }), 'text-red-400')
+  } finally {
+    if (testedBPS) emit('completed', testedAccountId)
   }
 }
 
@@ -943,6 +952,11 @@ const handleEvent = (event: {
   type: string
   text?: string
   model?: string
+  code?: string
+  upstream_status?: number
+  upstream_error_code?: string
+  upstream_model?: string
+  request_id?: string
   success?: boolean
   error?: string
   image_url?: string
@@ -952,7 +966,7 @@ const handleEvent = (event: {
 }) => {
   switch (event.type) {
     case 'test_start':
-      addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
+      addLine(t(props.account?.platform === 'openai_bps' ? 'admin.accounts.bps.requestingUpstream' : 'admin.accounts.connectedToApi'), props.account?.platform === 'openai_bps' ? 'text-cyan-400' : 'text-green-400')
       if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
@@ -1017,6 +1031,12 @@ const handleEvent = (event: {
       }
       break
 
+    case 'upstream_response':
+      if (event.upstream_status) addLine(`${t('admin.accounts.bps.upstreamResponse')}: HTTP ${event.upstream_status}`, event.upstream_status >= 400 ? 'text-red-400' : 'text-cyan-400')
+      if (event.upstream_model) addLine(`${t('admin.accounts.bps.upstreamModelLabel')}: ${event.upstream_model}`, 'text-gray-400')
+      if (event.request_id) addLine(`${t('admin.accounts.bps.requestIdLabel')}: ${event.request_id}`, 'text-gray-400')
+      break
+
     case 'status':
       if (event.text) {
         addLine(event.text, 'text-cyan-300')
@@ -1031,6 +1051,7 @@ const handleEvent = (event: {
       }
       if (event.success) {
         status.value = 'success'
+        if (props.account?.platform === 'openai_bps') addLine(t('admin.accounts.bps.testSucceeded'), 'text-green-400')
       } else {
         status.value = 'error'
         errorMessage.value = event.error || t('admin.accounts.testFailed')
@@ -1038,6 +1059,10 @@ const handleEvent = (event: {
       break
 
     case 'error':
+      if (props.account?.platform === 'openai_bps') {
+        const code = event.upstream_error_code || event.code
+        if (code) addLine(`${t('admin.accounts.bps.errorCode')}: ${code}`, 'text-red-400')
+      }
       status.value = 'error'
       errorMessage.value = event.error || t('common.unknownError')
       if (streamingContent.value) {

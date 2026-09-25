@@ -180,8 +180,11 @@ func (a *Account) EffectiveLoadFactor() int {
 }
 
 func (a *Account) IsSchedulable() bool {
-	if a.IsOpenAIBPS() && a.bpsTokenExpired() {
-		return false
+	if a.IsOpenAIBPS() {
+		state := a.OpenAIBPSCredentialState(time.Now())
+		if state.Status == "expired" || state.Status == "revoked" || state.Status == "auth_failed" {
+			return false
+		}
 	}
 	if !a.IsActive() || !a.Schedulable {
 		return false

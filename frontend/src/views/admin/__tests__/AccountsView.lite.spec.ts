@@ -295,4 +295,32 @@ describe('admin AccountsView lite account list', () => {
     consoleError.mockRestore()
     wrapper.unmount()
   })
+
+  it('refreshes BPS rows and modal details after a test and again on close with auto refresh off', async () => {
+    const bps = { ...listRow, platform: 'openai_bps', type: 'oauth', credentials: { expires_at: '2099-01-01T00:00:00Z' } }
+    listAccounts.mockResolvedValue({ items: [bps], total: 1, page: 1, page_size: 20, pages: 1 })
+    getById.mockResolvedValue({ ...fullAccount, ...bps })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.findComponent(AccountActionMenu).vm.$emit('test', bps)
+    await flushPromises()
+    const modal = wrapper.findComponent(AccountTestModalStub)
+    expect(modal.props('show')).toBe(true)
+    const revoked = { ...fullAccount, ...bps, status: 'error', bps_credential_state: { status: 'revoked', error_code: 'token_revoked' } }
+    getById.mockResolvedValue(revoked)
+    listAccounts.mockResolvedValue({ items: [revoked], total: 1, page: 1, page_size: 20, pages: 1 })
+    const before = listAccounts.mock.calls.length
+    modal.vm.$emit('completed', bps.id)
+    await flushPromises()
+    expect(listAccounts.mock.calls.length).toBeGreaterThan(before)
+    expect(modal.props('account').bps_credential_state.status).toBe('revoked')
+    expect(wrapper.findComponent(DataTableStub).props('data')[0].bps_credential_state.status).toBe('revoked')
+    const beforeClose = getById.mock.calls.length
+    modal.vm.$emit('close')
+    await flushPromises()
+    expect(modal.props('show')).toBe(false)
+    expect(getById.mock.calls.length).toBeGreaterThan(beforeClose)
+    wrapper.unmount()
+  })
+
 })
