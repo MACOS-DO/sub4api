@@ -151,11 +151,36 @@ END $sub4_restore_partitions$;
 `, migrationsAdvisoryLockID)
 	cmd.Stdin = io.MultiReader(strings.NewReader(guard), data)
 
-	_, err := cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if summary := restoreFailureSummary(output); summary != "" {
+			return fmt.Errorf("database restore failed: %w: %s", err, summary)
+		}
 		return fmt.Errorf("database restore failed: %w", err)
 	}
 	return nil
+}
+
+// restoreFailureSummary keeps only psql ERROR messages, such as the restore
+// guard's instruction to stop Gateway. Other output may echo dump contents.
+func restoreFailureSummary(output []byte) string {
+	const maxLines, maxLength = 3, 300
+	var messages []string
+	for _, line := range strings.Split(string(output), "\n") {
+		index := strings.Index(line, "ERROR:")
+		if index < 0 {
+			continue
+		}
+		message := strings.TrimSpace(line[index:])
+		if len(message) > maxLength {
+			message = message[:maxLength] + "..."
+		}
+		messages = append(messages, message)
+		if len(messages) == maxLines {
+			break
+		}
+	}
+	return strings.Join(messages, "; ")
 }
 
 // cmdReadCloser wraps a command stdout pipe and waits for the process on Close

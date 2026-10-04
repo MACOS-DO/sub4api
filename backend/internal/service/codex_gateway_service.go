@@ -104,7 +104,11 @@ func (s *CodexGatewayService) sync(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		_ = s.Synchronize(ctx, id)
+		// Lock conflicts mean an interactive operation owns the account; the
+		// next tick retries. Errors are fixed summaries and never contain keys.
+		if err := s.Synchronize(ctx, id); err != nil && ctx.Err() == nil && infraerrors.Reason(err) != "CODEX_OPERATION_PENDING" {
+			slog.Warn("codex_gateway_sync_failed", "account_id", id, "reason", err.Error())
+		}
 	}
 }
 
@@ -502,5 +506,10 @@ func (s *CodexGatewayService) finishLocalDelete(ctx context.Context, id int64) e
 			return err
 		}
 	}
-	return s.repo.Delete(ctx, id)
+	if err = s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	// Accounts are soft-deleted, so the foreign-key cascade never runs. Release
+	// the Gateway ID and creation key once the remote account is gone.
+	return s.bindings.DeleteCodexBinding(ctx, id)
 }

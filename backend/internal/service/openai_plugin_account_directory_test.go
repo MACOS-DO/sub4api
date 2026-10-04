@@ -91,7 +91,7 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 	// (refresh_token) not handed out by ResolveOutboundIdentity. Groups/AccountGroups
 	// = relational graphs with back-references that would cycle under encoding/json.
 	stripped := map[string]struct{}{
-		"Credentials": {}, "Groups": {}, "AccountGroups": {},
+		"Credentials": {}, "Groups": {}, "AccountGroups": {}, "Gateway": {},
 	}
 	// Fields intentionally exposed as readable metadata (incl. Extra and Proxy —
 	// the proxy password is already handed out via ResolveOutboundIdentity's URL).
@@ -128,6 +128,7 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 		Extra:                     map[string]any{"opaque": "extra-released"},
 		Proxy:                     &Proxy{Host: "host", Port: 1, Username: "user", Password: "pw-released"},
 		SchedulerTicketProjection: true,
+		Gateway:                   &CodexGatewayState{BindingID: "LEAK-GATEWAY-BINDING"},
 	}
 	snap := accountReadableSnapshotJSON(acct)
 	require.NotNil(t, snap)
@@ -135,6 +136,8 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 	require.NoError(t, json.Unmarshal(snap, &m))
 	assert.NotContains(t, m, "SchedulerTicketProjection", "internal scheduler state must not appear in metadata")
 	assert.NotContains(t, string(snap), "LEAK-REFRESH", "raw Credentials must never appear in metadata")
+	assert.NotContains(t, m, "gateway", "Gateway upstream identity must not appear in metadata")
+	assert.NotContains(t, string(snap), "LEAK-GATEWAY-BINDING", "Gateway upstream identity must not appear in metadata")
 	assert.Contains(t, string(snap), "extra-released", "Extra is intentionally released")
 	assert.Contains(t, string(snap), "pw-released", "proxy is intentionally released (already exposed via 打票)")
 

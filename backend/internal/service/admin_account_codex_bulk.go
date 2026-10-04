@@ -43,7 +43,7 @@ func (s *adminServiceImpl) bulkUpdateCodexAccounts(ctx context.Context, input *B
 			extra = map[string]any{}
 		}
 		maps.Copy(extra, input.Extra)
-		_, updateErr := s.UpdateAccount(ctx, id, &UpdateAccountInput{Name: input.Name, ProxyID: input.ProxyID, Concurrency: input.Concurrency, Priority: input.Priority, RateMultiplier: input.RateMultiplier, LoadFactor: input.LoadFactor, Status: input.Status, GroupIDs: input.GroupIDs, Credentials: credentials, Extra: extra})
+		_, updateErr := s.UpdateAccount(ctx, id, &UpdateAccountInput{Name: input.Name, ProxyID: input.ProxyID, Concurrency: input.Concurrency, Priority: input.Priority, RateMultiplier: input.RateMultiplier, LoadFactor: input.LoadFactor, Status: input.Status, GroupIDs: input.GroupIDs, Credentials: credentials, Extra: extra, ProbeEnabled: input.ProbeEnabled, SkipMixedChannelCheck: input.SkipMixedChannelCheck})
 		if updateErr == nil && input.Schedulable != nil {
 			updateErr = s.accountRepo.SetSchedulable(ctx, id, *input.Schedulable)
 		}

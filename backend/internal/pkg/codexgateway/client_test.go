@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -171,6 +172,65 @@ func TestGatewayManagementAuthenticationDoesNotInvalidateAdminLogin(t *testing.T
 		if strings.Contains(err.Error(), "private upstream context") {
 			t.Fatal("upstream context leaked")
 		}
+	}
+}
+
+const testCapabilities = `{"api_version":4,"storage_mode":"postgres","shared_pg_layout_supported":true,"persistent_account_operations_supported":true,"max_request_bytes":1024}`
+
+func TestGatewayForwardStripsCallerCredentialsAndTransportHeaders(t *testing.T) {
+	removed := []string{"Authorization", "Proxy-Authorization", "Cookie", "X-Api-Key", "X-Goog-Api-Key", "Accept-Encoding", "Content-Encoding", "Te", "Keep-Alive", "Forwarded", "X-Forwarded-For", "X-Forwarded-Proto", "X-Real-Ip", "Cf-Connecting-Ip", "True-Client-Ip", "X-Client-Ip"}
+	kept := map[string]string{"Originator": "codex_cli_rs", "Session_id": "session", "X-Oai-Attestation": "attestation", "Openai-Beta": "responses=experimental", "Content-Type": "application/json"}
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/capabilities" {
+			_, _ = io.WriteString(w, testCapabilities)
+			return
+		}
+		for _, name := range removed {
+			if r.Header.Get(name) == "caller-secret" {
+				t.Errorf("%s leaked onto internal request", name)
+			}
+		}
+		for name, value := range kept {
+			if r.Header.Get(name) != value {
+				t.Errorf("%s was not forwarded", name)
+			}
+		}
+		_, _ = io.WriteString(w, `{}`)
+	})
+	if err := client.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	headers := make(http.Header)
+	for _, name := range removed {
+		headers.Set(name, "caller-secret")
+	}
+	headers["Session_id"] = []string{"session"}
+	for name, value := range kept {
+		headers[name] = []string{value}
+	}
+	identity := Identity{Version: 1, InstallationID: "i", SessionID: "s", ThreadID: "t"}
+	response, err := client.Forward(context.Background(), "account", "POST", "/v1/responses", strings.NewReader(`{}`), headers, identity, "Asia/Singapore", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+}
+
+func TestGatewayDialCancellationKeepsReadiness(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, testCapabilities)
+	})
+	if err := client.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	identity := Identity{Version: 1, InstallationID: "i", SessionID: "s", ThreadID: "t"}
+	if _, _, err := client.Dial(ctx, "account", "/v1/responses", nil, identity, "Asia/Singapore", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
+	}
+	if !client.Ready() {
+		t.Fatal("caller cancellation disabled Gateway")
 	}
 }
 

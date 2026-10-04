@@ -435,7 +435,8 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	if account.IsOpenAICodex() {
 		resp, err = s.codexGatewayProbeResponse(attemptCtx, account, model, proxyURL, body, replayHeaders)
 	} else {
-		req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
+		var req *http.Request
+		req, err = http.NewRequestWithContext(attemptCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
 		if err != nil {
 			return "", "", "", 0, err
 		}

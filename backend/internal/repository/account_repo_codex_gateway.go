@@ -63,7 +63,12 @@ func (r *accountRepository) GetCodexBinding(ctx context.Context, id int64) (*ser
 }
 
 func (r *accountRepository) FindCodexBindingByCreationKey(ctx context.Context, key string) (*service.CodexAccountBinding, error) {
-	return r.readCodexBinding(ctx, `SELECT record FROM public.openai_codex_account_bindings WHERE creation_key=$1`, key)
+	return r.readCodexBinding(ctx, `SELECT b.record FROM public.openai_codex_account_bindings b JOIN accounts a ON a.id=b.account_id WHERE b.creation_key=$1 AND a.deleted_at IS NULL`, key)
+}
+
+func (r *accountRepository) DeleteCodexBinding(ctx context.Context, id int64) error {
+	_, err := r.sql.ExecContext(ctx, `DELETE FROM public.openai_codex_account_bindings WHERE account_id=$1`, id)
+	return err
 }
 
 // The lookup key is an actor-scoped digest; only non-secret receipts are indexed.

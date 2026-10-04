@@ -119,3 +119,27 @@ func TestCodexGatewayPendingDeletionClosesParentAndShadowRedisProjections(t *tes
 		require.Positive(t, events)
 	}
 }
+
+func TestCodexGatewayDeletedAccountReleasesBinding(t *testing.T) {
+	ctx := context.Background()
+	repo := newAccountRepositoryWithSQL(integrationEntClient, integrationDB, nil)
+	gatewayID, creationKey := "gw-"+uuid.NewString(), uuid.NewString()
+	makeAccount := func() *service.Account {
+		return &service.Account{Name: "codex-" + uuid.NewString(), Platform: service.PlatformOpenAICodex, Type: service.AccountTypeGateway, Status: service.StatusActive, Credentials: map[string]any{}, Extra: map[string]any{}, GatewayBinding: &service.CodexAccountBinding{GatewayID: gatewayID, CreationKey: creationKey, ConfigVersion: 1, SyncState: service.CodexSyncMissing}}
+	}
+	first := makeAccount()
+	require.NoError(t, repo.CreateWithAccountGroups(ctx, first, nil))
+	second := makeAccount()
+	t.Cleanup(func() {
+		for _, id := range []int64{first.ID, second.ID} {
+			_, _ = integrationDB.Exec("DELETE FROM scheduler_outbox WHERE account_id=$1", id)
+			_, _ = integrationDB.Exec("DELETE FROM accounts WHERE id=$1", id)
+		}
+	})
+	require.NoError(t, repo.Delete(ctx, first.ID))
+	previous, err := repo.FindCodexBindingByCreationKey(ctx, creationKey)
+	require.NoError(t, err)
+	require.Nil(t, previous, "a soft-deleted account must not satisfy creation idempotency")
+	require.NoError(t, repo.DeleteCodexBinding(ctx, first.ID))
+	require.NoError(t, repo.CreateWithAccountGroups(ctx, second, nil), "the Gateway ID must be reusable after local deletion")
+}

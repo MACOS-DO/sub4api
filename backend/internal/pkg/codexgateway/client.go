@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -355,6 +356,16 @@ func (c *Client) Dial(ctx context.Context, id, path string, headers http.Header,
 	}
 	conn, resp, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPClient: c.data, HTTPHeader: prepared, CompressionMode: websocket.CompressionDisabled})
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, resp, ctx.Err()
+		}
+		// A missing handshake response is a transport failure; a rejected
+		// handshake proves the service is reachable and keeps readiness.
+		if resp == nil {
+			c.mu.Lock()
+			c.ready = false
+			c.mu.Unlock()
+		}
 		return nil, resp, Unavailable()
 	}
 	if c.maxBytes > 0 {
@@ -388,6 +399,20 @@ func (c *Client) headers(id string, input http.Header, identity Identity, timezo
 	return output, nil
 }
 
+// Caller headers never carry Sub4API credentials, transport negotiation or
+// client network origin onto the internal request. Accept-Encoding is removed
+// so net/http keeps transparent decompression for SSE and usage parsing.
+var removedHeaders = map[string]bool{
+	"authorization": true, "proxy-authorization": true, "cookie": true,
+	"x-api-key": true, "x-goog-api-key": true,
+	"host": true, "content-length": true,
+	"accept-encoding": true, "content-encoding": true, "transfer-encoding": true, "te": true,
+	"connection": true, "keep-alive": true, "upgrade": true, "proxy-connection": true, "trailer": true,
+	"forwarded": true, "x-real-ip": true, "cf-connecting-ip": true, "true-client-ip": true, "x-client-ip": true,
+}
+
+var removedHeaderPrefixes = []string{"x-codex4server-", "sec-websocket-", "x-forwarded-"}
+
 func cleanHeaders(input http.Header) http.Header {
 	h := input.Clone()
 	if h == nil {
@@ -395,7 +420,7 @@ func cleanHeaders(input http.Header) http.Header {
 	}
 	for key := range h {
 		lower := strings.ToLower(key)
-		if strings.HasPrefix(lower, "x-codex4server-") || strings.HasPrefix(lower, "sec-websocket-") || lower == "authorization" || lower == "proxy-authorization" || lower == "cookie" || lower == "host" || lower == "content-length" || lower == "x-api-key" {
+		if removedHeaders[lower] || slices.ContainsFunc(removedHeaderPrefixes, func(prefix string) bool { return strings.HasPrefix(lower, prefix) }) {
 			delete(h, key)
 		}
 	}

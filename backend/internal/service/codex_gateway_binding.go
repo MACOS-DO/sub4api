@@ -85,6 +85,7 @@ type CodexBindingRepository interface {
 	FindCodexBindingByCreationKey(context.Context, string) (*CodexAccountBinding, error)
 	SaveCodexBinding(context.Context, *CodexAccountBinding, int64, string) error
 	ListCodexBindingAccountIDs(context.Context) ([]int64, error)
+	DeleteCodexBinding(context.Context, int64) error
 	WithCodexBindingLock(context.Context, string, func(context.Context) error) error
 }
 

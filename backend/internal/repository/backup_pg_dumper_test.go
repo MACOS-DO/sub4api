@@ -6,6 +6,7 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -154,4 +155,15 @@ func TestPgDumperRejectsNilDatabase(t *testing.T) {
 	reader, err := dumper.Dump(context.Background())
 	require.Nil(t, reader)
 	require.ErrorContains(t, err, "nil sql db")
+}
+
+func TestPgDumperRestoreReportsGuardErrorWithoutDumpContents(t *testing.T) {
+	dumper, _ := newTestPgDumper(t, func(ctx context.Context, name string, _ ...string) *exec.Cmd {
+		require.Equal(t, "psql", name)
+		return exec.CommandContext(ctx, "sh", "-c", `cat >/dev/null; echo "INSERT secret-row"; echo "psql:<stdin>:3: ERROR:  Stop Gateway before restoring the shared database" >&2; exit 3`)
+	})
+	err := dumper.Restore(context.Background(), strings.NewReader("INSERT secret-row"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Stop Gateway before restoring the shared database")
+	require.NotContains(t, err.Error(), "secret-row")
 }

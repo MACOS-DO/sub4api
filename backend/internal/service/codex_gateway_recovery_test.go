@@ -80,6 +80,10 @@ func (r *codexRecoveryRepository) ListCodexBindingAccountIDs(context.Context) ([
 	}
 	return []int64{r.account.ID}, nil
 }
+func (r *codexRecoveryRepository) DeleteCodexBinding(context.Context, int64) error {
+	r.binding = nil
+	return nil
+}
 func (r *codexRecoveryRepository) ListShadowsByParent(context.Context, int64) ([]*Account, error) {
 	return nil, nil
 }
@@ -254,6 +258,7 @@ func TestCodexGatewayDeletionNeverReopensScheduling(t *testing.T) {
 				require.False(t, repo.binding.Projection().Usable())
 			} else {
 				require.Nil(t, repo.account, "delete only after the remote delete receipt succeeds")
+				require.Nil(t, repo.binding, "a soft-deleted account must release its Gateway binding")
 			}
 			require.EqualValues(t, 1, puts.Load(), "recovery must not replay credentials")
 		})

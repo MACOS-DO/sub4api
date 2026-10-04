@@ -111,6 +111,9 @@ func accountReadableSnapshotJSON(account *Account) []byte {
 	clone.Credentials = nil
 	clone.Groups = nil
 	clone.AccountGroups = nil
+	// Gateway carries upstream identity (email, ChatGPT user/account IDs). It is
+	// not plugin metadata; release individual fields only when a plugin needs them.
+	clone.Gateway = nil
 	data, err := json.Marshal(&clone)
 	if err != nil {
 		return nil

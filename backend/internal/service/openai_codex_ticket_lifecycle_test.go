@@ -95,6 +95,16 @@ func TestCodexTicketProbeParsesNormalSSEAndCookies(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 }
 
+func TestCodexTicketProbePreservesUpstreamTransportError(t *testing.T) {
+	transportErr := errors.New("proxy dial failed")
+	upstream := &codexTicketFuncUpstream{do: func(*http.Request) (*http.Response, error) {
+		return nil, transportErr
+	}}
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
+	_, _, _, _, err := svc.fireOpenAICodexTicketProbe(context.Background(), ticketTestAccount(41), "token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
+	require.ErrorIs(t, err, transportErr)
+}
+
 func TestCodexTicketProbeDoesNotCarryExistingTicket(t *testing.T) {
 	account := ticketTestAccount(41)
 	account.Extra = map[string]any{openAICodexTicketExtraKey("gpt-6-astra"): &openAICodexTicket{
