@@ -136,6 +136,28 @@
                 t('admin.accounts.oauth.openai.codexPatAuth')
               }}</span>
             </label>
+            <label v-if="showAuthJSONOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="auth_json"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.codexAuthJSONAuth')
+              }}</span>
+            </label>
+            <label v-if="showSetupTokenOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="setup_token"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.codexSetupTokenAuth')
+              }}</span>
+            </label>
           </div>
         </div>
 
@@ -519,6 +541,40 @@
                   ? t('admin.accounts.oauth.openai.validating')
                   : t('admin.accounts.oauth.openai.codexPatImportAndCreate')
               }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Gateway auth.json / setup token inputs. The parent decides how the
+             write-only value is submitted; this component never persists it. -->
+        <div v-if="inputMethod === 'auth_json' || inputMethod === 'setup_token'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ inputMethod === 'auth_json' ? t('admin.accounts.oauth.openai.codexAuthJSONDesc') : t('admin.accounts.oauth.openai.codexSetupTokenDesc') }}
+            </p>
+            <textarea
+              v-model="gatewayCredentialInput"
+              rows="6"
+              class="input w-full resize-y font-mono text-sm"
+              :placeholder="inputMethod === 'auth_json' ? t('admin.accounts.oauth.openai.codexAuthJSONPlaceholder') : t('admin.accounts.oauth.openai.codexSetupTokenPlaceholder')"
+              autocomplete="off"
+              spellcheck="false"
+            ></textarea>
+            <div
+              v-if="error"
+              class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
+            >
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            </div>
+            <button
+              type="button"
+              class="btn btn-primary mt-3 w-full"
+              :disabled="loading || !gatewayCredentialInput.trim()"
+              @click="handleImportGatewayCredential"
+            >
+              {{ inputMethod === 'auth_json' ? t('admin.accounts.oauth.openai.codexAuthJSONImportAndCreate') : t('admin.accounts.oauth.openai.codexSetupTokenImportAndCreate') }}
             </button>
           </div>
         </div>
@@ -920,6 +976,9 @@ interface Props {
   showCodexSessionImportOption?: boolean
   showAgentIdentityOption?: boolean
   showCodexPatOption?: boolean
+  showAuthJSONOption?: boolean
+  showSetupTokenOption?: boolean
+  strictCallback?: boolean
   showSsoOption?: boolean
   /** Grok email----password login (admin; password never persisted). */
   showEmailPasswordOption?: boolean
@@ -951,6 +1010,9 @@ const props = withDefaults(defineProps<Props>(), {
   showCodexSessionImportOption: false,
   showAgentIdentityOption: false,
   showCodexPatOption: false,
+  showAuthJSONOption: false,
+  showSetupTokenOption: false,
+  strictCallback: false,
   showSsoOption: false,
   showEmailPasswordOption: false,
   showManualOption: true,
@@ -970,6 +1032,8 @@ const emit = defineEmits<{
   'import-access-token': [accessToken: string]
   'import-codex-session': [content: string]
   'import-codex-pat': [accessToken: string]
+  'import-gateway-credential': [payload: { method: 'auth_json' | 'setup_token'; content: string }]
+  'callback-invalid': [message: string]
   'import-sso': [content: string]
   'authorize-password': [emailPasswordInput: string]
   'update:inputMethod': [method: AuthInputMethod]
@@ -981,11 +1045,11 @@ const emailPasswordOptionEnabled = computed(
   () => props.showEmailPasswordOption && props.platform === 'grok' && passwordAuthEnabled.value
 )
 
-const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
+const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'openai_codex' || props.platform === 'grok')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
-  if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
+  if (props.platform === 'openai' || props.platform === 'openai_codex') return `admin.accounts.oauth.openai.${key}`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
@@ -1005,7 +1069,7 @@ const oauthAuthCode = computed(() => t(getOAuthKey('authCode')))
 const oauthAuthCodePlaceholder = computed(() => t(getOAuthKey('authCodePlaceholder')))
 const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
 const oauthImportantNotice = computed(() => {
-  if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
+  if (props.platform === 'openai' || props.platform === 'openai_codex') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
   if (props.platform === 'grok') return t('admin.accounts.oauth.grok.importantNotice')
   return ''
@@ -1020,6 +1084,7 @@ const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
 const codexPATInput = ref('')
+const gatewayCredentialInput = ref('')
 const ssoCookieInput = ref('')
 const emailPasswordInput = ref(props.initialEmailPassword || '')
 const showHelpDialog = ref(false)
@@ -1056,6 +1121,8 @@ const methodOptionCount = computed(() => [
   props.showCodexSessionImportOption,
   props.showAgentIdentityOption,
   props.showCodexPatOption,
+  props.showAuthJSONOption,
+  props.showSetupTokenOption,
   props.showSsoOption,
   emailPasswordOptionEnabled.value
 ].filter(Boolean).length)
@@ -1132,17 +1199,33 @@ watch(inputMethod, (newVal) => {
 // Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Grok)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
+  if (props.platform !== 'openai' && props.platform !== 'openai_codex' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
-  if (trimmed.includes('code=')) {
+  if (trimmed.includes('code=') || (props.strictCallback && (trimmed.includes('error=') || trimmed.includes('state=')))) {
     try {
       // Try to parse as URL
       const url = trimmed.includes('?') ? new URL(trimmed) : new URL(`http://localhost/callback?${trimmed.replace(/^\?/, '')}`)
+      if (props.strictCallback) {
+        const codes = url.searchParams.getAll('code')
+        const states = url.searchParams.getAll('state')
+        const callbackError = url.searchParams.getAll('error')
+        if (callbackError.length > 0) {
+          emit('callback-invalid', `OAuth callback returned an error: ${callbackError[0]}`)
+          return
+        }
+        if (codes.length !== 1 || states.length !== 1 || !codes[0]?.trim() || !states[0]?.trim()) {
+          emit('callback-invalid', 'Callback must contain exactly one non-empty code and state')
+          return
+        }
+        oauthState.value = states[0]
+        authCodeInput.value = codes[0]
+        return
+      }
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'openai_codex' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -1153,7 +1236,11 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
+      if (props.strictCallback) {
+        emit('callback-invalid', 'Callback must contain exactly one non-empty code and state')
+        return
+      }
+      if ((props.platform === 'openai' || props.platform === 'openai_codex' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
@@ -1207,6 +1294,12 @@ const handleImportCodexPAT = () => {
   }
 }
 
+const handleImportGatewayCredential = () => {
+  const content = gatewayCredentialInput.value.trim()
+  if (!content || (inputMethod.value !== 'auth_json' && inputMethod.value !== 'setup_token')) return
+  emit('import-gateway-credential', { method: inputMethod.value, content })
+}
+
 const handleImportSSO = () => {
   if (ssoCookieInput.value.trim()) {
     emit('import-sso', ssoCookieInput.value.trim())
@@ -1223,6 +1316,7 @@ defineExpose({
   sessionToken: sessionTokenInput,
   codexSession: codexSessionInput,
   codexPAT: codexPATInput,
+  gatewayCredential: gatewayCredentialInput,
   ssoCookie: ssoCookieInput,
   emailPassword: emailPasswordInput,
   inputMethod,
@@ -1235,6 +1329,7 @@ defineExpose({
     sessionTokenInput.value = ''
     codexSessionInput.value = ''
     codexPATInput.value = ''
+    gatewayCredentialInput.value = ''
     ssoCookieInput.value = ''
     emailPasswordInput.value = ''
     inputMethod.value = props.initialInputMethod

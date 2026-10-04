@@ -27,6 +27,7 @@
       </div>
 
       <OpenAIBPSAccountFields v-if="account.platform === 'openai_bps'" v-model="bpsDraft" editing :expires-at="String(account.credentials?.expires_at ?? '')" :credential-state="account.bps_credential_state" :account-status="account.status" :schedulable="account.schedulable" />
+      <OpenAICodexAccountFields v-if="account.platform === 'openai_codex'" v-model="codexGatewayDraft" editing :gateway="account.gateway" :shadow="account.parent_account_id != null" :proxy-id="form.proxy_id" :account-id="account.id" />
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
@@ -736,7 +737,7 @@
 
       <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="((account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth') || account.platform === 'openai_codex'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -1743,7 +1744,7 @@
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -1771,7 +1772,7 @@
         </div>
       </div>
 
-      <OpenAIRequestTimezoneField v-if="account?.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <OpenAIRequestTimezoneField v-if="account?.platform === 'openai' || account?.platform === 'openai_codex'" v-model="openAIRequestTimezone" />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
@@ -1806,7 +1807,7 @@
 
       <!-- OpenAI Codex hosted image_generation bridge policy -->
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="overflow-hidden rounded-lg border border-sky-100 bg-sky-50/60 shadow-sm dark:border-sky-900/50 dark:bg-sky-950/20">
@@ -1866,7 +1867,7 @@
 
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -2254,7 +2255,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="(account?.platform === 'openai' && !isSparkShadow && !hideAccountLongContextBilling && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && !isSparkShadow && !hideAccountLongContextBilling && account?.type === 'gateway')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2286,7 +2287,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')"
+        v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -2340,7 +2341,7 @@
         </div>
       </div>
 
-      <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && !isSparkShadow" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway') && !isSparkShadow" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label" for="codex-ticket-account-policy">{{ t('admin.accounts.openai.codexTicketAccountPolicy') }}</label>
         <select id="codex-ticket-account-policy" v-model="codexTicketAccountPolicy" class="input" data-testid="codex-ticket-account-policy">
           <option value="inherit">{{ t('admin.accounts.openai.codexTicketPolicyInherit') }}</option>
@@ -2350,14 +2351,14 @@
         <p class="input-hint">{{ t('admin.accounts.openai.codexTicketAccountPolicyDesc') }}</p>
       </div>
 
-      <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway') && codexTurnTickets.length" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between gap-3"><label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketHistory') }}</label><button type="button" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400" @click="emit('codex-tickets')">{{ t('admin.accounts.openai.codexTicketHistory') }} →</button></div>
         <div class="mt-3 grid gap-2 sm:grid-cols-2"><div v-for="ticket in codexTurnTickets" :key="ticket.model" class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600"><div class="flex justify-between gap-2"><span class="break-all font-mono font-semibold">{{ ticket.model }}</span><span :class="ticket.ready ? 'text-emerald-600' : 'text-amber-600'">{{ ticket.ready ? '●' : '○' }} {{ t(ticket.ready ? 'admin.accounts.openai.codexTicketReadyShort' : 'admin.accounts.openai.codexTicketMissingShort') }}</span></div><p class="mt-2 text-gray-500">{{ ticket.length }} bytes · turn-state {{ ticket.turn_state_present ? '✓' : '—' }} · Cookie {{ ticket.cookie_present ? '✓' : '—' }}</p></div></div>
       </div>
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        v-if="(account?.platform === 'openai' && account?.type === 'oauth') || account?.platform === 'openai_codex'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2375,7 +2376,7 @@
 
       <!-- OpenAI 订阅档位手动覆盖（Plus/Pro/Free），仅 OAuth 非影子账号 -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        v-if="(account?.platform === 'openai' || account?.platform === 'openai_codex') && (account?.type === 'oauth' || account?.type === 'gateway') && !isSparkShadow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2392,7 +2393,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        v-if="(account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')) || (account?.platform === 'openai_codex' && account?.type === 'gateway')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="flex items-center justify-between">
@@ -2556,7 +2557,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        v-if="(account?.platform === 'openai' || account?.platform === 'openai_codex') && (account?.type === 'oauth' || account?.type === 'gateway') && !isSparkShadow"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         data-testid="auto-reset-credit-settings"
       >
@@ -3129,6 +3130,8 @@
 
 <script setup lang="ts">
 import OpenAIBPSAccountFields from './OpenAIBPSAccountFields.vue'
+import OpenAICodexAccountFields from './OpenAICodexAccountFields.vue'
+import { newCodexGatewayDraft, codexGatewayCredentials, newCodexGatewayOperationKey } from '@/composables/useCodexGatewayAccount'
 import { newBPSAccountDraft, bpsCredentials } from '@/utils/openaiBps'
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -3229,6 +3232,7 @@ import {
 } from '@/composables/useModelWhitelist'
 
 interface Props {
+  initialReauthorize?: boolean
   show: boolean
   account: Account | null
   proxies: Proxy[]
@@ -4048,6 +4052,8 @@ const mixedChannelWarningMessageText = computed(() => {
 })
 
 const bpsDraft = ref(newBPSAccountDraft())
+const codexGatewayDraft = ref(newCodexGatewayDraft())
+const codexGatewayOperationKey = ref(newCodexGatewayOperationKey())
 const bpsTestAfterSave = ref(false)
 
 const form = reactive({
@@ -4160,6 +4166,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedChannelWarningRawMessage.value = ''
   mixedChannelWarningAction.value = null
   bpsDraft.value = newBPSAccountDraft(newAccount.credentials)
+  codexGatewayDraft.value = newCodexGatewayDraft()
+  codexGatewayDraft.value.replace = props.initialReauthorize === true
+  codexGatewayOperationKey.value = newCodexGatewayOperationKey()
+  codexGatewayDraft.value.deviceID = String(newAccount.extra?.openai_device_id ?? '')
+  codexGatewayDraft.value.accountID = String(newAccount.gateway?.snapshot?.chatgpt_account_id ?? '')
+  codexGatewayDraft.value.oauthClientID = String(newAccount.gateway?.snapshot?.oauth_client_id ?? '')
+  codexGatewayDraft.value.preserveRefreshToken = newAccount.gateway?.authentication === 'at_rt'
   bpsTestAfterSave.value = false
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
@@ -4225,6 +4238,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyAppServerEnabled.value = false
   codexTicketAccountPolicy.value = 'inherit'
   codexFingerprintMode.value = 'off'
+  if (newAccount.platform === 'openai_codex') {
+    const mode = String(newAccount.extra?.codex_fingerprint_mode ?? 'off')
+    codexFingerprintMode.value = (['off','device','session','full'].includes(mode) ? mode : 'off') as typeof codexFingerprintMode.value
+    openAIRequestTimezone.value = String(newAccount.extra?.openai_request_timezone ?? 'Asia/Singapore')
+  }
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4567,7 +4585,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
+    if ((newAccount.platform === 'openai' || newAccount.platform === 'openai_codex' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -5102,6 +5120,7 @@ const parseDateTimeLocal = parseDateTimeLocalInput
 
 // Methods
 const handleClose = () => {
+  codexGatewayDraft.value = newCodexGatewayDraft()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')
@@ -5146,8 +5165,27 @@ const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Ac
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
+  const codexCredentialWrite = props.account?.platform === 'openai_codex' && !!updatePayload.gateway_credentials
   try {
-    let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    let updatedAccount = props.account?.platform === 'openai_codex'
+      ? await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload), codexGatewayOperationKey.value)
+      : await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    if (codexCredentialWrite) {
+      const state = updatedAccount.gateway?.sync_state
+      if (!state || state !== 'ready') {
+        const messageKey = state === 'outcome_unknown'
+          ? 'admin.accounts.codexGateway.operationUnknown'
+          : state === 'needs_reauthorization' || state === 'remote_missing'
+            ? 'admin.accounts.codexGateway.operationFailed'
+            : !state
+              ? 'admin.accounts.codexGateway.operationUnknown'
+              : 'admin.accounts.codexGateway.operationPending'
+        appStore.showWarning(t(messageKey))
+        emit('updated', updatedAccount)
+        handleClose()
+        return
+      }
+    }
     updatedAccount = await persistGrokMediaEligibility(accountID, updatedAccount)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
     const openBPSTest = updatedAccount.platform === 'openai_bps' && bpsTestAfterSave.value
@@ -5155,6 +5193,26 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
     handleClose()
     if (openBPSTest) emit('test', updatedAccount)
   } catch (error: any) {
+    if (codexCredentialWrite) {
+      try {
+        const recovered = await adminAPI.accounts.getCodexGatewayOperation(codexGatewayOperationKey.value)
+        const item = recovered.items?.find((candidate) => candidate.account_id === accountID) || recovered.items?.[0]
+        if (item) {
+          if (item.state === 'failed' || item.error) {
+            appStore.showError(item.error?.message || t('admin.accounts.codexGateway.operationFailed'))
+          } else if (item.state === 'indeterminate') {
+            appStore.showWarning(t('admin.accounts.codexGateway.operationUnknown'))
+          } else {
+            appStore.showWarning(t('admin.accounts.codexGateway.operationRecovered', { state: item.state }))
+          }
+          emit('updated', props.account)
+          handleClose()
+          return
+        }
+      } catch {
+        // Preserve the original update error when the recovery query is unavailable.
+      }
+    }
     if (error.status === 409 && error.error === 'mixed_channel_warning' && needsMixedChannelCheck()) {
       openMixedChannelDialog({
         message: error.message,
@@ -5709,7 +5767,7 @@ const handleSubmit = async () => {
     }
 
     // For OpenAI OAuth/SetupToken/API Key accounts, handle passthrough mode in extra
-    if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
+    if ((props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) || (props.account.platform === 'openai_codex' && props.account.type === 'gateway')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       newExtra.openai_request_timezone = openAIRequestTimezone.value
@@ -5777,7 +5835,7 @@ const handleSubmit = async () => {
 		} else {
 			delete newExtra.auto_pause_7d_disabled
 		}
-		if (props.account.type === 'oauth' && !isSparkShadow.value) {
+		if ((props.account.type === 'oauth' || props.account.type === 'gateway') && !isSparkShadow.value) {
 			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
 			newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
 			newExtra.auto_reset_credit_7d_threshold = autoResetCredit7dThreshold.value / 100
@@ -5801,7 +5859,7 @@ const handleSubmit = async () => {
           delete newExtra.codex_image_generation_explicit_tool_policy
       }
 
-      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
+      if (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'gateway') {
         if (codexTicketAccountPolicy.value === 'inherit') {
           delete newExtra.codex_allow_without_ticket
         } else {
@@ -5910,6 +5968,19 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
+    if (props.account.platform === 'openai_codex') {
+      const credentials: Record<string, unknown> = { ...(updatePayload.credentials as Record<string, unknown>) }
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) credentials.model_mapping = modelMapping
+      else delete credentials.model_mapping
+      updatePayload.credentials = credentials
+      updatePayload.extra = { ...props.account.extra, ...(updatePayload.extra as Record<string, unknown> || {}), openai_request_timezone: openAIRequestTimezone.value, codex_fingerprint_mode: codexFingerprintMode.value, openai_device_id: codexGatewayDraft.value.deviceID.trim() }
+      if (codexGatewayDraft.value.replace) {
+        updatePayload.gateway_credentials = codexGatewayCredentials(codexGatewayDraft.value)
+        updatePayload.gateway_oauth_client_id = codexGatewayDraft.value.oauthClientID.trim() || undefined
+        updatePayload.gateway_preserve_refresh_token = codexGatewayDraft.value.preserveRefreshToken
+      }
+    }
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)
     })

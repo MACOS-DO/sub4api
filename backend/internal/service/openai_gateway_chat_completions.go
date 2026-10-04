@@ -71,6 +71,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
+	if err := s.checkCodexGatewayForwardReady(c, account); err != nil {
+		return nil, err
+	}
+
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
@@ -369,7 +373,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	responsesReq.ServiceTier = normalizedOpenAIServiceTierValue(gjson.GetBytes(responsesBody, "service_tier").String())
 
 	// 5. Get access token
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, err := s.openAIForwardToken(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("get access token: %w", err)
 	}

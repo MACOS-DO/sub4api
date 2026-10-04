@@ -29,6 +29,9 @@ func isPinnedCodexModelsAccountUsable(account *Account) bool {
 	if account == nil || !account.IsActive() || !account.Schedulable {
 		return false
 	}
+	if account.IsOpenAICodex() && !account.Gateway.Usable() {
+		return false
+	}
 	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !account.ExpiresAt.After(time.Now()) {
 		return false
 	}
@@ -154,7 +157,7 @@ func (s *OpenAIGatewayService) fetchPinnedOpenAIModels(ctx context.Context, grou
 		return nil, ErrNoPinnedCodexModelsAccounts
 	}
 	cfg := group.CodexModelsManifestConfig
-	if group.Platform != PlatformOpenAI || !cfg.Enabled || len(cfg.AccountIDs) == 0 {
+	if (group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex) || !cfg.Enabled || len(cfg.AccountIDs) == 0 {
 		return nil, ErrNoPinnedCodexModelsAccounts
 	}
 
@@ -171,7 +174,7 @@ func (s *OpenAIGatewayService) fetchPinnedOpenAIModels(ctx context.Context, grou
 	usable := make([]Account, 0, len(cfg.AccountIDs))
 	for _, id := range cfg.AccountIDs {
 		member, ok := memberByID[id]
-		if !ok || member.Platform != PlatformOpenAI {
+		if !ok || member.Platform != group.Platform {
 			continue
 		}
 		if !isPinnedCodexModelsAccountUsable(&member) {

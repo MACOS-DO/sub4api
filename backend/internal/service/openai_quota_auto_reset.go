@@ -224,22 +224,24 @@ func (s *OpenAIQuotaAutoResetService) scanEnabledAccounts(ctx context.Context) {
 	if release != nil {
 		defer release()
 	}
-	for page := 1; ; page++ {
-		accounts, pageInfo, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{
-			Page: page, PageSize: openAIAutoResetBatchSize,
-		}, PlatformOpenAI, AccountTypeOAuth, StatusActive, "", 0, "")
-		if err != nil {
-			slog.Warn("openai_auto_reset_scan_failed", "page", page, "error", err)
-			return
-		}
-		for i := range accounts {
-			account := &accounts[i]
-			if account.Schedulable && ResolveOpenAIAutoResetCreditConfig(account).Enabled {
-				s.Notify(account.ID)
+	for _, target := range []struct{ platform, accountType string }{{PlatformOpenAI, AccountTypeOAuth}, {PlatformOpenAICodex, AccountTypeGateway}} {
+		for page := 1; ; page++ {
+			accounts, pageInfo, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{
+				Page: page, PageSize: openAIAutoResetBatchSize,
+			}, target.platform, target.accountType, StatusActive, "", 0, "")
+			if err != nil {
+				slog.Warn("openai_auto_reset_scan_failed", "page", page, "error", err)
+				break
 			}
-		}
-		if len(accounts) < openAIAutoResetBatchSize || pageInfo == nil || page >= pageInfo.Pages {
-			return
+			for i := range accounts {
+				account := &accounts[i]
+				if account.Schedulable && ResolveOpenAIAutoResetCreditConfig(account).Enabled {
+					s.Notify(account.ID)
+				}
+			}
+			if len(accounts) < openAIAutoResetBatchSize || pageInfo == nil || page >= pageInfo.Pages {
+				break
+			}
 		}
 	}
 }

@@ -29,7 +29,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
 		return
 	}
-	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
+	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformOpenAICodex && apiKey.Group.Platform != service.PlatformComposite {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex models manifest is only available for OpenAI and Composite groups")
 		return
 	}
@@ -37,7 +37,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	ifNoneMatch := c.GetHeader("If-None-Match")
 	// 固定账号分支：开启后只用选定账号拉取 manifest，不经过调度器；
 	// 全部不可用/全部失败时按 FallbackToScheduler 决定回退调度器或返回错误。
-	if apiKey.Group.Platform == service.PlatformOpenAI &&
+	if (apiKey.Group.Platform == service.PlatformOpenAI || apiKey.Group.Platform == service.PlatformOpenAICodex) &&
 		apiKey.Group.CodexModelsManifestConfig.Enabled {
 		pinnedManifest, pinnedAccount, pinnedErr := h.gatewayService.FetchPinnedCodexModelsManifest(
 			c.Request.Context(),
@@ -72,7 +72,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		}
 	}
 
-	if !apiKey.Group.CodexModelsManifestConfig.Enabled {
+	if !apiKey.Group.CodexModelsManifestConfig.Enabled && apiKey.Group.Platform != service.PlatformOpenAICodex {
 		configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
 			c.Request.Context(),
 			apiKey.Group,
@@ -100,7 +100,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	var lastUpstreamErr error
 
 	for {
-		account, err := h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, "", "", failedAccountIDs)
+		account, err := h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, "", "", failedAccountIDs, openAICompatibleRequestPlatform(c.Request.Context(), apiKey))
 		if err != nil {
 			if c.Request.Context().Err() != nil {
 				return

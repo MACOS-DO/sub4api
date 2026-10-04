@@ -254,6 +254,9 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 	}
 	account.GroupIDs = groupIDs
 	account.AccountGroups = append([]service.AccountGroup(nil), groups...)
+	if err := insertCodexBinding(ctx, txClient, account); err != nil {
+		return err
+	}
 	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		return err
 	}
@@ -363,6 +366,17 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 		}
 	}
 
+	projections := make([]service.Account, len(out))
+	for i, account := range out {
+		projections[i] = *account
+	}
+	if err := r.hydrateCodexBindings(ctx, projections); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Gateway = projections[i].Gateway
+		out[i].GatewayBinding = projections[i].GatewayBinding
+	}
 	return out, nil
 }
 
@@ -499,6 +513,9 @@ func (r *accountRepository) updateAccount(
 	)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+	}
+	if err := applyCodexBindingUpdate(ctx, client); err != nil {
+		return err
 	}
 	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		return err
@@ -3448,6 +3465,9 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 		outAccounts = append(outAccounts, *out)
 	}
 
+	if err := r.hydrateCodexBindings(ctx, outAccounts); err != nil {
+		return nil, err
+	}
 	return outAccounts, nil
 }
 

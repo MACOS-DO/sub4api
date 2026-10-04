@@ -120,6 +120,7 @@ export default {
     providers: {
       anthropic: 'Anthropic',
       openai: 'OpenAI',
+      openai_codex: 'OpenAI Codex',
       domestic: '国产模型',
       other: '其他'
     },
@@ -503,6 +504,7 @@ export default {
     },
     providers: {
       openai: 'OpenAI',
+      openai_codex: 'OpenAI Codex',
       anthropic: 'Anthropic',
       gemini: 'Gemini',
       grok: 'Grok',

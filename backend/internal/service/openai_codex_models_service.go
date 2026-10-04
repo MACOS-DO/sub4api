@@ -126,7 +126,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	group *Group,
 	ifNoneMatch string,
 ) (*OpenAIModelsResponse, bool, error) {
-	if s == nil || s.accountRepo == nil || group == nil || group.Platform != PlatformOpenAI {
+	if s == nil || s.accountRepo == nil || group == nil || (group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex) {
 		return nil, false, nil
 	}
 
@@ -140,7 +140,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	}
 
 	body, err := buildCodexModelsManifestForAccounts(
-		PlatformOpenAI,
+		group.Platform,
 		configuredModels,
 		catalog,
 		group,
@@ -183,7 +183,7 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	if s == nil || s.accountRepo == nil || group == nil || manifest == nil || manifest.NotModified {
 		return nil
 	}
-	if group.Platform != PlatformOpenAI || len(manifest.Body) == 0 {
+	if (group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex) || len(manifest.Body) == 0 {
 		return nil
 	}
 
@@ -256,6 +256,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 		[]string{
 			PlatformAnthropic,
 			PlatformOpenAI,
+			PlatformOpenAICodex,
 			PlatformGemini,
 			PlatformAntigravity,
 			PlatformGrok,
@@ -278,7 +279,7 @@ func openAIConfiguredCodexModelIDs(accounts []Account) []string {
 	models := make([]string, 0)
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != PlatformOpenAI {
+		if account.Platform != PlatformOpenAI && account.Platform != PlatformOpenAICodex {
 			continue
 		}
 		for modelID := range account.GetModelMapping() {
@@ -314,7 +315,7 @@ func openAIConfiguredCodexModelIDsForGroup(accounts []Account, group *Group) []s
 		}
 		for i := range accounts {
 			account := &accounts[i]
-			if account.Platform != PlatformOpenAI {
+			if account.Platform != PlatformOpenAI && account.Platform != PlatformOpenAICodex {
 				continue
 			}
 			mappedModel, matched := account.ResolveMappedModel(selectedModel)
@@ -1295,7 +1296,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		return false
 	}
 	switch account.Platform {
-	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo:
+	case PlatformOpenAI, PlatformOpenAICodex, PlatformDeepseek, PlatformOpenCodeGo:
 		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
 			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
 				// Official GPT-6 Astra metadata briefly shipped with a stale
@@ -1311,7 +1312,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		if strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
 			return account.Type == AccountTypeAPIKey
 		}
-		if account.Platform != PlatformOpenAI || !isOpenAICodexImageInputModel(upstreamModel) {
+		if (account.Platform != PlatformOpenAI && account.Platform != PlatformOpenAICodex) || !isOpenAICodexImageInputModel(upstreamModel) {
 			return false
 		}
 		if account.IsOpenAIOAuth() {
@@ -1335,7 +1336,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 }
 
 func isOfficialOpenAICodexAccount(account *Account) bool {
-	if account == nil || account.Platform != PlatformOpenAI {
+	if account == nil || (account.Platform != PlatformOpenAI && account.Platform != PlatformOpenAICodex) {
 		return false
 	}
 	if account.IsOpenAIOAuth() {
@@ -1706,6 +1707,9 @@ func (c *openAIModelsCache) set(key string, manifest *OpenAIModelsResponse, now 
 // passed through verbatim. Custom API key manifests receive only the narrowly
 // scoped compatibility adjustments required by custom-provider Codex clients.
 func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, account *Account, clientVersion, ifNoneMatch string) (*OpenAIModelsResponse, error) {
+	if account.IsOpenAICodex() {
+		return s.fetchCodexGatewayModels(ctx, account, clientVersion, ifNoneMatch)
+	}
 	if account == nil {
 		return nil, infraerrors.New(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_ACCOUNT_REQUIRED", "account is required")
 	}

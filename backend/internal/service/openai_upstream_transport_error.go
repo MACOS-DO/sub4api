@@ -118,6 +118,9 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 	if isClientCanceledTransportError(ctx, err) {
 		return err
 	}
+	if account.IsOpenAICodex() {
+		return writeCodexGatewayServiceFailure(c, err)
+	}
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{

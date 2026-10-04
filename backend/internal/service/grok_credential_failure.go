@@ -93,6 +93,10 @@ type grokCredentialConditionalStateRepository interface {
 // GetRequestCredential applies the request-path credential and failover contract
 // before any upstream transport is opened.
 func (s *OpenAIGatewayService) GetRequestCredential(ctx context.Context, c *gin.Context, account *Account) (string, string, error) {
+	if account.IsOpenAICodex() {
+		token, err := s.openAIForwardToken(ctx, account)
+		return token, "gateway", err
+	}
 	return s.getRequestCredential(ctx, c, account)
 }
 

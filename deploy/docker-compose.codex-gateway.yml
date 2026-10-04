@@ -1,0 +1,59 @@
+# Apply after the existing Compose file; postgres/redis and their volumes remain
+# owned by that project. Sub4API deliberately does not depend on Gateway health.
+services:
+  sub2api:
+    image: "${SUB4API_IMAGE:-sub4api:1.1.9-local}"
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VERSION: "1.1.9"
+        COMMIT: "${SUB4API_SOURCE_REVISION:-local-worktree}"
+    environment:
+      GATEWAY_CODEX4SERVER_ENABLED: "true"
+      GATEWAY_CODEX4SERVER_BASE_URL: "http://gateway:8787"
+      GATEWAY_CODEX4SERVER_SERVICE_KEY_FILE: /run/codex4server/service_key
+      GATEWAY_CODEX4SERVER_AUTO_GENERATE_SERVICE_KEY: "true"
+      GATEWAY_CODEX4SERVER_ADMIN_TIMEOUT: "${CODEX_GATEWAY_ADMIN_TIMEOUT:-60s}"
+      GATEWAY_CODEX4SERVER_SYNC_INTERVAL: "${CODEX_GATEWAY_SYNC_INTERVAL:-30s}"
+      GATEWAY_MAX_BODY_SIZE: "${GATEWAY_MAX_BODY_SIZE:-268435456}"
+      SERVER_MAX_REQUEST_BODY_SIZE: "${GATEWAY_MAX_BODY_SIZE:-268435456}"
+    volumes:
+      - codex_gateway_service_key:/run/codex4server
+
+  gateway:
+    image: "${CODEX_GATEWAY_IMAGE:-codex-gateway:sub4api-460c51b6fe85}"
+    build:
+      context: "${CODEX_GATEWAY_SOURCE_DIR:?Set the complete source for Gateway commit 460c51b6fe85649cb4152d6d9704f57a6edb2afd}"
+      dockerfile: codex-rs/gateway/Dockerfile
+      labels:
+        org.opencontainers.image.revision: 460c51b6fe85649cb4152d6d9704f57a6edb2afd
+    user: "${CODEX_GATEWAY_UID:-1000}:${CODEX_GATEWAY_GID:-1000}"
+    command: ["--listen", "0.0.0.0:8787", "--service-key-file", "/run/codex4server/service_key"]
+    networks:
+      - sub2api-network
+    expose:
+      - "8787"
+    environment:
+      CODEX_GATEWAY_PG_HOST: postgres
+      CODEX_GATEWAY_PG_PORT: "5432"
+      CODEX_GATEWAY_PG_DATABASE: "${POSTGRES_DB:-sub2api}"
+      CODEX_GATEWAY_PG_USER: "${POSTGRES_USER:-sub2api}"
+      CODEX_GATEWAY_PG_PASSWORD: "${POSTGRES_PASSWORD:?Set shared PostgreSQL password}"
+      CODEX_GATEWAY_PG_SSLMODE: disable
+      CODEX_GATEWAY_PG_SCHEMA: public
+      CODEX_GATEWAY_PG_TABLE_PREFIX: codex_gateway_
+      CODEX_GATEWAY_MAX_REQUEST_BYTES: "${GATEWAY_MAX_BODY_SIZE:-268435456}"
+    volumes:
+      - codex_gateway_service_key:/run/codex4server:ro
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8787/readyz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  codex_gateway_service_key:

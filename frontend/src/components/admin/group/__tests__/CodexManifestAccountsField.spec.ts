@@ -83,6 +83,31 @@ describe("CodexManifestAccountsField", () => {
     vi.clearAllMocks();
   });
 
+  it("searches the selected platform and discards old group responses", async () => {
+    let resolveOld!: (value: unknown) => void;
+    vi.mocked(adminAPI.accounts.list).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve as typeof resolveOld; }) as never);
+    const wrapper = mountField(enabledConfig());
+    await wrapper.setProps({ platform: 'openai_codex' });
+    await wrapper.get('[data-testid="codex-manifest-search"]').setValue('first');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(adminAPI.accounts.list).toHaveBeenLastCalledWith(1, 20, { search: 'first', platform: 'openai_codex', group: '7' }, expect.anything());
+    const oldSignal = vi.mocked(adminAPI.accounts.list).mock.calls.at(-1)?.[3]?.signal;
+    await wrapper.setProps({ groupId: 8, platform: 'openai' });
+    expect(oldSignal?.aborted).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="codex-manifest-search"]').element.value).toBe('');
+    resolveOld({ items: [{ id: 99, name: 'stale-account' }] });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('stale-account');
+    vi.mocked(adminAPI.accounts.list).mockResolvedValueOnce({ items: [{ id: 100, name: 'current-account' }] } as never);
+    await wrapper.get('[data-testid="codex-manifest-search"]').trigger('focus');
+    await wrapper.get('[data-testid="codex-manifest-search"]').setValue('next');
+    await vi.advanceTimersByTimeAsync(300);
+    await flushPromises();
+    expect(adminAPI.accounts.list).toHaveBeenLastCalledWith(1, 20, { search: 'next', platform: 'openai', group: '8' }, expect.anything());
+    expect(wrapper.text()).toContain('current-account');
+    wrapper.unmount();
+  });
+
   it("hides account controls while disabled and reveals them after enabling", async () => {
     const wrapper = mountField(disabledConfig());
 

@@ -331,6 +331,37 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it.each(['enable', 'disable', 'edit', 'delete-rule'] as const)('persists Gateway temporary unschedulable rules: %s', async (action) => {
+    const rules = [
+      { error_code: 429, keywords: ['quota'], duration_minutes: 15, description: 'quota rule' },
+      { error_code: 503, keywords: ['overload'], duration_minutes: 5, description: 'overload rule' }
+    ]
+    const account = { ...buildAccount(), platform: 'openai_codex', type: 'gateway', credentials: {
+      model_mapping: { 'public-model': 'gpt-5.5' },
+      temp_unschedulable_enabled: action !== 'enable', temp_unschedulable_rules: rules
+    }, extra: {} }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const vm = wrapper.vm as any
+    vm.tempUnschedEnabled = action !== 'disable'
+    if (action === 'edit') vm.tempUnschedRules[0].duration_minutes = 25
+    if (action === 'delete-rule') vm.tempUnschedRules.splice(0, 1)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledOnce()
+    const saved = updateAccountMock.mock.calls[0][1].credentials
+    expect(saved.model_mapping).toEqual(account.credentials.model_mapping)
+    if (action === 'disable') {
+      expect(saved).not.toHaveProperty('temp_unschedulable_enabled')
+      expect(saved).not.toHaveProperty('temp_unschedulable_rules')
+    } else {
+      expect(saved.temp_unschedulable_enabled).toBe(true)
+      expect(saved.temp_unschedulable_rules).toHaveLength(action === 'delete-rule' ? 1 : 2)
+      expect(saved.temp_unschedulable_rules[0].duration_minutes).toBe(action === 'edit' ? 25 : action === 'delete-rule' ? 5 : 15)
+    }
+    wrapper.unmount()
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }

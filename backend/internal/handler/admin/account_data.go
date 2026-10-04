@@ -58,6 +58,7 @@ type DataProxy struct {
 // 影子的独立调度配置(priority/并发/分组/status 管理员可单独调)亦不在本备份范围,属已知局限
 // (外审第6轮裁决:保持排除 + 前端警告,而非升级格式做完整往返)。
 type DataAccount struct {
+	GatewayBindingID   string         `json:"gateway_binding_id,omitempty"`
 	Name               string         `json:"name"`
 	Notes              *string        `json:"notes,omitempty"`
 	Platform           string         `json:"platform"`
@@ -199,7 +200,12 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			v := acc.ExpiresAt.Unix()
 			expiresAt = &v
 		}
+		gatewayID := ""
+		if acc.IsOpenAICodex() && acc.Gateway != nil {
+			gatewayID = acc.Gateway.BindingID
+		}
 		dataAccounts = append(dataAccounts, DataAccount{
+			GatewayBindingID:   gatewayID,
 			Name:               acc.Name,
 			Notes:              acc.Notes,
 			Platform:           acc.Platform,
@@ -450,6 +456,10 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			SkipDefaultGroupBind: skipDefaultGroupBind,
 		}
 
+		if item.Platform == service.PlatformOpenAICodex {
+			accountInput.GatewayImportID = item.GatewayBindingID
+			accountInput.GatewayOperationKey = "import:" + item.GatewayBindingID + ":" + item.Name
+		}
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
 		if err != nil {
 			result.AccountFailed++
@@ -689,11 +699,19 @@ func validateDataAccount(item DataAccount) error {
 	if strings.TrimSpace(item.Type) == "" {
 		return errors.New("account type is required")
 	}
-	if len(item.Credentials) == 0 {
+	if len(item.Credentials) == 0 && item.Platform != service.PlatformOpenAICodex {
 		return errors.New("account credentials is required")
 	}
+	if item.Platform == service.PlatformOpenAICodex {
+		if item.Type != service.AccountTypeGateway || strings.TrimSpace(item.GatewayBindingID) == "" || len(item.GatewayBindingID) > 64 {
+			return errors.New("OpenAI Codex import requires a Gateway binding")
+		}
+		if err := service.ValidateCodexBusinessCredentials(item.Credentials); err != nil {
+			return err
+		}
+	}
 	switch item.Type {
-	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream:
+	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream, service.AccountTypeGateway:
 	default:
 		return fmt.Errorf("account type is invalid: %s", item.Type)
 	}

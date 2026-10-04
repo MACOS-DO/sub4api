@@ -214,6 +214,42 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('creates Gateway accounts in the existing dialog with write-only credentials', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI Codex')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Managed Codex')
+    const fields = wrapper.get('[data-testid="codex-gateway-account-fields"]')
+    await fields.get('select').setValue('tokens')
+    await fields.get('input[type="password"]').setValue('test-only-upstream-token')
+    await fields.get('input[required]:not([type="password"])').setValue('fixture-account')
+    wrapper.getComponent('[data-testid="create-codex-fingerprint-mode-select"]').vm.$emit('update:modelValue', 'full')
+    await flushPromises()
+    await wrapper.get('form#create-account-form').trigger('submit')
+    await flushPromises()
+    const payload = createAccountMock.mock.calls.at(-1)?.[0]
+    expect(payload).toMatchObject({
+      platform: 'openai_codex', type: 'gateway',
+      gateway_credentials: { type: 'tokens', access_token: 'test-only-upstream-token', chatgpt_account_id: 'fixture-account' },
+      extra: { codex_fingerprint_mode: 'full', openai_request_timezone: 'Asia/Singapore' }
+    })
+    expect(payload.credentials).not.toHaveProperty('access_token')
+    expect(createAccountMock.mock.calls.at(-1)?.[1]).toBeTruthy()
+    expect(wrapper.findComponent(BaseDialogStub).exists()).toBe(true)
+    expect(wrapper.findComponent(OAuthAuthorizationFlowStub).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('opens the shared authorization step when Codex credentials are not supplied', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI Codex')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Managed Codex OAuth')
+    await wrapper.get('form#create-account-form').trigger('submit')
+    await flushPromises()
+    expect(createAccountMock).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(OAuthAuthorizationFlowStub).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-31T12:34:00'))

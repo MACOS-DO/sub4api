@@ -31,12 +31,16 @@ func ProvideOpenAIGatewayService(
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	history CodexTicketAttemptRepository,
+	sessions CodexOAuthSessionStore,
 ) *OpenAIGatewayService {
 	s := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo,
 		userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService,
 		billingService, rateLimitService, billingCacheService, httpUpstream, deferredService,
 		openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService,
 		settingService, userPlatformQuotaRepo)
+	s.codexGateway = NewCodexGatewayService(cfg, accountRepo)
+	s.codexGateway.sessions = sessions
+	s.codexGateway.Start()
 	s.SetCodexTicketHistory(history)
 	if settingService != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

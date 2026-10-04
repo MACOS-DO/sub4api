@@ -15,7 +15,9 @@
               <Icon name="play" size="sm" class="text-green-500" :stroke-width="2" />
               {{ t('admin.accounts.testConnection') }}
             </button>
-            <button v-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')" @click="$emit('codex-diagnostic', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"><Icon name="sparkles" size="sm" class="text-violet-500" />{{ t('admin.accounts.openai.codexDiagnostic') }}</button>
+            <button v-if="account.platform === 'openai_codex' || (account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token'))" @click="$emit('codex-diagnostic', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"><Icon name="sparkles" size="sm" class="text-violet-500" />{{ t('admin.accounts.openai.codexDiagnostic') }}</button>
+            <button v-if="account.platform === 'openai_codex'" @click="$emit('gateway-sync', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"><Icon name="refresh" size="sm" />{{ t('admin.accounts.codexGateway.synchronize') }}</button>
+            <button v-if="account.platform === 'openai_codex' && !isShadow" @click="$emit('gateway-profile', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"><Icon name="refresh" size="sm" />{{ t('admin.accounts.codexGateway.profile') }}</button>
             <button @click="$emit('stats', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="chart" size="sm" class="text-indigo-500" />
               {{ t('admin.accounts.viewStats') }}
@@ -29,7 +31,7 @@
               {{ t('admin.accounts.duplicateAccount') }}
             </button>
             <!-- 影子账号不持凭据:重授权/刷新 token 对其无效(后端拒绝),故隐藏(外审 G4)。 -->
-            <template v-if="(account.type === 'oauth' || account.type === 'setup-token') && !isShadow && account.platform !== 'openai_bps'">
+            <template v-if="(account.type === 'oauth' || account.type === 'setup-token' || account.type === 'gateway') && !isShadow && account.platform !== 'openai_bps'">
               <button @click="$emit('reauth', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-blue-600 hover:bg-gray-100 dark:hover:bg-dark-700">
                 <Icon name="link" size="sm" />
                 {{ t('admin.accounts.reAuthorize') }}
@@ -71,7 +73,7 @@ import { Icon } from '@/components/icons'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; anchorRect: DOMRect | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'codex-diagnostic'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'duplicate', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'create-spark-shadow', 'codex-diagnostic', 'gateway-sync', 'gateway-profile'])
 const { t } = useI18n()
 const menuRef = ref<HTMLElement | null>(null)
 const { width: viewportWidth, height: viewportHeight } = useWindowSize()
@@ -108,7 +110,7 @@ useResizeObserver(menuRef, updatePosition)
 
 const canDuplicate = computed(() => {
   if (!props.account || props.account.parent_account_id != null) return false
-  return ['apikey', 'upstream', 'bedrock', 'service_account'].includes(props.account.type)
+  return ['gateway', 'apikey', 'upstream', 'bedrock', 'service_account'].includes(props.account.type)
 })
 const isRateLimited = computed(() => {
   if (props.account?.rate_limit_reset_at && new Date(props.account.rate_limit_reset_at) > new Date()) {
@@ -129,7 +131,7 @@ const hasRecoverableState = computed(() => {
   return props.account?.status === 'error' || Boolean(isRateLimited.value) || Boolean(isOverloaded.value) || Boolean(isTempUnschedulable.value)
 })
 const isAntigravityOAuth = computed(() => props.account?.platform === 'antigravity' && props.account?.type === 'oauth')
-const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && props.account?.type === 'oauth')
+const isOpenAIOAuth = computed(() => (props.account?.platform === 'openai' && props.account?.type === 'oauth') || props.account?.platform === 'openai_codex')
 // 影子账号(链接型,持 parent_account_id)不持凭据、type 不可变,凭据/隐私类操作对其无效。
 const isShadow = computed(() => props.account?.parent_account_id != null)
 // A "parent" OpenAI OAuth account is one that is NOT itself a shadow (parent_account_id == null)

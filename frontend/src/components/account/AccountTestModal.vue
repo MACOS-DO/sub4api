@@ -287,7 +287,7 @@ const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const testMode = ref<'default' | 'compact'>('default')
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isOpenAIAccount = computed(() => (props.account?.platform === 'openai' || props.account?.platform === 'openai_codex'))
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
@@ -304,7 +304,7 @@ const supportsGeminiImageTest = computed(() => {
 const supportsOpenAIImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gpt-image-')) return false
-  return props.account?.platform === 'openai'
+  return (props.account?.platform === 'openai' || props.account?.platform === 'openai_codex')
 })
 
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
@@ -353,7 +353,7 @@ const loadAvailableModels = async () => {
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      if (props.account.platform === 'gemini' || props.account.platform === 'openai_codex') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model

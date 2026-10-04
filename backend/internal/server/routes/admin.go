@@ -51,6 +51,12 @@ func RegisterAdminRoutes(
 
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
+		codex := admin.Group("/openai-codex")
+		codex.GET("/capabilities", h.Admin.Account.CodexCapabilities)
+		codex.POST("/oauth/sessions", h.Admin.Account.CreateCodexOAuthSession)
+		codex.DELETE("/oauth/sessions/:session_id", h.Admin.Account.CancelCodexOAuthSession)
+		codex.GET("/operations/:operation_key", h.Admin.Account.GetCodexOperation)
+		codex.POST("/import-credentials", h.Admin.Account.ImportCodexGatewayCredentials)
 
 		// Gemini OAuth
 		registerGeminiOAuthRoutes(admin, h)
@@ -405,6 +411,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/:id/test", h.Admin.Account.Test)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
+		accounts.POST("/:id/gateway/sync", h.Admin.Account.SyncCodexGateway)
 		accounts.POST("/:id/apply-oauth-credentials", h.Admin.Account.ApplyOAuthCredentials)
 		accounts.POST("/:id/set-privacy", h.Admin.Account.SetPrivacy)
 		accounts.POST("/:id/refresh-tier", h.Admin.Account.RefreshTier)

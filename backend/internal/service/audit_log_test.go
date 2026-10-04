@@ -198,3 +198,14 @@ func TestParseAuditLogRetentionDays(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactAuditBodyOmitsCompleteGatewayCredentialEnvelope(t *testing.T) {
+	raw := []byte(`{"gateway_credentials":{"type":"auth_json","auth_json":{"future_auth_field":"sensitive-value"}},"name":"business-name"}`)
+	value := RedactAuditBody(raw, "application/json")
+	if strings.Contains(value, "sensitive-value") || strings.Contains(value, "future_auth_field") {
+		t.Fatal("credential envelope was retained")
+	}
+	if !strings.Contains(value, "business-name") {
+		t.Fatal("business name missing")
+	}
+}

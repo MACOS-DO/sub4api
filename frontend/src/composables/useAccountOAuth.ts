@@ -10,6 +10,8 @@ export type AuthInputMethod =
   | 'mobile_refresh_token'
   | 'session_token'
   | 'access_token'
+  | 'auth_json'
+  | 'setup_token'
   | 'codex_session'
   | 'agent_identity'
   | 'codex_pat'

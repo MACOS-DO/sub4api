@@ -127,6 +127,8 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	identity LiveCallIdentity,
 	userMaxConcurrency int,
 ) (*LiveCallCreated, error) {
+	ctx = context.WithValue(ctx, codexLiveIdentityKey{}, identity.APIKeyID)
+	ctx = context.WithValue(ctx, codexLiveHeadersKey{}, identity.GatewayHeaders)
 	if err := ValidateLiveCallRequest(request); err != nil {
 		return nil, err
 	}
@@ -161,6 +163,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			false,
 			false,
 			false,
+			NormalizeOpenAICompatiblePlatform(identity.Platform),
 		)
 		if selectErr != nil {
 			if lastErr != nil {
@@ -213,6 +216,8 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			model = "gpt-live"
 		}
 		record := &LiveCallRecord{
+			GatewayIdentity:       created.GatewayIdentity,
+			GatewayTimezone:       created.GatewayTimezone,
 			CallID:                created.CallID,
 			CallHash:              hashLiveCallID(created.CallID),
 			AccountID:             account.ID,
@@ -246,6 +251,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 }
 
 func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(account *Account, err error) bool {
+	if account.IsOpenAICodex() {
+		return false
+	}
 	var upstreamErr *UpstreamFailoverError
 	if !errors.As(err, &upstreamErr) {
 		// 凭证读取和网络传输错误都可能只影响当前账号或代理。
@@ -264,6 +272,9 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	request *LiveCallRequest,
 	attestation string,
 ) (*LiveCallCreated, error) {
+	if account.IsOpenAICodex() {
+		return s.createCodexGatewayLiveCall(ctx, account, request, attestation)
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
@@ -446,6 +457,10 @@ func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *Liv
 	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive) {
 		return nil, ErrLiveUnavailable
 	}
+	if account.IsOpenAICodex() {
+		return s.dialCodexGatewayLive(ctx, account, record)
+	}
+
 	headers, err := s.liveSidebandHeaders(ctx, account, record)
 	if err != nil {
 		return nil, err

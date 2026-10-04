@@ -447,6 +447,7 @@ export const commonErrorCodes = [
 // 按平台获取模型
 export function getModelsByPlatform(platform: string): string[] {
   switch (platform) {
+    case 'openai_codex':
     case 'openai': return openaiModels
     case 'anthropic':
     case 'claude': return claudeModels

@@ -50,6 +50,10 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 	account *Account,
 	body []byte,
 ) error {
+	if err := s.checkCodexGatewayForwardReady(c, account); err != nil {
+		return err
+	}
+
 	if account == nil {
 		writeOpenAIResponsesInputTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("responses input_tokens: missing account")
@@ -66,7 +70,7 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 		return nil
 	}
 
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, err := s.openAIForwardToken(ctx, account)
 	if err != nil {
 		writeOpenAIResponsesInputTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
 		return fmt.Errorf("responses input_tokens: get access token: %w", err)
@@ -259,6 +263,10 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	body []byte,
 	defaultMappedModel string,
 ) error {
+	if err := s.checkCodexGatewayForwardReady(c, account); err != nil {
+		return err
+	}
+
 	if account == nil {
 		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("count_tokens: missing account")
@@ -307,7 +315,7 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		zap.String("upstream_model", prepared.UpstreamModel),
 	)
 
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, err := s.openAIForwardToken(ctx, account)
 	if err != nil {
 		writeAnthropicCountTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
 		return fmt.Errorf("get access token: %w", err)
@@ -433,6 +441,9 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
+	if account.IsOpenAICodex() {
+		return s.newCodexGatewayRequest(ctx, c, account, body, "/v1/responses/input_tokens")
+	}
 	targetURL := openaiPlatformAPIInputTokensURL
 	if account.Type == AccountTypeAPIKey {
 		if baseURL := account.GetOpenAIBaseURL(); strings.TrimSpace(baseURL) != "" {

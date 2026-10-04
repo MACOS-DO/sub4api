@@ -118,6 +118,22 @@ describe('AccountTestModal', () => {
     localStorage.clear()
   })
 
+  it.each([false, true])('uses the Gateway catalog order and preserves empty catalogs (empty=%s)', async (empty) => {
+    getAvailableModelsMock.mockResolvedValue(empty ? [] : [
+      { id: 'codex-alias', display_name: 'Codex alias' },
+      { id: 'sonnet-named-alias', display_name: 'Another alias' }
+    ])
+    const wrapper = mount(AccountTestModal, {
+      props: { show: false, account: { ...buildAccount(), platform: 'openai_codex', type: 'gateway' } },
+      global: { stubs: { BaseDialog: BaseDialogStub, Select: SelectStub, TextArea: TextAreaStub, Icon: true } }
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    expect((wrapper.vm as any).selectedModelId).toBe(empty ? '' : 'codex-alias')
+    expect((wrapper.vm as any).availableModels).toHaveLength(empty ? 0 : 2)
+    wrapper.unmount()
+  })
+
   it('posts compact mode for OpenAI compact probe', async () => {
     const wrapper = mount(AccountTestModal, {
       props: {

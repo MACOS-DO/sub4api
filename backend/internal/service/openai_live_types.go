@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"time"
+
+	"github.com/MACOS-DO/sub4api/internal/pkg/codexgateway"
 )
 
 const (
@@ -40,6 +43,8 @@ type LiveCallRequest struct {
 }
 
 type LiveCallIdentity struct {
+	GatewayHeaders  http.Header
+	Platform        string
 	APIKeyID        int64
 	UserID          int64
 	GroupID         *int64
@@ -50,6 +55,8 @@ type LiveCallIdentity struct {
 }
 
 type LiveCallRecord struct {
+	GatewayIdentity *codexgateway.Identity `json:"gateway_identity,omitempty"`
+	GatewayTimezone string                 `json:"gateway_timezone,omitempty"`
 	CallID          string
 	CallHash        string
 	AccountID       int64
@@ -71,10 +78,12 @@ type LiveCallRecord struct {
 }
 
 type LiveCallCreated struct {
-	SDP      []byte
-	CallID   string
-	Location string
-	Account  *Account
+	GatewayIdentity *codexgateway.Identity `json:"gateway_identity,omitempty"`
+	GatewayTimezone string                 `json:"gateway_timezone,omitempty"`
+	SDP             []byte
+	CallID          string
+	Location        string
+	Account         *Account
 }
 
 // LiveCallStore 由 GatewayCache 的 Redis 实现可选提供，避免扩大旧缓存接口。

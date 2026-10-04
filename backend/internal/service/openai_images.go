@@ -604,11 +604,15 @@ func (s *OpenAIGatewayService) ForwardImages(
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	if err := s.checkCodexGatewayForwardReady(c, account); err != nil {
+		return nil, err
+	}
+
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
 	switch account.Type {
-	case AccountTypeAPIKey:
+	case AccountTypeAPIKey, AccountTypeGateway:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
 	case AccountTypeOAuth, AccountTypeSetupToken:
 		return s.forwardOpenAIImagesOAuth(ctx, c, account, parsed, channelMappedModel)
@@ -650,6 +654,16 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
+	if account.IsOpenAICodex() {
+		forwardBody, err = codexGatewayImagesBody(parsed, upstreamModel)
+		if err != nil {
+			return nil, err
+		}
+		if s.cfg != nil && int64(len(forwardBody)) > s.cfg.Gateway.MaxBodySize {
+			return nil, fmt.Errorf("Gateway image JSON exceeds request size limit")
+		}
+		forwardContentType = "application/json"
+	}
 	// 生图是长耗时、上游侧已产生实际成本的操作：客户端中途断开不应连带取消上游请求。
 	// detachStreamUpstreamContext 在非流式时原样返回请求 context，于是客户端一断开
 	// 就把已经在出图的上游调用打断成 context canceled，网关记 502、不扣费，而上游那边
@@ -658,7 +672,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
-	token, _, err := s.GetAccessToken(upstreamCtx, account)
+	token, err := s.openAIForwardToken(upstreamCtx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -820,6 +834,9 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	token string,
 	endpoint string,
 ) (*http.Request, error) {
+	if account.IsOpenAICodex() {
+		return s.newCodexGatewayRequest(ctx, c, account, body, endpoint)
+	}
 	targetURL := openAIImagesGenerationsURL
 	if endpoint == openAIImagesEditsEndpoint {
 		targetURL = openAIImagesEditsURL

@@ -141,6 +141,13 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 
 func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
+	if platform == PlatformOpenAICodex && accountType == AccountTypeGateway {
+		if prepared == nil {
+			prepared = map[string]any{}
+		}
+		prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
+		return prepared
+	}
 	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
 		return prepared
 	}
@@ -153,7 +160,7 @@ func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra m
 
 func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]any) map[string]any {
 	prepared := stripCodexFingerprintSeed(extra)
-	if account == nil || !account.IsOpenAIOAuthLike() {
+	if account == nil || (!account.IsOpenAIOAuthLike() && !account.IsOpenAICodex()) {
 		return prepared
 	}
 	if seed, ok := codexFingerprintSeed(account.Extra); ok {
@@ -203,7 +210,7 @@ func ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates map[string]any) boo
 // 的 A/B 实测。上游的配额判定策略不可观测，因此这里取兼容安全的一侧：
 // 不显式 opt-in 就保持 v0.1.175 之前的客户端身份（#5610）。
 func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
-	if a == nil || !a.IsOpenAIOAuthLike() {
+	if a == nil || (!a.IsOpenAIOAuthLike() && !a.IsOpenAICodex()) {
 		return codexFingerprintOff
 	}
 	return codexFingerprintModeFromExtra(a.Extra)
@@ -338,6 +345,9 @@ func extractClientSessionID(h http.Header) string {
 // 结合账号配置一次性解析收敛 ID 集合。调用方应将返回的 ids 同时传给
 // applyCodexFingerprintHeaders 和 applyCodexFingerprintClientMetadata。
 func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.Header) *codexFingerprintIDs {
+	if account.IsOpenAICodex() {
+		return nil
+	} // Gateway identity is projected exactly once by its adapter.
 	if account == nil {
 		return nil
 	}

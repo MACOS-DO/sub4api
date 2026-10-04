@@ -35,9 +35,10 @@ const (
 )
 
 var (
-	integrationDB        *sql.DB
-	integrationEntClient *dbent.Client
-	integrationRedis     *redisclient.Client
+	integrationPGContainerID string
+	integrationDB            *sql.DB
+	integrationEntClient     *dbent.Client
+	integrationRedis         *redisclient.Client
 
 	redisNamespaceSeq uint64
 )
@@ -74,6 +75,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer func() { _ = pgContainer.Terminate(ctx) }()
+	integrationPGContainerID = pgContainer.GetContainerID()
 
 	redisContainer, err := tcredis.Run(
 		ctx,

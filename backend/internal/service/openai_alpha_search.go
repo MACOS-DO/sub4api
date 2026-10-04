@@ -27,6 +27,10 @@ const (
 // *OpenAIForwardResult（WebSearchCalls=1，供按次计费）；上游错误被原样透传
 // 给客户端时返回 (nil, nil)，不产生计费。
 func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	if err := s.checkCodexGatewayForwardReady(c, account); err != nil {
+		return nil, err
+	}
+
 	if s == nil || c == nil || account == nil {
 		return nil, fmt.Errorf("service, context, and account are required")
 	}
@@ -49,7 +53,7 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(ctx context.Context, c *gin.Co
 	}
 	body = sanitizedBody
 
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, err := s.openAIForwardToken(ctx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -353,6 +357,13 @@ func truncateOpenAIAlphaSearchPromptJSON(value string, limit int) string {
 }
 
 func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string) (*http.Request, error) {
+	if account.IsOpenAICodex() {
+		path := "/v1/alpha/search"
+		if c != nil && c.Request != nil && c.Request.URL.RawQuery != "" {
+			path += "?" + c.Request.URL.RawQuery
+		}
+		return s.newCodexGatewayRequest(ctx, c, account, body, path)
+	}
 	targetURL, err := s.openAIAlphaSearchURL(account)
 	if err != nil {
 		return nil, err

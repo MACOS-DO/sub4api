@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MACOS-DO/sub4api/internal/pkg/codexgateway"
 	"github.com/MACOS-DO/sub4api/internal/service"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -1222,4 +1223,27 @@ func TestBuildSchedulerMetadataAccount_KeepsRPMFieldsForRPMGate(t *testing.T) {
 		require.Equal(t, service.WindowCostStickyOnly, restored.CheckRPMSchedulability(100),
 			"投影裁掉 rpm_strategy 会让粘性豁免账号退回三区判定")
 	})
+}
+
+func TestCodexGatewaySchedulerRedisRoundTrip(t *testing.T) {
+	cache := newSchedulerCacheUnit(t)
+	ctx := context.Background()
+	bucket := service.SchedulerBucket{GroupID: 119, Platform: service.PlatformOpenAICodex, Mode: service.SchedulerModeSingle}
+	account := service.Account{ID: 119, Platform: service.PlatformOpenAICodex, Type: service.AccountTypeGateway, Status: service.StatusActive, Schedulable: true,
+		Gateway:     &service.CodexGatewayState{BindingID: "binding-119", SyncState: service.CodexSyncReady, Snapshot: &codexgateway.AccountStatus{ID: "binding-119", CanAcceptRequests: true}},
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}}}
+	for _, state := range []string{service.CodexSyncReady, service.CodexSyncUnknown, service.CodexSyncDeleting} {
+		account.Gateway.SyncState = state
+		token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+		require.NoError(t, err)
+		require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+		snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+		require.NoError(t, err)
+		require.True(t, hit)
+		require.Len(t, snapshot, 1)
+		require.Equal(t, state == service.CodexSyncReady, snapshot[0].IsSchedulable())
+	}
+	account.Credentials["access_token"] = "must-never-enter-redis"
+	_, _, err := marshalSchedulerCacheAccount(account)
+	require.Error(t, err)
 }

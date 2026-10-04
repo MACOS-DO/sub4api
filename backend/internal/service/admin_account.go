@@ -32,6 +32,9 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 	if err != nil {
 		return nil, 0, err
 	}
+	for i := range accounts {
+		s.annotateCodexGateway(&accounts[i])
+	}
 	return accounts, result.Total, nil
 }
 
@@ -53,7 +56,11 @@ func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx co
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
-	return s.accountRepo.GetByID(ctx, id)
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err == nil {
+		s.annotateCodexGateway(account)
+	}
+	return account, err
 }
 
 func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
@@ -357,7 +364,7 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 
 // ValidateOpenAILongContextBillingExtra validates the OpenAI account billing flag when present.
 func ValidateOpenAILongContextBillingExtra(platform string, extra map[string]any) error {
-	if platform != PlatformOpenAI {
+	if platform != PlatformOpenAI && platform != PlatformOpenAICodex {
 		return nil
 	}
 	raw, exists := extra[openAILongContextBillingEnabledKey]
@@ -374,7 +381,7 @@ func ValidateOpenAILongContextBillingExtra(platform string, extra map[string]any
 }
 
 func normalizeOpenAILongContextBillingExtra(platform string, extra map[string]any) (map[string]any, error) {
-	if platform != PlatformOpenAI {
+	if platform != PlatformOpenAI && platform != PlatformOpenAICodex {
 		return extra, nil
 	}
 	if err := ValidateOpenAILongContextBillingExtra(platform, extra); err != nil {
@@ -486,6 +493,12 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input.Platform == PlatformOpenAICodex {
+		return s.createCodexGatewayAccount(ctx, input)
+	}
+	if input.Type == AccountTypeGateway || len(input.GatewayCredentials) != 0 {
+		return nil, infraerrors.BadRequest("CODEX_PLATFORM_REQUIRED", "gateway credentials require OpenAI Codex")
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -592,6 +605,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if account.IsOpenAICodex() && ctx.Value(codexEditInProgressKey{}) != true {
+		return s.updateCodexGatewayAccount(ctx, account, input)
+	}
+	if !account.IsOpenAICodex() && (input.Type == AccountTypeGateway || len(input.GatewayCredentials) != 0) {
+		return nil, infraerrors.BadRequest("CODEX_PLATFORM_REQUIRED", "gateway credentials require OpenAI Codex")
+	}
+
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -1031,6 +1051,10 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		input.AccountIDs = accountIDs
 	}
 
+	if result, handled, err := s.bulkUpdateCodexAccounts(ctx, input); handled {
+		return result, err
+	}
+
 	result := &BulkUpdateAccountsResult{
 		SuccessIDs: make([]int64, 0, len(input.AccountIDs)),
 		FailedIDs:  make([]int64, 0, len(input.AccountIDs)),
@@ -1352,6 +1376,15 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
+	if s.codexGateway != nil && s.codexGateway.bindings != nil {
+		binding, err := s.codexGateway.bindings.GetCodexBinding(ctx, id)
+		if err != nil {
+			return err
+		}
+		if binding != nil {
+			return s.codexGateway.Delete(ctx, id)
+		}
+	}
 	// 级联删除 spark 影子账号（先删影子，再删母账号）
 	shadows, err := s.accountRepo.ListShadowsByParent(ctx, id)
 	if err != nil {
@@ -1372,6 +1405,12 @@ func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if account.IsOpenAICodex() {
+		if err := s.codexGateway.Refresh(ctx, id); err != nil {
+			return nil, err
+		}
+		return s.GetAccount(ctx, id)
 	}
 	// TODO: Implement refresh logic
 	return account, nil
@@ -1434,7 +1473,20 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 	if err != nil {
 		return nil, fmt.Errorf("get parent account: %w", err)
 	}
-	if !parent.IsOpenAIOAuth() {
+	if parent.IsOpenAICodex() && ctx.Value(codexShadowCreationKey{}) != true {
+		var shadow *Account
+		err := s.codexGateway.WithAccountLock(ctx, parentID, func(locked context.Context) error {
+			var createErr error
+			shadow, createErr = s.CreateShadow(context.WithValue(locked, codexShadowCreationKey{}, true), parentID, opts)
+			return createErr
+		})
+		return shadow, err
+	}
+	if parent.IsOpenAICodex() && (parent.Gateway == nil || parent.Gateway.SyncState == CodexSyncDeleting) {
+		return nil, infraerrors.Conflict("CODEX_PARENT_UNAVAILABLE", "parent binding is unavailable or pending deletion")
+	}
+
+	if !parent.IsOpenAIOAuth() && !parent.IsOpenAICodex() {
 		return nil, infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_INVALID_PARENT",
 			"spark shadow requires an OpenAI OAuth parent account")
 	}
@@ -1469,8 +1521,8 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 	} else if len(parent.GroupIDs) > 0 {
 		groupIDs = append([]int64(nil), parent.GroupIDs...)
 	} else if s.groupRepo != nil {
-		defaultGroupName := PlatformOpenAI + "-default"
-		if groups, gerr := s.groupRepo.ListActiveByPlatform(ctx, PlatformOpenAI); gerr == nil {
+		defaultGroupName := parent.Platform + "-default"
+		if groups, gerr := s.groupRepo.ListActiveByPlatform(ctx, parent.Platform); gerr == nil {
 			for _, g := range groups {
 				if g.Name == defaultGroupName {
 					groupIDs = []int64{g.ID}
@@ -1508,8 +1560,8 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 	}
 	shadow := &Account{
 		Name:            name,
-		Platform:        PlatformOpenAI,
-		Type:            AccountTypeOAuth,
+		Platform:        parent.Platform,
+		Type:            parent.Type,
 		Status:          StatusActive,
 		Credentials:     map[string]any{"model_mapping": defaultSparkShadowModelMapping()},
 		ParentAccountID: &parentID,
@@ -1521,6 +1573,20 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: parent.IsOpenAILongContextBillingEnabled(),
 		},
+	}
+
+	if parent.IsOpenAICodex() {
+		if err := s.validateCodexGroupBindings(ctx, groupIDs); err != nil {
+			return nil, err
+		}
+		groups := make([]AccountGroup, 0, len(groupIDs))
+		for _, id := range groupIDs {
+			groups = append(groups, AccountGroup{GroupID: id, Priority: priority})
+		}
+		if err := s.accountDuplicateRepo.CreateWithAccountGroups(ctx, shadow, groups); err != nil {
+			return nil, err
+		}
+		return s.GetAccount(ctx, shadow.ID)
 	}
 
 	// 5. 持久化（Create 填充 shadow.ID）。并发竞态:预查(步骤2)放行后另一请求抢先建成,本次会撞

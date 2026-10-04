@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -742,6 +743,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			firstClientMessage = s.ReplaceModelInBody(firstClientMessage, mappedModel)
 		}
 	}
+	if account.IsOpenAICodex() {
+		_, mappedModel := resolveOpenAIForwardMappedModels(account, gjson.GetBytes(firstClientMessage, "model").String(), false)
+		firstClientMessage = s.ReplaceModelInBody(firstClientMessage, mappedModel)
+	}
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
 	if capturedSessionModel != "" && capturedSessionModel != strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String()) {
 		firstClientMessage = s.ReplaceModelInBody(firstClientMessage, capturedSessionModel)
@@ -863,7 +868,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	dialer := s.getOpenAIWSPassthroughDialer()
-	if dialer == nil {
+	if dialer == nil && !account.IsOpenAICodex() {
 		return errors.New("openai ws passthrough dialer is nil")
 	}
 
@@ -879,7 +884,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
 		sentHeaders := cloneHeader(headers)
-		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+		if account.IsOpenAICodex() {
+			upstreamConn, statusCode, handshakeHeaders, err = s.dialCodexGatewayWebSocket(dialCtx, c, account, headers, firstClientMessage, ticket)
+		} else {
+			upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+		}
 		cancelDial()
 		if observeHandshake != nil {
 			observeHandshake(sentHeaders, statusCode, handshakeHeaders)
@@ -887,10 +896,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		if err == nil {
 			break
 		}
+		if account.IsOpenAICodex() && handshakeHeaders.Get("X-Codex4Server-Error-Origin") != "upstream" {
+			return err
+		}
 		var handshakeErr *openAIWSHandshakeError
 		responseBody := []byte(nil)
 		if errors.As(err, &handshakeErr) && handshakeErr != nil {
 			responseBody = handshakeErr.Body
+		}
+		if account.IsOpenAICodex() {
+			if len(responseBody) > 0 && json.Valid(responseBody) {
+				_ = clientConn.Write(ctx, coderws.MessageText, responseBody)
+			}
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "Upstream WebSocket handshake rejected", err)
 		}
 		dialErr := &openAIWSDialError{StatusCode: statusCode, ResponseHeaders: cloneHeader(handshakeHeaders), ResponseBody: responseBody, Err: err}
 		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
@@ -1066,14 +1084,22 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						return payload, nil, err
 					}
 				}
+				mappedModel := requestModelForThisFrame
 				if hooks != nil && hooks.MapRequestModel != nil {
 					upstreamModel, err := hooks.MapRequestModel(turnNo, requestModelForThisFrame)
 					if err != nil {
 						return payload, nil, err
 					}
 					if upstreamModel = strings.TrimSpace(upstreamModel); upstreamModel != "" {
+						mappedModel = upstreamModel
 						payload = s.ReplaceModelInBody(payload, upstreamModel)
 					}
+				}
+				if account.IsOpenAICodex() {
+					// Start from the public session model even when this frame omits
+					// model; never map the preceding turn's already mapped value.
+					_, upstreamModel := resolveOpenAIForwardMappedModels(account, mappedModel, false)
+					payload = s.ReplaceModelInBody(payload, upstreamModel)
 				}
 			}
 			// 在评估策略前先刷新 capturedSessionModel：客户端可能通过
@@ -1118,6 +1144,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     覆盖（Store(nil)），因为 OpenAI 上游对该帧实际不传
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
+				if account.IsOpenAICodex() {
+					usageMeta.sessionRequestModel = requestModelForThisFrame
+				}
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)
@@ -1286,6 +1315,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+				if account.IsOpenAICodex() && gjson.GetBytes(payload, "error.origin").String() == "gateway" {
+					// Service failures must remain visible without disabling an account.
+					return nil
+				}
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}
@@ -1295,12 +1328,20 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
 				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
 				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+					failureModel := ""
+					if account.IsOpenAICodex() {
+						// Read the accepted turn's atomic metadata from the upstream
+						// goroutine, not the client goroutine's mutable session model.
+						_, failureModel = usageMeta.turnModels(initialRequestModel)
+					} else {
+						failureModel = capturedSessionModel
+					}
+					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, failureModel, handshakeHeaders, payload)
 				}
 				if eventType != "error" {
 					return nil
 				}
-				if wroteDownstream || !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				if account.IsOpenAICodex() || wroteDownstream || !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
 					return nil
 				}
 				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw, capturedSessionModel)

@@ -254,8 +254,12 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
-func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
+func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, platforms ...string) (*Account, error) {
+	platform := PlatformOpenAI
+	if len(platforms) > 0 && platforms[0] == PlatformOpenAICodex {
+		platform = PlatformOpenAICodex
+	}
+	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, platform, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
 }
 
 // SelectAccountForTokenCount selects an account for a non-billable token-count
@@ -292,7 +296,7 @@ func (s *OpenAIGatewayService) SelectAccountForTokenCount(
 // handler 调度入口仍需导出，保持导出名。）
 func NormalizeOpenAICompatiblePlatform(platform string) string {
 	switch platform {
-	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformOpenAIBPS:
+	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformOpenAIBPS, PlatformOpenAICodex:
 		return platform
 	default:
 		return PlatformOpenAI
@@ -336,6 +340,9 @@ func (e openAINoAvailableSelectionError) Unwrap() error {
 // openAICompactSupportTier classifies an OpenAI-compatible account by compact capability.
 // 0 = explicitly unsupported, 1 = unknown / not yet probed, 2 = explicitly supported.
 func openAICompactSupportTier(account *Account) int {
+	if account.IsOpenAICodex() {
+		return 2
+	}
 	if account.IsOpenAIBPS() {
 		return 2
 	}

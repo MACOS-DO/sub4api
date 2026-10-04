@@ -386,6 +386,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return nil
 	}
 
+	if account.IsOpenAICodex() {
+		return s.testCodexGatewayAccount(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+	}
+
 	// Route to platform-specific test method
 	if account.IsCNProvider() {
 		switch account.GetAPIProtocol() {

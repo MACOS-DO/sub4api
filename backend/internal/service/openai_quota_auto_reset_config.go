@@ -49,7 +49,7 @@ func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditC
 }
 
 func isOpenAIAutoResetCreditAccount(account *Account) bool {
-	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth && !account.IsShadow()
+	return account != nil && ((account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth) || account.IsOpenAICodex()) && !account.IsShadow()
 }
 
 // normalizeOpenAIAutoResetCreditExtra 校验管理请求中的配置并剥离服务运行态。
@@ -67,8 +67,8 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 	if !hasEnabled && !has5h && !has7d {
 		return normalized, nil
 	}
-	if platform != PlatformOpenAI || accountType != AccountTypeOAuth || isShadow {
-		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_ACCOUNT_INVALID", "automatic reset credits are only supported for OpenAI OAuth parent accounts")
+	if !((platform == PlatformOpenAI && accountType == AccountTypeOAuth) || (platform == PlatformOpenAICodex && accountType == AccountTypeGateway)) || isShadow {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_ACCOUNT_INVALID", "automatic reset credits are only supported for OpenAI OAuth or OpenAI Codex parent accounts")
 	}
 
 	enabled := false

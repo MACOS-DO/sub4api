@@ -126,25 +126,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "@/components/icons/Icon.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { adminAPI } from "@/api/admin";
-import type { CodexModelsManifestConfig } from "@/types";
+import type { CodexModelsManifestConfig, GroupPlatform } from "@/types";
 
 interface SimpleAccount {
   id: number;
   name: string;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   groupId: number;
+  platform?: GroupPlatform;
   modelValue: CodexModelsManifestConfig;
   /** 已选账号 ID → 名称映射；无法解析的 ID 以 #<id> 展示 */
   accountNames?: Record<number, string>;
-}>();
+}>(), { platform: "openai" });
 
 const emit = defineEmits<{
   (event: "update:modelValue", value: CodexModelsManifestConfig): void;
@@ -193,7 +194,7 @@ const searchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
       20,
       {
         search: keyword,
-        platform: "openai",
+        platform: props.platform,
         group: String(props.groupId),
       },
       { signal },
@@ -210,6 +211,15 @@ const searchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
     searchResults.value = [];
   },
 });
+
+watch(() => [props.groupId, props.platform], () => {
+  searchRunner.clearAll();
+  searchResults.value = [];
+  searchKeyword.value = "";
+  localNames.value = {};
+  showDropdown.value = false;
+  showValidationError.value = false;
+}, { flush: "sync" });
 
 const searchAccounts = () => {
   searchRunner.trigger("codex-manifest", searchKeyword.value);

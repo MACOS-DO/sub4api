@@ -332,7 +332,7 @@ func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, m
 	return compositeTargetPlatformAllowed(c, apiKey, model,
 		service.PlatformOpenAI, service.PlatformGrok,
 		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-		service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOpenAIBPS)
+		service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOpenAIBPS, service.PlatformOpenAICodex)
 }
 
 // isResponsesWebSocketCompositePlatform 限定 composite 分组在 Responses WebSocket
@@ -341,7 +341,7 @@ func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, m
 // 放行只会把明确的策略拒绝变成误导性的 "no available account"。
 func isResponsesWebSocketCompositePlatform(platform string) bool {
 	switch platform {
-	case service.PlatformOpenAI, service.PlatformGrok:
+	case service.PlatformOpenAI, service.PlatformOpenAICodex, service.PlatformGrok:
 		return true
 	default:
 		return false
@@ -3760,7 +3760,7 @@ func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForwa
 	// 流式写出 response.failed 事件），不能再让 ensureForwardErrorResponse 追加
 	// fallback —— 否则在已写出的完整响应尾部追加 SSE（responses 端点尾随
 	// response.failed、chat 端点尾随 event:error），污染响应体。Size 已变化证明响应确已写出。
-	if service.GetOpsCyberPolicy(c) != nil {
+	if service.CodexGatewayFailureWritten(c) || service.GetOpsCyberPolicy(c) != nil {
 		return true
 	}
 

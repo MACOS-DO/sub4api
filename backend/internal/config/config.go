@@ -978,7 +978,17 @@ const (
 )
 
 // GatewayConfig API网关相关配置
+type Codex4ServerConfig struct {
+	Enabled                bool          `mapstructure:"enabled"`
+	BaseURL                string        `mapstructure:"base_url"`
+	ServiceKeyFile         string        `mapstructure:"service_key_file"`
+	AutoGenerateServiceKey bool          `mapstructure:"auto_generate_service_key"`
+	AdminTimeout           time.Duration `mapstructure:"admin_timeout"`
+	SyncInterval           time.Duration `mapstructure:"sync_interval"`
+}
+
 type GatewayConfig struct {
+	Codex4Server Codex4ServerConfig `mapstructure:"codex4server"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -2555,6 +2565,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
+	viper.SetDefault("gateway.codex4server.enabled", false)
+	viper.SetDefault("gateway.codex4server.base_url", "http://gateway:8787")
+	viper.SetDefault("gateway.codex4server.service_key_file", "/run/secrets/gateway_service_key")
+	viper.SetDefault("gateway.codex4server.auto_generate_service_key", false)
+	viper.SetDefault("gateway.codex4server.admin_timeout", "60s")
+	viper.SetDefault("gateway.codex4server.sync_interval", "30s")
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)

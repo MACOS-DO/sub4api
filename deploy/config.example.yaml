@@ -217,6 +217,15 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Optional, isolated OpenAI Codex platform. Existing platforms do not require it.
+  codex4server:
+    enabled: false
+    base_url: "http://gateway:8787"
+    service_key_file: "/run/secrets/gateway_service_key"
+    # 联合 Compose 自动开启并使用持久化卷；手工密钥文件部署保持 false。
+    auto_generate_service_key: false
+    admin_timeout: 60s
+    sync_interval: 30s
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600

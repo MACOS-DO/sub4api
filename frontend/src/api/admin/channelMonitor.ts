@@ -7,6 +7,7 @@ import { apiClient } from '../client'
 
 export type Provider =
   | 'openai'
+  | 'openai_codex'
   | 'openai_bps'
   | 'anthropic'
   | 'gemini'

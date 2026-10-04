@@ -358,7 +358,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return s.getPassiveUsageForAccount(ctx, account)
 	}
 
-	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+	if (account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth) || account.IsOpenAICodex() {
 		// Usage can come from a stored snapshot even when a probe fails. Neither
 		// that nor a working access token proves a rejected refresh token recovered.
 		return s.getOpenAIUsage(ctx, account, forceProbe)
@@ -786,14 +786,14 @@ func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now ti
 }
 
 func isOpenAICodexSnapshotStale(account *Account, now time.Time) bool {
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || (!account.IsOpenAIOAuth() && !account.IsOpenAICodex()) {
 		return false
 	}
 	// 普通账号的 codex 刷新走 probe(/responses 头),要求 WSv2;但 spark 影子走 QueryUsage
 	// (/wham/usage body 的 codex_bengalfox),与 WSv2 无关——不能用 WSv2 门控其 staleness,否则首刷后
 	// codex_5h/7d 已存在→staleness 恒 false→spark 窗口永久冻结(外审第9轮 P1)。影子改按
 	// codex_usage_updated_at TTL 判定;实际查询频率仍由 shouldProbeOpenAICodexSnapshot 的缓存 TTL 节流。
-	if !account.IsShadow() && !account.IsOpenAIResponsesWebSocketV2Enabled() {
+	if !account.IsShadow() && !account.IsOpenAICodex() && !account.IsOpenAIResponsesWebSocketV2Enabled() {
 		return false
 	}
 	if account.Extra == nil {
@@ -827,6 +827,9 @@ func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, no
 }
 
 func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, account *Account) (map[string]any, error) {
+	if account.IsOpenAICodex() {
+		return s.probeCodexGatewayUsageSnapshot(ctx, account)
+	}
 	if account == nil || !account.IsOAuth() {
 		return nil, nil
 	}

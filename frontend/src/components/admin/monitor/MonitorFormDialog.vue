@@ -68,7 +68,7 @@
           />
         </div>
         <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.linkedAccountHint') }}</p>
-        <p v-if="form.provider === PROVIDER_OPENAI" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+        <p v-if="(form.provider === PROVIDER_OPENAI || form.provider === PROVIDER_OPENAI_CODEX)" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
           {{ t('admin.channelMonitor.form.openAIQuotaProbeHint') }}
         </p>
         <p v-if="accountHydrationFailed" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
@@ -79,7 +79,7 @@
         </p>
       </div>
 
-      <div v-if="form.provider === PROVIDER_OPENAI && usesProbePart" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+      <div v-if="(form.provider === PROVIDER_OPENAI || form.provider === PROVIDER_OPENAI_CODEX) && usesProbePart" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
         <label class="input-label">{{ t('admin.channelMonitor.form.apiMode') }}</label>
         <div class="grid gap-3 sm:grid-cols-2">
           <button
@@ -263,6 +263,7 @@ import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
   PROVIDER_OPENAI,
+  PROVIDER_OPENAI_CODEX,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
@@ -376,7 +377,7 @@ const templatesLoading = ref(false)
 const templateOptions = computed(() => {
   const items = templatesCache.value.filter((t) => {
     if (t.provider !== form.provider) return false
-    if (form.provider !== PROVIDER_OPENAI) return true
+    if ((form.provider !== PROVIDER_OPENAI && form.provider !== PROVIDER_OPENAI_CODEX)) return true
     return normalizeAPIMode(t.api_mode) === form.api_mode
   })
   return [
@@ -473,6 +474,7 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: 'openai_bps', label: 'OpenAI BPS' },
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
+  { value: PROVIDER_OPENAI_CODEX, label: 'OpenAI Codex' },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
   { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') },
   { value: PROVIDER_ANTIGRAVITY, label: t('monitorCommon.providers.antigravity') },
@@ -716,7 +718,7 @@ function selectProvider(provider: Provider) {
 watch(() => form.provider, () => {
   if (suppressFormWatchers) return
   form.api_key = ''
-  if (form.provider !== PROVIDER_OPENAI) {
+  if ((form.provider !== PROVIDER_OPENAI && form.provider !== PROVIDER_OPENAI_CODEX)) {
     form.api_mode = form.provider === 'openai_bps' ? API_MODE_RESPONSES : API_MODE_CHAT_COMPLETIONS
   }
   clearRequestSnapshot()
@@ -724,7 +726,7 @@ watch(() => form.provider, () => {
 
 watch(() => form.api_mode, () => {
   if (suppressFormWatchers) return
-  if (form.provider === PROVIDER_OPENAI) {
+  if ((form.provider === PROVIDER_OPENAI || form.provider === PROVIDER_OPENAI_CODEX)) {
     clearRequestSnapshot()
   }
 }, { flush: 'sync' })
@@ -825,7 +827,7 @@ function buildPayload(): CreateParams {
   return {
     name: form.name.trim(),
     provider: form.provider,
-    api_mode: form.provider === 'openai_bps' ? API_MODE_RESPONSES : form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+    api_mode: form.provider === 'openai_bps' ? API_MODE_RESPONSES : (form.provider === PROVIDER_OPENAI || form.provider === PROVIDER_OPENAI_CODEX) ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
     check_mode: form.check_mode,
     account_id: usesQuotaMode.value ? form.account_id : null,
     endpoint: usesProbePart.value ? form.endpoint.trim() : '',

@@ -39,6 +39,9 @@ func (r *defaultOpenAIWSProtocolResolver) Resolve(account *Account) OpenAIWSProt
 	if account == nil {
 		return openAIWSHTTPDecision("account_missing")
 	}
+	if account.IsOpenAICodex() {
+		return OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2, Reason: "codex_gateway_dedicated"}
+	}
 	if !account.IsOpenAI() {
 		return openAIWSHTTPDecision("platform_not_openai")
 	}

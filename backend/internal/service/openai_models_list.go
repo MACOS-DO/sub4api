@@ -23,7 +23,7 @@ func (s *OpenAIGatewayService) FetchOpenAIModelsList(ctx context.Context, accoun
 	if err != nil {
 		return nil, fmt.Errorf("resolve model list credentials: %w", err)
 	}
-	if credentialAccount.IsOpenAIOAuth() {
+	if credentialAccount.IsOpenAIOAuth() || credentialAccount.IsOpenAICodex() {
 		clientVersion := CodexCanonicalClientVersion()
 		if s.settingService != nil {
 			clientVersion = s.settingService.GetOpenAICodexClientVersion(ctx)
@@ -253,7 +253,7 @@ func projectAccountModelsBody(body []byte, account *Account, group *Group, codex
 // ApplyPinnedCodexModelsMapping is used by pinned discovery and its scheduler
 // fallback. The ordinary (non-pinned) Codex path retains its local catalog policy.
 func ApplyPinnedCodexModelsMapping(response *OpenAIModelsResponse, account *Account, group *Group) error {
-	if group == nil || group.Platform != PlatformOpenAI || !group.CodexModelsManifestConfig.Enabled {
+	if group == nil || (group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex) || !group.CodexModelsManifestConfig.Enabled {
 		return nil
 	}
 	body, err := projectAccountModelsBody(response.Body, account, group, true)
@@ -369,7 +369,7 @@ func (s *OpenAIGatewayService) fetchScheduledOpenAIModels(ctx context.Context, g
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		account, err := s.SelectAccountForModelWithExclusions(ctx, &group.ID, "", "", excluded)
+		account, err := s.SelectAccountForModelWithExclusions(ctx, &group.ID, "", "", excluded, group.Platform)
 		if err != nil {
 			if lastErr != nil {
 				return nil, lastErr

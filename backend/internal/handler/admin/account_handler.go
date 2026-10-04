@@ -132,44 +132,50 @@ func NewAccountHandler(
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
-	Name                    string         `json:"name" binding:"required"`
-	Notes                   *string        `json:"notes"`
-	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials" binding:"required"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             int            `json:"concurrency"`
-	Priority                int            `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	GroupIDs                []int64        `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	GatewayOAuthClientID        string          `json:"gateway_oauth_client_id"`
+	GatewayPreserveRefreshToken bool            `json:"gateway_preserve_refresh_token"`
+	GatewayCredentials          json.RawMessage `json:"gateway_credentials"`
+	Name                        string          `json:"name" binding:"required"`
+	Notes                       *string         `json:"notes"`
+	Platform                    string          `json:"platform" binding:"required"`
+	Type                        string          `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account gateway"`
+	Credentials                 map[string]any  `json:"credentials"`
+	Extra                       map[string]any  `json:"extra"`
+	ProxyID                     *int64          `json:"proxy_id"`
+	Concurrency                 int             `json:"concurrency"`
+	Priority                    int             `json:"priority"`
+	RateMultiplier              *float64        `json:"rate_multiplier"`
+	LoadFactor                  *int            `json:"load_factor"`
+	GroupIDs                    []int64         `json:"group_ids"`
+	ExpiresAt                   *int64          `json:"expires_at"`
+	AutoPauseOnExpired          *bool           `json:"auto_pause_on_expired"`
+	ProbeEnabled                *bool           `json:"upstream_billing_probe_enabled"`
+	ConfirmMixedChannelRisk     *bool           `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	GatewayOAuthClientID        string          `json:"gateway_oauth_client_id"`
+	GatewayPreserveRefreshToken bool            `json:"gateway_preserve_refresh_token"`
+	GatewayCredentials          json.RawMessage `json:"gateway_credentials"`
+	Name                        string          `json:"name"`
+	Notes                       *string         `json:"notes"`
+	Type                        string          `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account gateway"`
+	Credentials                 map[string]any  `json:"credentials"`
+	Extra                       map[string]any  `json:"extra"`
+	ProxyID                     *int64          `json:"proxy_id"`
+	Concurrency                 *int            `json:"concurrency"`
+	Priority                    *int            `json:"priority"`
+	RateMultiplier              *float64        `json:"rate_multiplier"`
+	LoadFactor                  *int            `json:"load_factor"`
+	Status                      string          `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                    *[]int64        `json:"group_ids"`
+	ExpiresAt                   *int64          `json:"expires_at"`
+	AutoPauseOnExpired          *bool           `json:"auto_pause_on_expired"`
+	ProbeEnabled                *bool           `json:"upstream_billing_probe_enabled"`
+	RateSyncEnabled             *bool           `json:"upstream_billing_rate_sync_enabled"`
+	ConfirmMixedChannelRisk     *bool           `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -1069,6 +1075,14 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if req.Platform != service.PlatformOpenAICodex && req.Credentials == nil {
+		response.BadRequest(c, "credentials is required")
+		return
+	}
+	if req.Platform == service.PlatformOpenAICodex && strings.TrimSpace(c.GetHeader("Idempotency-Key")) == "" {
+		response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+		return
+	}
 	if err := service.ValidateOpenAILongContextBillingExtra(req.Platform, req.Extra); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1092,23 +1106,28 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	var createdAccount *service.Account
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  req.Name,
-			Notes:                 req.Notes,
-			Platform:              req.Platform,
-			Type:                  req.Type,
-			Credentials:           req.Credentials,
-			Extra:                 req.Extra,
-			ProxyID:               req.ProxyID,
-			Concurrency:           req.Concurrency,
-			Priority:              req.Priority,
-			RateMultiplier:        req.RateMultiplier,
-			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
-			ExpiresAt:             req.ExpiresAt,
-			AutoPauseOnExpired:    req.AutoPauseOnExpired,
-			ProbeEnabled:          req.ProbeEnabled,
-			SkipMixedChannelCheck: skipCheck,
+		account, execErr := h.adminService.CreateAccount(service.WithCodexGatewayActor(ctx, adminActorScope(c)), &service.CreateAccountInput{
+			GatewayOAuthClientID:        req.GatewayOAuthClientID,
+			GatewayPreserveRefreshToken: req.GatewayPreserveRefreshToken,
+			GatewayCredentials:          req.GatewayCredentials,
+			GatewayOperationKey:         adminActorScope(c) + ":" + c.GetHeader("Idempotency-Key"),
+			GatewayLookupKey:            adminActorScope(c) + ":" + c.GetHeader("Idempotency-Key"),
+			Name:                        req.Name,
+			Notes:                       req.Notes,
+			Platform:                    req.Platform,
+			Type:                        req.Type,
+			Credentials:                 req.Credentials,
+			Extra:                       req.Extra,
+			ProxyID:                     req.ProxyID,
+			Concurrency:                 req.Concurrency,
+			Priority:                    req.Priority,
+			RateMultiplier:              req.RateMultiplier,
+			LoadFactor:                  req.LoadFactor,
+			GroupIDs:                    req.GroupIDs,
+			ExpiresAt:                   req.ExpiresAt,
+			AutoPauseOnExpired:          req.AutoPauseOnExpired,
+			ProbeEnabled:                req.ProbeEnabled,
+			SkipMixedChannelCheck:       skipCheck,
 		})
 		if execErr != nil {
 			return nil, execErr
@@ -1210,6 +1229,10 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if len(req.GatewayCredentials) > 0 && strings.TrimSpace(c.GetHeader("Idempotency-Key")) == "" {
+		response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+		return
+	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
@@ -1224,24 +1247,29 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
-	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
-		Name:                  req.Name,
-		Notes:                 req.Notes,
-		Type:                  req.Type,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
-		Priority:              req.Priority,    // 指针类型，nil 表示未提供
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		Status:                req.Status,
-		GroupIDs:              req.GroupIDs,
-		ExpiresAt:             req.ExpiresAt,
-		AutoPauseOnExpired:    req.AutoPauseOnExpired,
-		ProbeEnabled:          req.ProbeEnabled,
-		RateSyncEnabled:       req.RateSyncEnabled,
-		SkipMixedChannelCheck: skipCheck,
+	account, err := h.adminService.UpdateAccount(service.WithCodexGatewayActor(c.Request.Context(), adminActorScope(c)), accountID, &service.UpdateAccountInput{
+		GatewayOAuthClientID:        req.GatewayOAuthClientID,
+		GatewayPreserveRefreshToken: req.GatewayPreserveRefreshToken,
+		GatewayCredentials:          req.GatewayCredentials,
+		GatewayOperationKey:         adminActorScope(c) + ":" + c.GetHeader("Idempotency-Key"),
+		GatewayLookupKey:            adminActorScope(c) + ":" + c.GetHeader("Idempotency-Key"),
+		Name:                        req.Name,
+		Notes:                       req.Notes,
+		Type:                        req.Type,
+		Credentials:                 req.Credentials,
+		Extra:                       req.Extra,
+		ProxyID:                     req.ProxyID,
+		Concurrency:                 req.Concurrency, // 指针类型，nil 表示未提供
+		Priority:                    req.Priority,    // 指针类型，nil 表示未提供
+		RateMultiplier:              req.RateMultiplier,
+		LoadFactor:                  req.LoadFactor,
+		Status:                      req.Status,
+		GroupIDs:                    req.GroupIDs,
+		ExpiresAt:                   req.ExpiresAt,
+		AutoPauseOnExpired:          req.AutoPauseOnExpired,
+		ProbeEnabled:                req.ProbeEnabled,
+		RateSyncEnabled:             req.RateSyncEnabled,
+		SkipMixedChannelCheck:       skipCheck,
 	})
 	if err != nil {
 		// 检查是否为混合渠道错误
@@ -1308,6 +1336,10 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	if pending, readErr := h.adminService.GetAccount(c.Request.Context(), accountID); readErr == nil && pending != nil && pending.IsOpenAICodex() {
+		c.JSON(http.StatusAccepted, gin.H{"code": 0, "message": "Deletion pending", "data": gin.H{"pending": true, "account": h.buildAccountResponseWithRuntime(c.Request.Context(), pending)}})
+		return
+	}
 	response.Success(c, gin.H{"message": "Account deleted successfully"})
 }
 
@@ -1453,6 +1485,11 @@ func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 // refreshSingleAccount refreshes credentials for a single OAuth account.
 // Returns (updatedAccount, warning, error) where warning is used for Antigravity ProjectIDMissing scenario.
 func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
+	if account.IsOpenAICodex() {
+		updated, err := h.adminService.RefreshAccountCredentials(ctx, account.ID)
+		return updated, "", err
+	}
+
 	if account.IsOpenAIBPS() {
 		return nil, "", infraerrors.BadRequest("BPS_MANUAL_TOKEN_ONLY", "Replace access_token in the BPS account settings; automatic refresh is unsupported")
 	}
@@ -1611,7 +1648,15 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	updatedAccount, warning, err := h.refreshSingleAccount(c.Request.Context(), account)
+	refreshCtx := c.Request.Context()
+	if account.IsOpenAICodex() {
+		if strings.TrimSpace(c.GetHeader("Idempotency-Key")) == "" {
+			response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+			return
+		}
+		refreshCtx = service.WithCodexGatewayOperationKey(refreshCtx, adminActorScope(c)+":"+c.GetHeader("Idempotency-Key"))
+	}
+	updatedAccount, warning, err := h.refreshSingleAccount(refreshCtx, account)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -2089,7 +2134,11 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 			continue
 		}
 		g.Go(func() error {
-			_, warning, err := h.refreshSingleAccount(gctx, acc)
+			refreshCtx := gctx
+			if acc.IsOpenAICodex() && strings.TrimSpace(c.GetHeader("Idempotency-Key")) != "" {
+				refreshCtx = service.WithCodexGatewayOperationKey(gctx, adminActorScope(c)+":"+c.GetHeader("Idempotency-Key"))
+			}
+			_, warning, err := h.refreshSingleAccount(refreshCtx, acc)
 			mu.Lock()
 			if err != nil {
 				failedCount++
@@ -2136,6 +2185,10 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 		return
 	}
 	for _, item := range req.Accounts {
+		if item.Platform == service.PlatformOpenAICodex && strings.TrimSpace(c.GetHeader("Idempotency-Key")) == "" {
+			response.ErrorFrom(c, service.ErrIdempotencyKeyRequired)
+			return
+		}
 		if err := service.ValidateOpenAILongContextBillingExtra(item.Platform, item.Extra); err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -2158,7 +2211,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 		var antigravityPrivacyAccounts []*service.Account
 		var openaiPrivacyAccounts []*service.Account
 
-		for _, item := range req.Accounts {
+		for itemIndex, item := range req.Accounts {
 			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
 				failed++
 				results = append(results, gin.H{
@@ -2183,21 +2236,27 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
-			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-				Name:                  item.Name,
-				Notes:                 item.Notes,
-				Platform:              item.Platform,
-				Type:                  item.Type,
-				Credentials:           item.Credentials,
-				Extra:                 item.Extra,
-				ProxyID:               item.ProxyID,
-				Concurrency:           item.Concurrency,
-				Priority:              item.Priority,
-				RateMultiplier:        item.RateMultiplier,
-				GroupIDs:              item.GroupIDs,
-				ExpiresAt:             item.ExpiresAt,
-				AutoPauseOnExpired:    item.AutoPauseOnExpired,
-				SkipMixedChannelCheck: skipCheck,
+			account, err := h.adminService.CreateAccount(service.WithCodexGatewayActor(ctx, adminActorScope(c)), &service.CreateAccountInput{
+				GatewayOAuthClientID:        item.GatewayOAuthClientID,
+				GatewayPreserveRefreshToken: item.GatewayPreserveRefreshToken,
+				GatewayCredentials:          item.GatewayCredentials,
+				GatewayOperationKey:         fmt.Sprintf("%s:batch:%s:%d", adminActorScope(c), c.GetHeader("Idempotency-Key"), itemIndex),
+				GatewayLookupKey:            adminActorScope(c) + ":" + c.GetHeader("Idempotency-Key"),
+				GatewayItemIndex:            itemIndex,
+				Name:                        item.Name,
+				Notes:                       item.Notes,
+				Platform:                    item.Platform,
+				Type:                        item.Type,
+				Credentials:                 item.Credentials,
+				Extra:                       item.Extra,
+				ProxyID:                     item.ProxyID,
+				Concurrency:                 item.Concurrency,
+				Priority:                    item.Priority,
+				RateMultiplier:              item.RateMultiplier,
+				GroupIDs:                    item.GroupIDs,
+				ExpiresAt:                   item.ExpiresAt,
+				AutoPauseOnExpired:          item.AutoPauseOnExpired,
+				SkipMixedChannelCheck:       skipCheck,
 			})
 			if err != nil {
 				failed++
@@ -2878,7 +2937,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 	// Handle OpenAI accounts
-	if account.IsOpenAI() {
+	if account.IsOpenAI() || account.IsOpenAICodex() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
 		// retain the legacy local catalog below so the test dialog remains usable.
 		if h.accountTestService != nil {
@@ -3180,6 +3239,22 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		response.NotFound(c, "Account not found")
 		return
 	}
+	if account.IsOpenAICodex() {
+		provider, ok := h.adminService.(interface {
+			SetCodexGatewayPrivacy(context.Context, int64) (*service.Account, error)
+		})
+		if !ok {
+			response.BadRequest(c, "Gateway account service is unavailable")
+			return
+		}
+		updated, err := provider.SetCodexGatewayPrivacy(c.Request.Context(), accountID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
+		return
+	}
 	if account.Type != service.AccountTypeOAuth {
 		response.BadRequest(c, "Only OAuth accounts support privacy setting")
 		return
@@ -3228,6 +3303,22 @@ func (h *AccountHandler) RefreshTier(c *gin.Context) {
 		return
 	}
 
+	if account.IsOpenAICodex() {
+		provider, ok := h.adminService.(interface {
+			RefreshCodexGatewayProfile(context.Context, int64) (*service.Account, error)
+		})
+		if !ok {
+			response.BadRequest(c, "Gateway account service is unavailable")
+			return
+		}
+		updated, err := provider.RefreshCodexGatewayProfile(ctx, accountID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, h.buildAccountResponseWithRuntime(ctx, updated))
+		return
+	}
 	if account.Platform != service.PlatformGemini || account.Type != service.AccountTypeOAuth {
 		response.BadRequest(c, "Only Gemini OAuth accounts support tier refresh")
 		return

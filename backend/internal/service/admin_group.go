@@ -279,7 +279,7 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	switch platform {
 	case PlatformOpenAIBPS:
 		return OpenAIBPSDefaultModels()
-	case PlatformOpenAI:
+	case PlatformOpenAI, PlatformOpenAICodex:
 		return openai.DefaultModelIDs()
 	case PlatformGemini:
 		ids := make([]string, 0, len(geminicli.DefaultModels))
@@ -347,7 +347,7 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 }
 
 func groupSupportsOpenAIFast(platform string) bool {
-	return platform == PlatformOpenAI || platform == PlatformComposite
+	return platform == PlatformOpenAI || platform == PlatformOpenAICodex || platform == PlatformComposite
 }
 
 func sanitizeGroupOpenAIFast(group *Group) {
@@ -619,7 +619,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
-	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
+	if group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
@@ -1034,16 +1034,16 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
-	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
+	if group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
-	// 固定账号 manifest 配置：按最终平台归一化（切出 openai 平台时静默归零，
+	// 固定账号 manifest 配置：按最终平台归一化（切出 OpenAI/Codex 平台时静默归零，
 	// 与 ForceOpenAIFast 同一收口）；校验仅在本次显式携带配置时进行，
 	// 避免脏 ID 阻塞无关字段更新。
 	group.CodexModelsManifestConfig = normalizeCodexModelsManifestConfig(group.Platform, group.CodexModelsManifestConfig)
 	if input.CodexModelsManifestConfig != nil {
-		if err := s.validateCodexModelsManifestConfig(ctx, id, group.CodexModelsManifestConfig); err != nil {
+		if err := s.validateCodexModelsManifestConfig(ctx, group, group.CodexModelsManifestConfig); err != nil {
 			return nil, err
 		}
 	}

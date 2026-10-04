@@ -258,6 +258,7 @@
           <template #cell-platform_type="{ row }">
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
+                <CodexGatewayStatus v-if="row.platform === 'openai_codex'" :gateway="row.gateway" />
                 <PlatformTypeBadge :platform="row.platform" :type="row.type"
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
@@ -460,15 +461,15 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" @test="handleTest" />
-    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" @codex-tickets="openEditCodexTickets" @test="handleTest" />
+    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" :copy-from="codexCopySource" @close="showCreate = false; codexCopySource = undefined" @created="reload" @test="handleTest" />
+    <EditAccountModal :show="showEdit" :account="edAcc" :initial-reauthorize="codexReauthorize" :proxies="proxies" :groups="groups" @close="showEdit = false; codexReauthorize = false" @updated="handleAccountUpdated" @codex-tickets="openEditCodexTickets" @test="handleTest" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" @completed="handleAccountTestCompleted" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <CodexTicketDashboard :show="showCodexTickets" :account="codexTicketAcc" @close="showCodexTickets = false" @updated="handleAccountUpdated" />
     <CodexDiagnosticModal :show="showCodexDiagnostic" :account="codexDiagnosticAcc" @close="showCodexDiagnostic = false" @completed="handleCodexDiagnosticCompleted" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexDiagnostic" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :anchor-rect="menu.anchorRect" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @codex-diagnostic="openCodexDiagnostic" @gateway-sync="handleGatewaySync" @gateway-profile="handleGatewayProfile" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -530,6 +531,7 @@ import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
+import CodexGatewayStatus from '@/components/account/CodexGatewayStatus.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
@@ -602,7 +604,9 @@ const selTypes = computed<AccountType[]>(() => {
   return [...types]
 })
 const showCreate = ref(false)
+const codexCopySource = ref<Account | undefined>()
 const showEdit = ref(false)
+const codexReauthorize = ref(false)
 const showCodexTickets = ref(false)
 const codexTicketAcc = ref<Account | null>(null)
 const showCodexDiagnostic = ref(false)
@@ -1692,6 +1696,9 @@ function grok45ResponsesPlanIsHeavy(snapshot: Record<string, any> | undefined): 
 // from grok-4.5 Responses (or a carried 4.5 hint).
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
+  if (row.platform === 'openai_codex') {
+    return firstNonBlankString(row.gateway?.profile?.plan_type, row.gateway?.snapshot?.metadata?.plan_type, row.credentials?.plan_type, row.parent_plan_type)
+  }
   if (row.platform === 'grok') {
     const extra = (row.extra || {}) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
@@ -1727,6 +1734,7 @@ function getAccountPlanType(row: any): string | undefined {
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {
+  if (row?.platform === 'openai_codex') return row.gateway?.authentication || row.gateway?.snapshot?.credential?.mode
   if (!row || row.platform !== 'openai' || row.type !== 'oauth') return undefined
   const authMode = row.credentials?.auth_mode
   return typeof authMode === 'string' && authMode.trim() ? authMode : undefined
@@ -1759,7 +1767,7 @@ function getAntigravityTierLabel(row: any): string | null {
 // 账号显示邮箱:优先账号自身(extra/credentials),影子账号回退母账号 parent_email。
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
-  return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
+  return row.extra?.email_address || row.extra?.email || row.gateway?.profile?.email || row.gateway?.snapshot?.metadata?.email || row.credentials?.email || row.parent_email || ''
 }
 
 function accountHomepageUrl(row: Account): string {
@@ -2399,9 +2407,10 @@ const handleSchedule = async (a: Account) => {
   }
 }
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
-const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
+const handleReAuth = async (a: Account) => { if (a.platform === 'openai_codex') { codexReauthorize.value = true; await handleEdit(a); return }; reAuthAcc.value = a; showReAuth.value = true }
 const duplicatingAccountIDs = new Set<number>()
 const handleDuplicateAccount = async (a: Account) => {
+  if (a.platform === 'openai_codex') { const source = await loadAccountDetails(a); if (source) { codexCopySource.value = source; showCreate.value = true }; return }
   if (duplicatingAccountIDs.has(a.id)) return
   duplicatingAccountIDs.add(a.id)
   try {
@@ -2414,6 +2423,16 @@ const handleDuplicateAccount = async (a: Account) => {
   } finally {
     duplicatingAccountIDs.delete(a.id)
   }
+}
+const handleGatewaySync = async (a: Account) => {
+  try {
+    if (a.gateway?.sync_state === 'pending_delete') { await adminAPI.accounts.delete(a.id); await reload(); return }
+    patchAccountInList(await adminAPI.accounts.synchronizeCodexGateway(a.id))
+  } catch (error: any) { appStore.showError(error.message ?? t('admin.accounts.failedToUpdate')) }
+}
+const handleGatewayProfile = async (a: Account) => {
+  try { patchAccountInList(await adminAPI.accounts.refreshCodexGatewayProfile(a.id)) }
+  catch (error: any) { appStore.showError(error.message ?? t('admin.accounts.failedToUpdate')) }
 }
 const handleRefresh = async (a: Account) => {
   try {

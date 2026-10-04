@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 import type { CheckMode, MonitorStatus, Provider } from '@/api/admin/channelMonitor'
 import {
   PROVIDER_OPENAI,
+  PROVIDER_OPENAI_CODEX,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
@@ -99,6 +100,7 @@ export function useChannelMonitorFormat() {
 
   function providerBadgeClass(p: Provider | string): string {
     switch (p) {
+      case PROVIDER_OPENAI_CODEX:
       case PROVIDER_OPENAI:
         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
       case PROVIDER_ANTHROPIC:
@@ -149,6 +151,7 @@ export function useChannelMonitorFormat() {
    */
   function providerPickerClass(p: Provider | string, active: boolean): string {
     switch (p) {
+      case PROVIDER_OPENAI_CODEX:
       case PROVIDER_OPENAI:
         return active
           ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-400'
@@ -257,7 +260,8 @@ export function hslForPct(pct: number | null | undefined): string | undefined {
  */
 export function providerGradient(provider: string): string {
   switch (provider) {
-    case PROVIDER_OPENAI:
+    case PROVIDER_OPENAI_CODEX:
+      case PROVIDER_OPENAI:
       return 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/20'
     case PROVIDER_ANTHROPIC:
       return 'bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-500/10 dark:to-amber-500/20'

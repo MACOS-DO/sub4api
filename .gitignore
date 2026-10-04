@@ -171,3 +171,6 @@ scripts/*
 !scripts/release/**
 __pycache__/
 *.pyc
+
+# Gateway integration contract and verification record
+!docs/openai-codex-gateway.md

@@ -1263,6 +1263,7 @@ function generateRoutedCodexFiles(
   const preferredModels: Partial<Record<GroupPlatform, string>> = {
     openai: 'gpt-5.5',
     openai_bps: 'gpt-6-astra',
+    openai_codex: 'gpt-6-astra',
     anthropic: 'claude-sonnet-4-6',
     gemini: 'gemini-2.5-pro',
     antigravity: 'claude-sonnet-4-6',
@@ -1280,6 +1281,7 @@ function generateRoutedCodexFiles(
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     openai_bps: 'OpenAI BPS',
+    openai_codex: 'OpenAI Codex',
     gemini: 'Gemini',
     antigravity: 'Antigravity',
     grok: 'Grok',

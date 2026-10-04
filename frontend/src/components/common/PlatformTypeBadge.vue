@@ -94,8 +94,9 @@ const normalizedAuthMode = computed(() =>
 )
 
 const typeLabel = computed(() => {
+  if (props.type === 'gateway') return t('admin.accounts.codexGateway.managedType')
   if (props.platform === 'openai_bps') return 'Access Token'
-  if (props.platform === 'openai' && props.type === 'oauth') {
+  if ((props.platform === 'openai' && props.type === 'oauth') || props.platform === 'openai_codex') {
     if (normalizedAuthMode.value === 'agentidentity') return 'Agent Identity'
     if (normalizedAuthMode.value === 'personalaccesstoken') return 'PAT'
   }
@@ -121,7 +122,7 @@ const planLabel = computed(() => {
   if (!normalizedPlanType.value) return ''
   // ChatGPT 档位命名（Pro 100 / Pro 200 / Pro 500、Business / Business Premium）只适用于
   // OpenAI：Antigravity 与 Grok 各自的 pro/team 沿用下面的通用标签。
-  if (props.platform === 'openai') {
+  if (props.platform === 'openai' || props.platform === 'openai_codex') {
     const label = openAIPlanTypeLabel(props.planType)
     if (label) return label
   }
@@ -180,7 +181,7 @@ const platformClass = computed(() => {
   if (props.platform === 'anthropic') {
     return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
   }
-  if (props.platform === 'openai') {
+  if (props.platform === 'openai' || props.platform === 'openai_codex') {
     return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
   }
   if (props.platform === 'antigravity') {
@@ -261,14 +262,14 @@ const planBadgeClass = computed(() => {
     return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
   }
   if (normalizedPlanType.value === 'team' || normalizedPlanType.value === 'selfservebusinessprolite' ||
-    (props.platform === 'openai' && ['selfservebusinessusagebased', 'business', 'enterprise', 'ent26', 'enterprisecbpautomation', 'enterprisecbpusagebased', 'edu', 'eduplus', 'edupro'].includes(normalizedPlanType.value))) {
+    ((props.platform === 'openai' || props.platform === 'openai_codex') && ['selfservebusinessusagebased', 'business', 'enterprise', 'ent26', 'enterprisecbpautomation', 'enterprisecbpusagebased', 'edu', 'eduplus', 'edupro'].includes(normalizedPlanType.value))) {
     return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
   }
   if (
     normalizedPlanType.value === 'pro' ||
     normalizedPlanType.value === 'chatgptpro' ||
     normalizedPlanType.value === 'prolite' ||
-    (props.platform === 'openai' && normalizedPlanType.value === 'promax')
+    ((props.platform === 'openai' || props.platform === 'openai_codex') && normalizedPlanType.value === 'promax')
   ) {
     return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
   }
@@ -297,9 +298,9 @@ const expiresLabel = computed(() => {
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting
 const privacyBadge = computed(() => {
-  if (props.type !== 'oauth' || !props.privacyMode) return null
+  if ((props.type !== 'oauth' && !(props.platform === 'openai_codex' && props.type === 'gateway')) || !props.privacyMode) return null
   // 支持 OpenAI 和 Antigravity 平台
-  if (props.platform !== 'openai' && props.platform !== 'antigravity') return null
+  if (props.platform !== 'openai' && props.platform !== 'openai_codex' && props.platform !== 'antigravity') return null
 
   const shieldCheck = 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'
   const shieldX = 'M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285zM12 18h.008v.008H12V18z'

@@ -93,6 +93,9 @@ func FilterHeaders(src http.Header, filter *CompiledHeaderFilter) http.Header {
 	filtered := make(http.Header, len(src))
 	for key, values := range src {
 		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "x-codex4server-") {
+			continue
+		}
 		if _, blocked := filter.forceRemove[lower]; blocked {
 			continue
 		}

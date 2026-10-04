@@ -53,6 +53,9 @@ func codexAccountIdentitySource(c *gin.Context, fallback *Account) *Account {
 // otherwise falls back only to a persistent fingerprint seed: local row IDs are
 // deployment-relative and must never become upstream identity.
 func codexAccountIdentityNamespace(account *Account) string {
+	if account.IsOpenAICodex() && account.Gateway != nil {
+		return "gateway:" + account.Gateway.BindingID
+	}
 	if account == nil || !account.IsOpenAIOAuthLike() {
 		return ""
 	}
@@ -124,6 +127,9 @@ var codexAccountIdentityFields = []struct {
 }
 
 func applyCodexAccountIdentityFields(values map[string]any, account *Account, apiKeyID int64) bool {
+	if account.IsOpenAICodex() {
+		return false
+	}
 	if values == nil || codexAccountIdentityNamespace(account) == "" {
 		return false
 	}
@@ -163,6 +169,9 @@ func applyCodexAccountIdentityEmbeddedMetadata(values map[string]any, account *A
 }
 
 func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, account *Account, apiKeyID int64) bool {
+	if account.IsOpenAICodex() {
+		return false
+	}
 	if requestBody == nil || codexAccountIdentityNamespace(account) == "" {
 		return false
 	}
@@ -196,6 +205,9 @@ func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, acco
 // subobjects with gjson/sjson. The passthrough hot path never unmarshals the
 // potentially multi-megabyte request body.
 func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, apiKeyID int64) ([]byte, bool, error) {
+	if account.IsOpenAICodex() {
+		return body, false, nil
+	}
 	if len(body) == 0 || codexAccountIdentityNamespace(account) == "" {
 		return body, false, nil
 	}
@@ -250,6 +262,9 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 }
 
 func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, apiKeyID int64) {
+	if account.IsOpenAICodex() {
+		return
+	}
 	if headers == nil || codexAccountIdentityNamespace(account) == "" {
 		return
 	}

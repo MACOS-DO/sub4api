@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -394,21 +395,28 @@ type UpdateGroupInput struct {
 }
 
 type CreateAccountInput struct {
-	Name               string
-	Notes              *string
-	Platform           string
-	Type               string
-	Credentials        map[string]any
-	Extra              map[string]any
-	ProxyID            *int64
-	Concurrency        int
-	Priority           int
-	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor         *int
-	GroupIDs           []int64
-	ExpiresAt          *int64
-	AutoPauseOnExpired *bool
-	ProbeEnabled       *bool
+	GatewayOAuthClientID        string
+	GatewayPreserveRefreshToken bool
+	GatewayLookupKey            string
+	GatewayItemIndex            int
+	GatewayImportID             string
+	GatewayCredentials          json.RawMessage
+	GatewayOperationKey         string
+	Name                        string
+	Notes                       *string
+	Platform                    string
+	Type                        string
+	Credentials                 map[string]any
+	Extra                       map[string]any
+	ProxyID                     *int64
+	Concurrency                 int
+	Priority                    int
+	RateMultiplier              *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor                  *int
+	GroupIDs                    []int64
+	ExpiresAt                   *int64
+	AutoPauseOnExpired          *bool
+	ProbeEnabled                *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -426,23 +434,29 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
-	Type                  string // Account type: oauth, setup-token, apikey
-	Credentials           map[string]any
-	Extra                 map[string]any
-	ProxyID               *int64
-	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
-	Priority              *int     // 使用指针区分"未提供"和"设置为0"
-	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor            *int
-	Status                string
-	GroupIDs              *[]int64
-	ExpiresAt             *int64
-	AutoPauseOnExpired    *bool
-	ProbeEnabled          *bool
-	RateSyncEnabled       *bool
-	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
+	GatewayOAuthClientID        string
+	GatewayPreserveRefreshToken bool
+	GatewayLookupKey            string
+	GatewayItemIndex            int
+	GatewayCredentials          json.RawMessage
+	GatewayOperationKey         string
+	Name                        string
+	Notes                       *string
+	Type                        string // Account type: oauth, setup-token, apikey
+	Credentials                 map[string]any
+	Extra                       map[string]any
+	ProxyID                     *int64
+	Concurrency                 *int     // 使用指针区分"未提供"和"设置为0"
+	Priority                    *int     // 使用指针区分"未提供"和"设置为0"
+	RateMultiplier              *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor                  *int
+	Status                      string
+	GroupIDs                    *[]int64
+	ExpiresAt                   *int64
+	AutoPauseOnExpired          *bool
+	ProbeEnabled                *bool
+	RateSyncEnabled             *bool
+	SkipMixedChannelCheck       bool // 跳过混合渠道检查（用户已确认风险）
 }
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
@@ -683,6 +697,7 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
+	codexGateway         *CodexGatewayService
 	cfg                  *config.Config
 	userRepo             UserRepository
 	groupRepo            GroupRepository
@@ -753,7 +768,12 @@ func NewAdminService(
 	compositeResolver *CompositeRouteResolver,
 	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
+	var codex *CodexGatewayService
+	if provider, ok := runtimeBlocker.(*OpenAIGatewayService); ok && provider != nil {
+		codex = provider.codexGateway
+	}
 	return &adminServiceImpl{
+		codexGateway:         codex,
 		cfg:                  cfg,
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,

@@ -13,13 +13,13 @@ const maxCodexModelsManifestAccounts = 10
 
 // normalizeCodexModelsManifestConfig normalizes a group's pinned-accounts Codex
 // manifest config before persistence:
-//   - Non-OpenAI platforms always persist a disabled zero config (spec: silently
+//   - Platforms other than OpenAI/OpenAI Codex persist a disabled zero config (silently
 //     normalize instead of rejecting).
 //   - Account IDs are de-duplicated preserving first-seen order; invalid IDs (<= 0)
 //     are dropped. The list is kept even when disabled so toggling enabled back
 //     on does not lose the previous selection.
 func normalizeCodexModelsManifestConfig(platform string, cfg GroupCodexModelsManifestConfig) GroupCodexModelsManifestConfig {
-	if platform != PlatformOpenAI {
+	if platform != PlatformOpenAI && platform != PlatformOpenAICodex {
 		return GroupCodexModelsManifestConfig{}
 	}
 	out := GroupCodexModelsManifestConfig{
@@ -49,10 +49,10 @@ func normalizeCodexModelsManifestConfig(platform string, cfg GroupCodexModelsMan
 
 // validateCodexModelsManifestConfig enforces the admin contract for an enabled
 // pinned-accounts config: at least one account, at most
-// maxCodexModelsManifestAccounts, and every account must be an active OpenAI
-// member of the group. Validation failures return 400 with reason
+// maxCodexModelsManifestAccounts, and every account must be an active member
+// of the group with the same platform. Validation failures return 400 with reason
 // INVALID_CODEX_MODELS_MANIFEST_CONFIG and never reach persistence.
-func (s *adminServiceImpl) validateCodexModelsManifestConfig(ctx context.Context, groupID int64, cfg GroupCodexModelsManifestConfig) error {
+func (s *adminServiceImpl) validateCodexModelsManifestConfig(ctx context.Context, group *Group, cfg GroupCodexModelsManifestConfig) error {
 	if !cfg.Enabled {
 		return nil
 	}
@@ -62,14 +62,14 @@ func (s *adminServiceImpl) validateCodexModelsManifestConfig(ctx context.Context
 	if len(cfg.AccountIDs) > maxCodexModelsManifestAccounts {
 		return infraerrors.Newf(http.StatusBadRequest, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", "codex models manifest config allows at most %d accounts, got %d", maxCodexModelsManifestAccounts, len(cfg.AccountIDs))
 	}
-	accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+	accounts, err := s.accountRepo.ListByGroup(ctx, group.ID)
 	if err != nil {
 		return fmt.Errorf("load group accounts for codex models manifest config: %w", err)
 	}
 	members := make(map[int64]struct{}, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
-		if acc.IsActive() && acc.Platform == PlatformOpenAI {
+		if acc.IsActive() && acc.Platform == group.Platform {
 			members[acc.ID] = struct{}{}
 		}
 	}
@@ -80,7 +80,7 @@ func (s *adminServiceImpl) validateCodexModelsManifestConfig(ctx context.Context
 		}
 	}
 	if len(invalid) > 0 {
-		return infraerrors.Newf(http.StatusBadRequest, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", "codex models manifest config contains accounts not in this group or not active openai accounts: %v", invalid)
+		return infraerrors.Newf(http.StatusBadRequest, "INVALID_CODEX_MODELS_MANIFEST_CONFIG", "codex models manifest config requires active accounts of this group's platform: %v", invalid)
 	}
 	return nil
 }

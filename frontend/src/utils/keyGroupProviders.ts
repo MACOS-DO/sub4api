@@ -9,6 +9,7 @@ const PROVIDER_BY_PLATFORM: Record<GroupPlatform, KeyGroupProvider> = {
   anthropic: 'anthropic',
   openai: 'openai',
   openai_bps: 'openai',
+  openai_codex: 'openai',
   kimi: 'domestic',
   zhipu: 'domestic',
   deepseek: 'domestic',

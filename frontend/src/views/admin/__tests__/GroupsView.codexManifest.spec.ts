@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminGroup, CodexModelsManifestConfig } from "@/types";
 import GroupsView from "@/views/admin/GroupsView.vue";
+import { adminAPI } from "@/api/admin";
 
 const {
   listGroups,
@@ -157,6 +158,7 @@ const BaseDialogStub = defineComponent({
 const CodexManifestAccountsFieldStub = defineComponent({
   name: "CodexManifestAccountsField",
   props: {
+    platform: String,
     modelValue: {
       type: Object as PropType<CodexModelsManifestConfig>,
       required: true,
@@ -248,6 +250,35 @@ describe("GroupsView Codex manifest binding", () => {
     getUsageSummary.mockResolvedValue([]);
     getCapacitySummary.mockResolvedValue([]);
     getLiveCapability.mockResolvedValue({ supported: false });
+  });
+
+  it("saves and reloads fixed Gateway accounts without clearing the configuration", async () => {
+    const group = { ...sourceGroup, platform: 'openai_codex' as const };
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 });
+    vi.mocked(adminAPI.groups.update).mockResolvedValue(group as never);
+    vi.mocked(adminAPI.accounts.getById).mockResolvedValue({ id: 17, name: 'Gateway account' } as never);
+    const wrapper = mountView();
+    await flushPromises();
+    const edit = () => wrapper.findAll('button').find(button => button.text().includes('common.edit'))!;
+    await edit().trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent(CodexManifestAccountsFieldStub).props('platform')).toBe('openai_codex');
+    await wrapper.get('[data-testid="codex-manifest-enable"]').trigger('click');
+    await wrapper.get('[data-testid="codex-manifest-select-account"]').trigger('click');
+    await wrapper.get('form#edit-group-form').trigger('submit.prevent');
+    await flushPromises();
+    expect(adminAPI.groups.update).toHaveBeenCalledWith(group.id, expect.objectContaining({
+      codex_models_manifest_config: { enabled: true, account_ids: [17], fallback_to_scheduler: false }
+    }));
+    const saved = { ...group, codex_models_manifest_config: { enabled: true, account_ids: [17], fallback_to_scheduler: false } };
+    wrapper.unmount();
+    listGroups.mockResolvedValue({ items: [saved], total: 1, page: 1, page_size: 20, pages: 1 });
+    const reopened = mountView();
+    await flushPromises();
+    await reopened.findAll('button').find(button => button.text().includes('common.edit'))!.trigger('click');
+    await flushPromises();
+    expect(reopened.get('[data-testid="codex-manifest-value"]').text()).toBe(JSON.stringify(saved.codex_models_manifest_config));
+    reopened.unmount();
   });
 
   it("preserves consecutive child updates on the reactive edit config", async () => {

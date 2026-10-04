@@ -26,6 +26,12 @@ func resolveCredentialAccount(ctx context.Context, repo AccountRepository, accou
 	if parent.IsShadow() {
 		return nil, fmt.Errorf("spark shadow parent %d is itself a shadow", parent.ID)
 	}
+	if account.IsOpenAICodex() {
+		if !parent.IsOpenAICodex() {
+			return nil, fmt.Errorf("Gateway shadow parent has a different platform")
+		}
+		return parent, nil
+	}
 	if !parent.IsOpenAIOAuth() {
 		return nil, fmt.Errorf("spark shadow parent %d is not OpenAI OAuth", parent.ID)
 	}

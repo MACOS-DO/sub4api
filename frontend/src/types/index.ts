@@ -538,7 +538,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai_bps' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai_bps' | 'openai_codex' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -918,8 +918,8 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai_bps' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go'
-export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
+export type AccountPlatform = 'anthropic' | 'openai_bps' | 'openai_codex' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go'
+export type AccountType = 'gateway' | 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
@@ -1198,6 +1198,7 @@ export interface OpenCodeGoUsageSettings {
 export type { BPSCredentialState } from "@/utils/openaiBps"
 
 export interface Account {
+  gateway?: CodexGatewayState
   id: number
   name: string
   notes?: string | null
@@ -1535,7 +1536,33 @@ export interface OpenAIResponsesState {
   openai_responses_supported?: boolean
 }
 
+export type GatewayCredentialInput =
+  | { type: 'oauth_code'; session_id: string; code: string; state: string; chatgpt_account_id?: string }
+  | { type: 'auth_json'; auth_json: Record<string, unknown> }
+  | { type: 'tokens'; access_token: string; chatgpt_account_id: string; refresh_token?: string; chatgpt_plan_type?: string }
+  | { type: 'refresh_token'; refresh_token: string; chatgpt_account_id?: string }
+  | { type: 'personal_access_token'; access_token: string }
+  | { type: 'setup_token'; access_token: string; chatgpt_account_id?: string }
+  | { type: 'agent_identity'; agent_runtime_id: string; agent_private_key: string; task_id?: string; chatgpt_account_id?: string }
+
+export interface CodexGatewayState {
+  profile?: { email?: string | null; chatgpt_user_id?: string | null; plan_type?: string | null; subscription_expires_at?: string | null }
+  binding_id: string
+  owner_account_id: number
+  revision: number
+  authentication: string
+  sync_state: string
+  operation_id?: string
+  error?: { code: string; message: string }
+  service_available?: boolean
+  synced_at?: string
+  snapshot?: { id: string; revision: number; chatgpt_account_id?: string | null; oauth_client_id?: string | null; status: string; can_accept_requests: boolean; credential: { mode: string; refresh_blocked: boolean; refresh_rejected: boolean } }
+}
+
 export interface CreateAccountRequest {
+  gateway_credentials?: GatewayCredentialInput
+  gateway_oauth_client_id?: string
+  gateway_preserve_refresh_token?: boolean
   name: string
   notes?: string | null
   platform: AccountPlatform
@@ -1555,6 +1582,9 @@ export interface CreateAccountRequest {
 }
 
 export interface UpdateAccountRequest {
+  gateway_credentials?: GatewayCredentialInput
+  gateway_oauth_client_id?: string
+  gateway_preserve_refresh_token?: boolean
   name?: string
   notes?: string | null
   type?: AccountType
@@ -1573,6 +1603,45 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+}
+
+export interface CodexGatewayCapabilities {
+  api_version: number
+  storage_mode: string
+  shared_pg_layout_supported: boolean
+  persistent_account_operations_supported: boolean
+  max_request_bytes: number
+  supported_credential_types?: string[]
+  preserve_refresh_token_supported?: boolean
+}
+
+export interface CodexOAuthSession {
+  session_id: string
+  auth_url: string
+  expires_at: string
+}
+
+export interface CodexGatewayOperationItem {
+  account_id: number
+  operation_id: string
+  revision: number
+  kind: string
+  state: string
+  index: number
+  error?: { code: string; message: string }
+}
+
+export interface CodexGatewayOperationResult { items: CodexGatewayOperationItem[] }
+
+export type CodexGatewayImportMethod = 'codex_session' | 'agent_identity' | 'refresh_token' | 'mobile_refresh_token' | 'personal_access_token' | 'setup_token'
+export interface CodexGatewayImportResult {
+  total: number
+  created: number
+  updated: number
+  pending: number
+  skipped: number
+  failed: number
+  items?: Array<CodexSessionImportItem & { action: 'created' | 'updated' | 'pending' | 'skipped' | 'failed' }>
 }
 
 export type GrokMediaEligibilityMode = 'auto' | 'enabled' | 'disabled'

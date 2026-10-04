@@ -138,7 +138,7 @@ func NormalizeMaxReasoningEffort(raw string) string {
 
 func reasoningEffortValuesForPlatform(platform string) []string {
 	switch platform {
-	case PlatformOpenAI, PlatformComposite:
+	case PlatformOpenAI, PlatformOpenAICodex, PlatformComposite:
 		return openAIReasoningEffortValues
 	case PlatformAnthropic:
 		return anthropicReasoningEffortValues
@@ -484,7 +484,7 @@ func sanitizeGroupReasoningEffortPolicy(group *Group) {
 	if mappingsErr != nil {
 		mappings = []ReasoningEffortMapping{}
 	}
-	if overLimit == "" || (group.Platform != PlatformAnthropic && group.Platform != PlatformOpenAI && group.Platform != PlatformComposite) {
+	if overLimit == "" || (group.Platform != PlatformAnthropic && group.Platform != PlatformOpenAI && group.Platform != PlatformOpenAICodex && group.Platform != PlatformComposite) {
 		overLimit = ReasoningEffortOverLimitDowngrade
 	}
 	group.MaxReasoningEffort = maxEffort

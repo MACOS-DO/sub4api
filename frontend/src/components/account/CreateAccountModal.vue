@@ -228,6 +228,10 @@
             <PlatformIcon platform="opencode_go" size="sm" />
             OpenCode
           </button>
+          <button type="button" @click="form.platform = 'openai_codex'; form.type = 'gateway'; accountCategory = 'oauth-based'"
+            :class="['flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium', form.platform === 'openai_codex' ? 'bg-white text-green-700 shadow-sm dark:bg-dark-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400']">
+            <PlatformIcon platform="openai_codex" size="sm" />OpenAI Codex
+          </button>
           <button type="button" @click="form.platform = 'openai_bps'"
             :class="['flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium', form.platform === 'openai_bps' ? 'bg-white text-green-700 shadow-sm dark:bg-dark-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400']">
             <PlatformIcon platform="openai_bps" size="sm" />OpenAI BPS
@@ -240,6 +244,15 @@
         <p class="text-sm font-medium">{{ t('admin.accounts.bps.riskDescription') }}</p>
       </div>
       <OpenAIBPSAccountFields v-if="form.platform === 'openai_bps'" v-model="bpsDraft" />
+      <OpenAICodexAccountFields
+        v-if="form.platform === 'openai_codex'"
+        v-model="codexGatewayDraft"
+        :proxy-id="form.proxy_id"
+        :standalone-auth="!isOAuthFlow"
+        :batch-loading="codexBatchLoading"
+        :batch-status="codexBatchStatus"
+        @batch-import="handleCodexBatchImport"
+      />
 
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
@@ -2311,7 +2324,7 @@
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="((form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow) || form.platform === 'openai_codex'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3102,7 +3115,7 @@
         </div>
       </div>
 
-      <OpenAIRequestTimezoneField v-if="form.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <OpenAIRequestTimezoneField v-if="form.platform === 'openai' || form.platform === 'openai_codex'" v-model="openAIRequestTimezone" />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
@@ -3227,7 +3240,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="(form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')) || (form.platform === 'openai_codex' && !hideAccountLongContextBilling && accountCategory === 'oauth-based')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3258,7 +3271,7 @@
         </div>
       </div>
 
-      <div v-if="form.platform === 'openai' && accountCategory === 'oauth-based'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="(form.platform === 'openai' || form.platform === 'openai_codex') && accountCategory === 'oauth-based'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label" for="codex-ticket-create-policy">{{ t('admin.accounts.openai.codexTicketAccountPolicy') }}</label>
         <select id="codex-ticket-create-policy" v-model="codexTicketAccountPolicy" class="input" data-testid="codex-ticket-create-policy">
           <option value="inherit">{{ t('admin.accounts.openai.codexTicketPolicyInherit') }}</option>
@@ -3268,7 +3281,7 @@
         <p class="input-hint">{{ t('admin.accounts.openai.codexTicketAccountPolicyDesc') }}</p>
       </div>
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        v-if="(form.platform === 'openai' || form.platform === 'openai_codex') && accountCategory === 'oauth-based'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -3324,7 +3337,7 @@
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        v-if="((form.platform === 'openai' || form.platform === 'openai_codex') && accountCategory === 'oauth-based') || form.platform === 'openai_codex'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3571,13 +3584,16 @@
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
-        :show-mobile-refresh-token-option="form.platform === 'openai'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok' || form.platform === 'openai_codex'"
+        :show-mobile-refresh-token-option="form.platform === 'openai' || form.platform === 'openai_codex'"
         :show-session-token-option="false"
         :show-access-token-option="false"
-        :show-codex-session-import-option="form.platform === 'openai'"
-        :show-agent-identity-option="form.platform === 'openai'"
-        :show-codex-pat-option="form.platform === 'openai'"
+        :show-codex-session-import-option="form.platform === 'openai' || form.platform === 'openai_codex'"
+        :show-agent-identity-option="form.platform === 'openai' || form.platform === 'openai_codex'"
+        :show-codex-pat-option="form.platform === 'openai' || form.platform === 'openai_codex'"
+        :show-auth-json-option="form.platform === 'openai_codex'"
+        :show-setup-token-option="form.platform === 'openai_codex'"
+        :strict-callback="form.platform === 'openai_codex'"
         :show-sso-option="form.platform === 'grok'"
         :show-email-password-option="false"
         :show-manual-option="true"
@@ -3591,6 +3607,9 @@
         @validate-session-token="handleValidateSessionToken"
         @import-codex-session="handleOpenAIImportCodexSession"
         @import-codex-pat="handleOpenAIImportCodexPAT"
+        @import-access-token="handleCodexAccessToken"
+        @import-gateway-credential="handleCodexGatewayCredential"
+        @callback-invalid="codexOAuthError = $event"
         @import-sso="handleGrokImportSSO"
         @authorize-password="handleGrokAuthorizePassword"
       />
@@ -3927,6 +3946,8 @@
 
 <script setup lang="ts">
 import OpenAIBPSAccountFields from './OpenAIBPSAccountFields.vue'
+import OpenAICodexAccountFields from './OpenAICodexAccountFields.vue'
+import { newCodexGatewayDraft, codexGatewayCredentials, newCodexGatewayOperationKey } from '@/composables/useCodexGatewayAccount'
 import { newBPSAccountDraft, bpsCredentials } from '@/utils/openaiBps'
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -3942,6 +3963,7 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
+import { cancelCodexOAuthSession, createCodexOAuthSession } from '@/api/admin/accounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3960,6 +3982,7 @@ import type {
   Account,
   CheckMixedChannelResponse,
   CreateAccountRequest,
+  CodexGatewayImportMethod,
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIResponsesMode,
@@ -4044,7 +4067,7 @@ const { t } = useI18n()
 const browserTimeZone = getBrowserTimeZone()
 
 const oauthStepTitle = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
+  if (form.platform === 'openai' || form.platform === 'openai_codex') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
@@ -4118,6 +4141,7 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  copyFrom?: Account
 }
 
 const props = defineProps<Props>()
@@ -4143,6 +4167,7 @@ const grokOAuth = useGrokOAuth() // For Grok OAuth
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.authUrl.value
+  if (form.platform === 'openai_codex') return codexOAuthAuthUrl.value
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   if (form.platform === 'grok') return grokOAuth.authUrl.value
@@ -4151,6 +4176,7 @@ const currentAuthUrl = computed(() => {
 
 const currentSessionId = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.sessionId.value
+  if (form.platform === 'openai_codex') return codexGatewayDraft.value.oauthSessionID
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   if (form.platform === 'grok') return grokOAuth.sessionId.value
@@ -4159,6 +4185,7 @@ const currentSessionId = computed(() => {
 
 const currentOAuthLoading = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.loading.value
+  if (form.platform === 'openai_codex') return codexOAuthLoading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'grok') return grokOAuth.loading.value
@@ -4167,6 +4194,7 @@ const currentOAuthLoading = computed(() => {
 
 const currentOAuthError = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.error.value
+  if (form.platform === 'openai_codex') return codexOAuthError.value
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'grok') return grokOAuth.error.value
@@ -4765,6 +4793,13 @@ const tempUnschedPresets = computed(() => [
 ])
 
 const bpsDraft = ref(newBPSAccountDraft())
+const codexGatewayDraft = ref(newCodexGatewayDraft())
+const codexGatewayOperationKey = ref(newCodexGatewayOperationKey())
+const codexOAuthAuthUrl = ref('')
+const codexOAuthLoading = ref(false)
+const codexOAuthError = ref('')
+const codexBatchLoading = ref(false)
+const codexBatchStatus = ref('')
 const bpsTestAfterSave = ref(false)
 const pendingBPSCreate = ref<{ payload: CreateAccountRequest; testAfterSave: boolean } | null>(null)
 
@@ -4786,6 +4821,7 @@ const form = reactive({
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
   if (form.platform === 'openai_bps') return false
+  if (form.platform === 'openai_codex') return true
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -4815,6 +4851,9 @@ const canExchangeCode = computed(() => {
   if (form.platform === 'openai') {
     return authCode.trim() && openaiOAuth.sessionId.value && !openaiOAuth.loading.value
   }
+  if (form.platform === 'openai_codex') {
+    return authCode.trim() && codexGatewayDraft.value.oauthSessionID && (oauthFlowRef.value?.oauthState || '').trim() && !codexOAuthLoading.value
+  }
   if (form.platform === 'gemini') {
     return authCode.trim() && geminiOAuth.sessionId.value && !geminiOAuth.loading.value
   }
@@ -4832,6 +4871,18 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
+      if (props.copyFrom?.platform === 'openai_codex') {
+        const source = props.copyFrom
+        form.platform = 'openai_codex'; form.type = 'gateway'; accountCategory.value = 'oauth-based'
+        form.name = `${source.name.slice(0, 90)} (Copy)`; form.notes = source.notes ?? ''
+        form.proxy_id = source.proxy_id; form.concurrency = source.concurrency; form.priority = source.priority
+        form.rate_multiplier = source.rate_multiplier ?? 1; form.group_ids = [...(source.group_ids ?? [])]
+        openAIRequestTimezone.value = String(source.extra?.openai_request_timezone ?? 'Asia/Singapore')
+        codexFingerprintMode.value = (source.extra?.codex_fingerprint_mode ?? 'off') as typeof codexFingerprintMode.value
+        codexGatewayDraft.value = newCodexGatewayDraft()
+        modelRestrictionMode.value = 'mapping'
+        modelMappings.value = Object.entries(source.credentials?.model_mapping ?? {}).map(([from, to]) => ({ from, to: String(to) }))
+      }
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
@@ -5294,7 +5345,25 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const account = payload.platform === 'openai_codex'
+      ? await adminAPI.accounts.create(withAntigravityConfirmFlag(payload), codexGatewayOperationKey.value)
+      : await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    if (payload.platform === 'openai_codex') {
+      const state = account.gateway?.sync_state
+      if (!state || state !== 'ready') {
+        const messageKey = state === 'outcome_unknown'
+          ? 'admin.accounts.codexGateway.operationUnknown'
+          : state === 'needs_reauthorization' || state === 'remote_missing'
+            ? 'admin.accounts.codexGateway.operationFailed'
+            : !state
+              ? 'admin.accounts.codexGateway.operationUnknown'
+              : 'admin.accounts.codexGateway.operationPending'
+        appStore.showWarning(t(messageKey))
+        emit('created')
+        handleClose()
+        return
+      }
+    }
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5331,6 +5400,26 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
     handleClose()
     if (openBPSTest) emit('test', account)
   } catch (error: any) {
+    if (payload.platform === 'openai_codex') {
+      try {
+        const recovered = await adminAPI.accounts.getCodexGatewayOperation(codexGatewayOperationKey.value)
+        const item = recovered.items?.[0]
+        if (item) {
+          if (item.state === 'failed' || item.error) {
+            appStore.showError(item.error?.message || t('admin.accounts.codexGateway.operationFailed'))
+          } else if (item.state === 'indeterminate') {
+            appStore.showWarning(t('admin.accounts.codexGateway.operationUnknown'))
+          } else {
+            appStore.showWarning(t('admin.accounts.codexGateway.operationRecovered', { state: item.state }))
+          }
+          emit('created')
+          handleClose()
+          return
+        }
+      } catch {
+        // A 404 or a Gateway outage leaves the original request error intact.
+      }
+    }
     if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
       openMixedChannelDialog({
         message: error.response?.data?.message,
@@ -5349,6 +5438,13 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  codexGatewayDraft.value = newCodexGatewayDraft()
+  codexGatewayOperationKey.value = newCodexGatewayOperationKey()
+  codexOAuthAuthUrl.value = ''
+  codexOAuthLoading.value = false
+  codexOAuthError.value = ''
+  codexBatchLoading.value = false
+  codexBatchStatus.value = ''
   pendingBPSCreate.value = null
   bpsDraft.value = newBPSAccountDraft()
   bpsTestAfterSave.value = false
@@ -5471,6 +5567,12 @@ const resetForm = () => {
 }
 
 const handleClose = () => {
+  const pendingCodexSession = codexGatewayDraft.value.oauthSessionID.trim()
+  if (pendingCodexSession) void cancelCodexOAuthSession(pendingCodexSession).catch(() => {})
+  codexGatewayDraft.value = newCodexGatewayDraft()
+  codexOAuthAuthUrl.value = ''
+  codexOAuthLoading.value = false
+  codexOAuthError.value = ''
   pendingBPSCreate.value = null
   bpsTestAfterSave.value = false
   antigravityMixedChannelConfirmed.value = false
@@ -5479,7 +5581,7 @@ const handleClose = () => {
 }
 
 const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'openai') {
+  if (form.platform !== 'openai' && form.platform !== 'openai_codex') {
     return base
   }
 
@@ -5508,6 +5610,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_responses_flatten_namespaces
   }
   extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
+
 
   if (accountCategory.value === 'oauth-based' && codexTicketAccountPolicy.value !== 'inherit') {
     extra.codex_allow_without_ticket = codexTicketAccountPolicy.value === 'allow'
@@ -5707,6 +5810,28 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (form.platform === 'openai_codex') {
+    try {
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      const credentials: Record<string, unknown> = modelMapping ? { model_mapping: modelMapping } : {}
+      const extra: Record<string, unknown> = buildOpenAIExtra({ codex_fingerprint_mode: codexFingerprintMode.value }) || {}
+      if (codexGatewayDraft.value.deviceID.trim()) extra.openai_device_id = codexGatewayDraft.value.deviceID.trim()
+      let gatewayCredentials: CreateAccountRequest['gateway_credentials']
+      try {
+        gatewayCredentials = codexGatewayCredentials(codexGatewayDraft.value)
+      } catch {
+        if (!form.name.trim()) {
+          appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+          return
+        }
+        step.value = 2
+        return
+      }
+      await createAccountAndFinish('openai_codex', 'gateway', credentials, extra, gatewayCredentials)
+    } catch { appStore.showError(t('admin.accounts.codexGateway.invalidCredentials')) }
+    return
+  }
+
   if (form.platform === 'openai_bps') {
     if (!bpsDraft.value.token.trim()) { appStore.showError(t('admin.accounts.bps.tokenRequired')); return }
     await createAccountAndFinish('openai_bps', 'oauth', bpsCredentials(bpsDraft.value))
@@ -5970,7 +6095,77 @@ const handleSubmit = async () => {
   })
 }
 
+const submitCodexGatewayImport = async (method: CodexGatewayImportMethod, content: string) => {
+  if (form.platform !== 'openai_codex' || codexBatchLoading.value) return
+  if (!form.name.trim()) {
+    appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+    return
+  }
+  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  const credentials: Record<string, unknown> = modelMapping ? { model_mapping: modelMapping } : {}
+  const extra: Record<string, unknown> = buildOpenAIExtra({ codex_fingerprint_mode: codexFingerprintMode.value }) || {}
+  if (codexGatewayDraft.value.deviceID.trim()) extra.openai_device_id = codexGatewayDraft.value.deviceID.trim()
+  codexBatchLoading.value = true
+  codexOAuthLoading.value = true
+  codexBatchStatus.value = ''
+  codexOAuthError.value = ''
+  try {
+    const result = await adminAPI.accounts.importCodexGatewayCredentials({
+      gateway_import_content: content,
+      method,
+      update_existing: true,
+      account: {
+        name: form.name,
+        notes: form.notes,
+        platform: 'openai_codex',
+        type: 'gateway',
+        credentials,
+        extra,
+        proxy_id: form.proxy_id,
+        concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
+        priority: form.priority,
+        rate_multiplier: form.rate_multiplier,
+        group_ids: form.group_ids,
+        expires_at: form.expires_at,
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        gateway_oauth_client_id: codexGatewayDraft.value.oauthClientID.trim() || undefined
+      }
+    }, codexGatewayOperationKey.value)
+    const pending = result.pending ?? 0
+    codexBatchStatus.value = `Imported ${result.created} created, ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed${pending ? `, ${pending} pending` : ''}.`
+    if (result.created + result.updated > 0) emit('created')
+    if (result.failed === 0 && pending === 0) handleClose()
+  } catch (error: any) {
+    codexBatchStatus.value = error?.response?.data?.message || error?.response?.data?.detail || error?.message || 'Gateway batch import failed'
+    codexOAuthError.value = codexBatchStatus.value
+    appStore.showError(codexBatchStatus.value)
+  } finally {
+    codexBatchLoading.value = false
+    codexOAuthLoading.value = false
+  }
+}
+
+const handleCodexBatchImport = async (payload: { method: CodexGatewayImportMethod; content: string }) => {
+  await submitCodexGatewayImport(payload.method, payload.content)
+}
+
+const handleCodexGatewayCredential = async (payload: { method: 'auth_json' | 'setup_token'; content: string }) => {
+  await submitCodexGatewayImport(payload.method === 'auth_json' ? 'codex_session' : 'setup_token', payload.content)
+}
+
+const handleCodexAccessToken = async (accessToken: string) => {
+  await submitCodexGatewayImport('personal_access_token', accessToken)
+}
+
 const goBackToBasicInfo = () => {
+  const pendingCodexSession = codexGatewayDraft.value.oauthSessionID.trim()
+  if (pendingCodexSession) void cancelCodexOAuthSession(pendingCodexSession).catch(() => {})
+  codexGatewayDraft.value.oauthSessionID = ''
+  codexGatewayDraft.value.oauthCode = ''
+  codexGatewayDraft.value.oauthState = ''
+  codexOAuthAuthUrl.value = ''
+  codexOAuthError.value = ''
   step.value = 1
   oauth.resetState()
   openaiOAuth.resetState()
@@ -5983,6 +6178,25 @@ const goBackToBasicInfo = () => {
 const handleGenerateUrl = async () => {
   if (form.platform === 'openai') {
     await openaiOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'openai_codex') {
+    codexOAuthLoading.value = true
+    codexOAuthError.value = ''
+    try {
+      const session = await createCodexOAuthSession({
+        purpose: 'create',
+        proxy_id: form.proxy_id ?? undefined,
+        oauth_client_id: codexGatewayDraft.value.oauthClientID.trim() || undefined
+      })
+      codexGatewayDraft.value.type = 'oauth_code'
+      codexGatewayDraft.value.oauthSessionID = session.session_id
+      codexGatewayDraft.value.oauthCode = ''
+      codexGatewayDraft.value.oauthState = ''
+      codexOAuthAuthUrl.value = session.auth_url
+    } catch (error: any) {
+      codexOAuthError.value = error?.response?.data?.message || error?.message || 'Gateway authorization is unavailable'
+    } finally {
+      codexOAuthLoading.value = false
+    }
   } else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(
       form.proxy_id,
@@ -6002,6 +6216,8 @@ const handleGenerateUrl = async () => {
 const handleValidateRefreshToken = (rt: string) => {
   if (form.platform === 'openai') {
     handleOpenAIValidateRT(rt)
+  } else if (form.platform === 'openai_codex') {
+    void submitCodexGatewayImport('refresh_token', rt)
   } else if (form.platform === 'antigravity') {
     handleAntigravityValidateRT(rt)
   } else if (form.platform === 'grok') {
@@ -6021,7 +6237,8 @@ const createAccountAndFinish = async (
   platform: AccountPlatform,
   type: AccountType,
   credentials: Record<string, unknown>,
-  extra?: Record<string, unknown>
+  extra?: Record<string, unknown>,
+  gatewayCredentials?: CreateAccountRequest['gateway_credentials']
 ) => {
   if (!applyTempUnschedConfig(credentials)) {
     return
@@ -6086,6 +6303,9 @@ const createAccountAndFinish = async (
     platform,
     type,
     credentials,
+    gateway_credentials: gatewayCredentials,
+    gateway_oauth_client_id: platform === 'openai_codex' ? (codexGatewayDraft.value.oauthClientID.trim() || undefined) : undefined,
+    gateway_preserve_refresh_token: platform === 'openai_codex' ? codexGatewayDraft.value.preserveRefreshToken : undefined,
     extra: finalExtra,
     proxy_id: form.proxy_id,
     concurrency: form.concurrency,
@@ -6510,6 +6730,11 @@ const isAgentIdentityImportContent = (content: string) => {
 }
 
 const handleOpenAIImportCodexSession = async (content: string) => {
+  if (form.platform === 'openai_codex') {
+    const method = oauthFlowRef.value?.inputMethod === 'agent_identity' ? 'agent_identity' : 'codex_session'
+    await submitCodexGatewayImport(method, content)
+    return
+  }
   const oauthClient = openaiOAuth
   const trimmed = content.trim()
   if (!trimmed) {
@@ -6592,6 +6817,10 @@ const handleOpenAIImportCodexSession = async (content: string) => {
 }
 
 const handleOpenAIImportCodexPAT = async (accessToken: string) => {
+  if (form.platform === 'openai_codex') {
+    await submitCodexGatewayImport('personal_access_token', accessToken)
+    return
+  }
   const oauthClient = openaiOAuth
   const trimmed = accessToken.trim()
   if (!trimmed) {
@@ -6637,6 +6866,39 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
     appStore.showError(oauthClient.error.value)
   } finally {
     oauthClient.loading.value = false
+  }
+}
+
+const handleCodexExchange = async () => {
+  const authCode = (oauthFlowRef.value?.authCode || '').trim()
+  const state = (oauthFlowRef.value?.oauthState || '').trim()
+  const sessionID = codexGatewayDraft.value.oauthSessionID.trim()
+  if (!authCode || !state || !sessionID) {
+    codexOAuthError.value = 'Paste a complete callback URL containing exactly one code and state'
+    return
+  }
+  codexOAuthLoading.value = true
+  codexOAuthError.value = ''
+  try {
+    codexGatewayDraft.value.type = 'oauth_code'
+    codexGatewayDraft.value.oauthCode = authCode
+    codexGatewayDraft.value.oauthState = state
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    const credentials: Record<string, unknown> = modelMapping ? { model_mapping: modelMapping } : {}
+    const extra: Record<string, unknown> = buildOpenAIExtra({ codex_fingerprint_mode: codexFingerprintMode.value }) || {}
+    if (codexGatewayDraft.value.deviceID.trim()) extra.openai_device_id = codexGatewayDraft.value.deviceID.trim()
+    await createAccountAndFinish('openai_codex', 'gateway', credentials, extra, {
+      type: 'oauth_code',
+      session_id: sessionID,
+      code: authCode,
+      state,
+      ...(codexGatewayDraft.value.accountID.trim() ? { chatgpt_account_id: codexGatewayDraft.value.accountID.trim() } : {})
+    })
+  } catch (error: any) {
+    codexOAuthError.value = error?.response?.data?.message || error?.message || t('admin.accounts.oauth.authFailed')
+    appStore.showError(codexOAuthError.value)
+  } finally {
+    codexOAuthLoading.value = false
   }
 }
 
@@ -6755,10 +7017,16 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
 }
 
 // 手动输入 RT（Codex CLI client_id，默认）
-const handleOpenAIValidateRT = (rt: string) => handleOpenAIBatchRT(rt)
+const handleOpenAIValidateRT = (rt: string) => {
+  if (form.platform === 'openai_codex') return void submitCodexGatewayImport('refresh_token', rt)
+  return handleOpenAIBatchRT(rt)
+}
 
 // 手动输入 Mobile RT
-const handleOpenAIValidateMobileRT = (rt: string) => handleOpenAIBatchRT(rt, OPENAI_MOBILE_RT_CLIENT_ID)
+const handleOpenAIValidateMobileRT = (rt: string) => {
+  if (form.platform === 'openai_codex') return void submitCodexGatewayImport('mobile_refresh_token', rt)
+  return handleOpenAIBatchRT(rt, OPENAI_MOBILE_RT_CLIENT_ID)
+}
 
 // Antigravity 手动 RT 批量验证和创建
 const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
@@ -7068,6 +7336,8 @@ const handleExchangeCode = async () => {
   switch (form.platform) {
     case 'openai':
       return handleOpenAIExchange(authCode)
+    case 'openai_codex':
+      return handleCodexExchange()
     case 'gemini':
       return handleGeminiExchange(authCode)
     case 'antigravity':

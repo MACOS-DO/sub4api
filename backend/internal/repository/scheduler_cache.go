@@ -300,7 +300,7 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		if err != nil {
 			return nil, false, err
 		}
-		if account.IsOpenAIOAuthLike() && !account.IsShadow() {
+		if (account.IsOpenAIOAuthLike() || account.IsOpenAICodex()) && !account.IsShadow() {
 			if _, ok := account.Extra[service.CodexTicketReadyModelsExtraKey]; !ok {
 				return nil, false, nil
 			}
@@ -840,6 +840,17 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 }
 
 func marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, error) {
+	if account.IsOpenAICodex() {
+		// Gateway credentials never belong in either the full or candidate cache.
+		if err := service.ValidateCodexBusinessCredentials(account.Credentials); err != nil {
+			return nil, nil, err
+		}
+		if account.Gateway != nil {
+			projection := *account.Gateway
+			projection.ServiceAvailable = nil // availability belongs to this process
+			account.Gateway = &projection
+		}
+	}
 	fullPayload, err := json.Marshal(account)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal account: %w", err)
@@ -877,7 +888,7 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 
 func buildSchedulerMetadataAccount(account service.Account) service.Account {
 	extra := filterSchedulerExtra(account.Extra)
-	if account.IsOpenAIOAuthLike() && !account.IsShadow() {
+	if (account.IsOpenAIOAuthLike() || account.IsOpenAICodex()) && !account.IsShadow() {
 		if extra == nil {
 			extra = make(map[string]any)
 		}
@@ -891,6 +902,7 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		Name:                    account.Name,
 		Platform:                account.Platform,
 		Type:                    account.Type,
+		Gateway:                 account.Gateway,
 		Concurrency:             account.Concurrency,
 		LoadFactor:              account.LoadFactor,
 		Priority:                account.Priority,

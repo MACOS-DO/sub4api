@@ -1,3 +1,4 @@
+import { newCodexGatewayOperationKey } from '@/composables/useCodexGatewayAccount'
 /**
  * Admin Accounts API endpoints
  * Handles AI platform account management for administrators
@@ -31,8 +32,46 @@ import type {
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
   OpenCodeGoUsageSettings,
-  OpenCodeGoUsageState
+  OpenCodeGoUsageState,
+  CodexGatewayCapabilities,
+  CodexOAuthSession,
+  CodexGatewayOperationResult,
+  CodexGatewayImportMethod,
+  CodexGatewayImportResult
 } from '@/types'
+
+export async function getCodexGatewayCapabilities(): Promise<CodexGatewayCapabilities> {
+  const { data } = await apiClient.get<CodexGatewayCapabilities>('/admin/openai-codex/capabilities')
+  return data
+}
+
+export async function createCodexOAuthSession(input: { purpose: 'create'|'reauthorize'; account_id?: number; proxy_id?: number|null; oauth_client_id?: string; redirect_uri?: string }): Promise<CodexOAuthSession> {
+  const { data } = await apiClient.post<CodexOAuthSession>('/admin/openai-codex/oauth/sessions', input)
+  return data
+}
+
+export async function cancelCodexOAuthSession(sessionID: string): Promise<void> {
+  await apiClient.delete(`/admin/openai-codex/oauth/sessions/${encodeURIComponent(sessionID)}`)
+}
+
+export async function getCodexGatewayOperation(operationKey: string): Promise<CodexGatewayOperationResult> {
+  const { data } = await apiClient.get<CodexGatewayOperationResult>(`/admin/openai-codex/operations/${encodeURIComponent(operationKey)}`)
+  return data
+}
+
+export async function importCodexGatewayCredentials(input: {
+  gateway_import_content: string
+  method: CodexGatewayImportMethod
+  account: CreateAccountRequest
+  target_account_id?: number
+  update_existing?: boolean
+}, operationKey: string): Promise<CodexGatewayImportResult> {
+  const { data } = await apiClient.post<CodexGatewayImportResult>('/admin/openai-codex/import-credentials', input, {
+    headers: { 'Idempotency-Key': operationKey },
+    timeout: 15 * 60 * 1000
+  })
+  return data
+}
 
 /**
  * List all accounts with pagination
@@ -183,8 +222,9 @@ export async function getById(id: number): Promise<Account> {
  * @param accountData - Account data
  * @returns Created account
  */
-export async function create(accountData: CreateAccountRequest): Promise<Account> {
-  const { data } = await apiClient.post<Account>('/admin/accounts', accountData)
+export async function create(accountData: CreateAccountRequest, operationKey?: string): Promise<Account> {
+  const options = accountData.platform === 'openai_codex' ? { headers: { 'Idempotency-Key': operationKey ?? newCodexGatewayOperationKey() } } : undefined
+  const { data } = options ? await apiClient.post<Account>('/admin/accounts', accountData, options) : await apiClient.post<Account>('/admin/accounts', accountData)
   return data
 }
 
@@ -238,8 +278,9 @@ export async function duplicate(id: number): Promise<Account> {
  * @param updates - Fields to update
  * @returns Updated account
  */
-export async function update(id: number, updates: UpdateAccountRequest): Promise<Account> {
-  const { data } = await apiClient.put<Account>(`/admin/accounts/${id}`, updates)
+export async function update(id: number, updates: UpdateAccountRequest, operationKey?: string): Promise<Account> {
+  const options = updates.gateway_credentials ? { headers: { 'Idempotency-Key': operationKey ?? newCodexGatewayOperationKey() } } : undefined
+  const { data } = options ? await apiClient.put<Account>(`/admin/accounts/${id}`, updates, options) : await apiClient.put<Account>(`/admin/accounts/${id}`, updates)
   return data
 }
 
@@ -318,8 +359,8 @@ export type RefreshCredentialsResult =
   | { account: Account; message: string; warning: 'missing_project_id_temporary' }
   | { account: Account; message?: never; warning?: never }
 
-export async function refreshCredentials(id: number): Promise<RefreshCredentialsResult> {
-  const { data } = await apiClient.post<Account | RefreshCredentialsResult>(`/admin/accounts/${id}/refresh`)
+export async function refreshCredentials(id: number, operationKey = newCodexGatewayOperationKey()): Promise<RefreshCredentialsResult> {
+  const { data } = await apiClient.post<Account | RefreshCredentialsResult>(`/admin/accounts/${id}/refresh`, undefined, { headers: { 'Idempotency-Key': operationKey } })
   return 'account' in data ? data : { account: data }
 }
 
@@ -866,6 +907,7 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
   const { data } = await apiClient.post<BatchOperationResult>('/admin/accounts/batch-refresh', {
     account_ids: accountIds,
   }, {
+    headers: { 'Idempotency-Key': newCodexGatewayOperationKey() },
     timeout: 120000  // 120s timeout for large batch refreshes
   })
   return data
@@ -1137,6 +1179,13 @@ export async function getOpenAIRequestTimezones(): Promise<{ default: string; ti
 }
 
 export const accountsAPI = {
+  getCodexGatewayCapabilities,
+  createCodexOAuthSession,
+  cancelCodexOAuthSession,
+  getCodexGatewayOperation,
+  importCodexGatewayCredentials,
+  synchronizeCodexGateway,
+  refreshCodexGatewayProfile,
   list,
   listWithEtag,
   getOpenAIRequestTimezones,
@@ -1209,3 +1258,13 @@ export const accountsAPI = {
 }
 
 export default accountsAPI
+
+export async function synchronizeCodexGateway(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/gateway/sync`)
+  return data
+}
+
+export async function refreshCodexGatewayProfile(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/refresh-tier`)
+  return data
+}

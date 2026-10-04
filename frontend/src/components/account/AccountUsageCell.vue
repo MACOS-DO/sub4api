@@ -125,7 +125,7 @@
       </ClaudeResetCreditsCell>
     </template>
 
-    <template v-else-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')">
+    <template v-else-if="(account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')) || account.platform === 'openai_codex'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
@@ -194,7 +194,7 @@
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
         <OpenAIQuotaResetCell
-          v-if="account.type === 'oauth'"
+          v-if="account.type === 'oauth' || account.platform === 'openai_codex'"
           :account="account"
           class="mt-1"
           @account-updated="handleQuotaResetAccountUpdated"
@@ -769,10 +769,11 @@ const showUsageWindows = computed(() => {
   ) {
     return true
   }
-  return props.account.type === 'oauth' || props.account.type === 'setup-token'
+  return props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'gateway'
 })
 
 const shouldFetchUsage = computed(() => {
+  if (props.account.platform === 'openai_codex') return true
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }

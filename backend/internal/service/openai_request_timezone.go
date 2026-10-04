@@ -41,7 +41,7 @@ func ValidateOpenAIRequestTimezoneExtra(platform string, extra map[string]any) e
 		return nil
 	}
 	name, ok := raw.(string)
-	if !ok || (name != "" && !isAllowedOpenAIRequestTimezone(name)) || (name != "" && platform != PlatformOpenAI) {
+	if !ok || (name != "" && !isAllowedOpenAIRequestTimezone(name)) || (name != "" && platform != PlatformOpenAI && platform != PlatformOpenAICodex) {
 		return infraerrors.New(http.StatusBadRequest, "INVALID_OPENAI_REQUEST_TIMEZONE", "openai_request_timezone must be an allowed IANA timezone for an OpenAI account")
 	}
 	return nil
@@ -56,7 +56,7 @@ func isAllowedOpenAIRequestTimezone(name string) bool {
 }
 
 func (account *Account) OpenAIRequestTimezone() string {
-	if account != nil && account.IsOpenAI() {
+	if account != nil && (account.IsOpenAI() || account.IsOpenAICodex()) {
 		if name := account.getExtraString(openAIRequestTimezoneExtraKey); isAllowedOpenAIRequestTimezone(name) {
 			return name
 		}

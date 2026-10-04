@@ -19,6 +19,10 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	if err := s.checkCodexGatewayForwardReady(c, account); err != nil {
+		return nil, err
+	}
+
 	if account.IsOpenAIBPS() {
 		return s.forwardOpenAIBPS(ctx, c, account, body)
 	}
@@ -113,6 +117,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
+	if account.IsOpenAICodex() {
+		wsDecision = openAIWSHTTPDecision("codex_gateway_http")
+	}
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
 	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
@@ -784,7 +791,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageInputSize = imageCfg.InputSize
 	}
 	// Get access token
-	token, _, err := s.GetAccessToken(ctx, account)
+	token, err := s.openAIForwardToken(ctx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -1041,7 +1048,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
+	codexGatewaySent := false
 	for {
+		if account.IsOpenAICodex() {
+			if codexGatewaySent {
+				return nil, errors.New("Gateway requests cannot be automatically replayed")
+			}
+			codexGatewaySent = true
+		}
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 		var headerGuard *openAIFirstOutputHeaderGuard
@@ -1372,6 +1386,9 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+	if account.IsOpenAICodex() {
+		return s.newCodexGatewayRequest(ctx, c, account, body, "/v1/responses"+openAIResponsesRequestPathSuffix(c))
+	}
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {

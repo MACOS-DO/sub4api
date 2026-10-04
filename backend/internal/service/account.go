@@ -21,6 +21,8 @@ import (
 )
 
 type Account struct {
+	Gateway                 *CodexGatewayState   `json:"gateway,omitempty"`
+	GatewayBinding          *CodexAccountBinding `json:"-"`
 	ID                      int64
 	Name                    string
 	Notes                   *string
@@ -180,6 +182,9 @@ func (a *Account) EffectiveLoadFactor() int {
 }
 
 func (a *Account) IsSchedulable() bool {
+	if a.IsOpenAICodex() && (a.Gateway == nil || !a.Gateway.Usable()) {
+		return false
+	}
 	if a.IsOpenAIBPS() {
 		state := a.OpenAIBPSCredentialState(time.Now())
 		if state.Status == "expired" || state.Status == "revoked" || state.Status == "auth_failed" {
@@ -305,7 +310,7 @@ func (a *Account) IsCNProvider() bool {
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformOpenAIBPS || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformOpenAICodex || a.Platform == PlatformOpenAIBPS || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -913,7 +918,7 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 // GetOpenAICompactMode returns the compact routing mode for an OpenAI account.
 // Missing or invalid values fall back to "auto".
 func (a *Account) GetOpenAICompactMode() string {
-	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+	if a == nil || (!a.IsOpenAI() && !a.IsOpenAICodex()) || a.Extra == nil {
 		return OpenAICompactModeAuto
 	}
 	mode, _ := a.Extra["openai_compact_mode"].(string)
@@ -923,7 +928,7 @@ func (a *Account) GetOpenAICompactMode() string {
 // OpenAICompactSupportKnown reports whether compact capability is known for this
 // account and, when known, whether it is supported.
 func (a *Account) OpenAICompactSupportKnown() (supported bool, known bool) {
-	if a == nil || !a.IsOpenAI() {
+	if a == nil || (!a.IsOpenAI() && !a.IsOpenAICodex()) {
 		return false, false
 	}
 
@@ -948,7 +953,7 @@ func (a *Account) OpenAICompactSupportKnown() (supported bool, known bool) {
 // requests. Unknown capability remains allowed to avoid breaking older accounts
 // before an explicit probe has been run.
 func (a *Account) AllowsOpenAICompact() bool {
-	if a == nil || !a.IsOpenAI() {
+	if a == nil || (!a.IsOpenAI() && !a.IsOpenAICodex()) {
 		return false
 	}
 	supported, known := a.OpenAICompactSupportKnown()
@@ -1304,7 +1309,7 @@ func (a *Account) IsOpenAI() bool {
 }
 
 func (a *Account) IsOpenAILongContextBillingEnabled() bool {
-	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+	if a == nil || (!a.IsOpenAI() && !a.IsOpenAICodex()) || a.Extra == nil {
 		return false
 	}
 	enabled, ok := a.Extra[openAILongContextBillingEnabledKey].(bool)
@@ -1329,10 +1334,13 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 // UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
 // accounts whose platform is implicit, while adding OpenAI SetupToken.
 func (a *Account) UsesOpenAICodexProtocol() bool {
-	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike())
+	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike() || a.IsOpenAICodex())
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
+	if a != nil && a.IsOpenAICodex() {
+		return a.Gateway != nil && a.Gateway.Profile != nil && a.Gateway.Profile.PlanType != nil && strings.TrimSpace(*a.Gateway.Profile.PlanType) != ""
+	}
 	if !a.IsOpenAIOAuth() {
 		return false
 	}
@@ -1846,6 +1854,16 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if !a.IsOpenAICompatible() {
 		return false
 	}
+	if a.IsOpenAICodex() {
+		switch capability {
+		case OpenAIEndpointCapabilityResponses, OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityAlphaSearch:
+			return true
+		case OpenAIEndpointCapabilityLive:
+			return a.Gateway != nil && (a.Gateway.Authentication == "at_rt" || a.Gateway.Authentication == "at_only")
+		default:
+			return false
+		}
+	}
 	if a.Platform == PlatformOpenAIBPS {
 		return capability == OpenAIEndpointCapabilityResponses
 	}
@@ -2023,6 +2041,9 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
+	if a.IsOpenAICodex() {
+		return capability == "" || capability == OpenAIImagesCapabilityBasic || capability == OpenAIImagesCapabilityNative
+	}
 	if capability == "" {
 		return true
 	}

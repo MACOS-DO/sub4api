@@ -37,6 +37,30 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	return router
 }
 
+func TestAccountHandlerGetAvailableModels_CodexGatewayFallback(t *testing.T) {
+	for _, mapping := range []map[string]any{nil, {"codex-alias": "gpt-5.5"}} {
+		svc := &availableModelsAdminService{stubAdminService: newStubAdminService(), account: service.Account{ID: 44, Platform: service.PlatformOpenAICodex, Type: service.AccountTypeGateway, Status: service.StatusActive, Credentials: map[string]any{"model_mapping": mapping}}}
+		router := setupAvailableModelsRouter(svc)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/44/models", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var result struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))
+		require.NotEmpty(t, result.Data)
+		for _, model := range result.Data {
+			require.NotContains(t, model.ID, "claude")
+		}
+		if mapping != nil {
+			require.Len(t, result.Data, 1)
+			require.Equal(t, "codex-alias", result.Data[0].ID)
+		}
+	}
+}
+
 type syncUpstreamHTTPUpstream struct {
 	resp      *http.Response
 	responses []*http.Response

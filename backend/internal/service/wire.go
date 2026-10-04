@@ -12,11 +12,16 @@ import (
 	"github.com/MACOS-DO/sub4api/internal/pkg/antigravity"
 	"github.com/MACOS-DO/sub4api/internal/pkg/claude"
 	"github.com/MACOS-DO/sub4api/internal/pkg/logger"
+	"github.com/MACOS-DO/sub4api/internal/pkg/redissession"
 	"github.com/MACOS-DO/sub4api/internal/pkg/xai"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
+
+func ProvideCodexOAuthSessionStore(client *redis.Client) CodexOAuthSessionStore {
+	return redissession.New(client, "codex_gateway:oauth_session", 20*time.Minute)
+}
 
 func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
 	svc := NewGrokOAuthService(proxyRepo, oauthClient, cfg)
@@ -194,6 +199,9 @@ func ProvideOpenAIQuotaService(
 	openAIGatewayService *OpenAIGatewayService,
 ) *OpenAIQuotaService {
 	service := NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory, referralClient)
+	if openAIGatewayService != nil {
+		service.codexGateway = openAIGatewayService.codexGateway
+	}
 	service.agentIdentityWS = openAIGatewayService
 	return service
 }
@@ -871,6 +879,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	ProvideOpenAIGatewayService,
+	ProvideCodexOAuthSessionStore,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,

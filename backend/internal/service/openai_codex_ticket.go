@@ -72,6 +72,7 @@ func normalizeOpenAICodexTicketReuseWindowSeconds(seconds int) int {
 var ErrOpenAICodexTicketUnavailable = errors.New("codex turn-state ticket unavailable")
 
 type openAICodexTicket struct {
+	ProxyID            *int64    `json:"proxy_id,omitempty"`
 	AccountID          int64     `json:"account_id"`
 	GenerationID       string    `json:"generation_id,omitempty"`
 	VerificationMethod string    `json:"verification_method,omitempty"`
@@ -430,25 +431,30 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	if err != nil {
 		return "", "", "", 0, err
 	}
-	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
-	if err != nil {
-		return "", "", "", 0, err
+	var resp *http.Response
+	if account.IsOpenAICodex() {
+		resp, err = s.codexGatewayProbeResponse(attemptCtx, account, model, proxyURL, body, replayHeaders)
+	} else {
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
+		if err != nil {
+			return "", "", "", 0, err
+		}
+		req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAIHarvest))
+		req.Close = true
+		req.Host = "chatgpt.com"
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "text/event-stream")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("OpenAI-Beta", "responses=experimental")
+		for name, values := range replayHeaders {
+			req.Header[name] = values
+		}
+		if err := resolveAndSetOpenAIChatGPTAccountHeaders(attemptCtx, s.accountRepo, req.Header, account); err != nil {
+			return "", "", "", 0, err
+		}
+		applyOpenAICodexTicketHarvestIdentity(req.Header, model)
+		resp, err = s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	}
-	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAIHarvest))
-	req.Close = true
-	req.Host = "chatgpt.com"
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	for name, values := range replayHeaders {
-		req.Header[name] = values
-	}
-	if err := resolveAndSetOpenAIChatGPTAccountHeaders(attemptCtx, s.accountRepo, req.Header, account); err != nil {
-		return "", "", "", 0, err
-	}
-	applyOpenAICodexTicketHarvestIdentity(req.Header, model)
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return "", "", "", 0, err
 	}
@@ -672,6 +678,12 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 		logger.L().Warn("openai_codex_ticket list accounts failed", zap.Error(err))
 		return
 	}
+	if s.codexGateway != nil && s.codexGateway.Ready() {
+		if managed, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAICodex); err == nil {
+			accounts = append(accounts, managed...)
+		}
+	}
+
 	cfg := s.openAICodexTicketConfig()
 	now := time.Now()
 	var wg sync.WaitGroup
@@ -826,7 +838,7 @@ func IsMaskedProxyURL(raw string) bool {
 // Credential shadows do not own tickets. Keep their existing forwarding policy
 // instead of imposing a gate for a key the harvester never populates.
 func isOpenAICodexTicketAccount(account *Account) bool {
-	return account != nil && account.IsOpenAIOAuthLike() && !account.IsShadow()
+	return account != nil && (account.IsOpenAIOAuthLike() || account.IsOpenAICodex()) && !account.IsShadow()
 }
 
 // IsOpenAICodexTicketPrivateExtraKey also covers the retired account-level proxy

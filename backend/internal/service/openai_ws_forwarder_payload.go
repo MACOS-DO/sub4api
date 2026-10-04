@@ -20,7 +20,7 @@ func validateOpenAIWSBearerToken(account *Account, token string) error {
 	if account == nil {
 		return errors.New("account is nil")
 	}
-	if strings.TrimSpace(token) == "" && !account.IsOpenAIAgentIdentity() {
+	if strings.TrimSpace(token) == "" && !account.IsOpenAIAgentIdentity() && !account.IsOpenAICodex() {
 		return errors.New("token is empty")
 	}
 	return nil
@@ -58,6 +58,9 @@ func (s *OpenAIGatewayService) buildOpenAIResponsesWSURL(account *Account) (stri
 		targetURL = openaiPlatformAPIURL
 	}
 
+	if account.IsOpenAICodex() && s.cfg != nil {
+		targetURL = strings.TrimRight(s.cfg.Gateway.Codex4Server.BaseURL, "/") + "/v1/responses"
+	}
 	parsed, err := url.Parse(strings.TrimSpace(targetURL))
 	if err != nil {
 		return "", fmt.Errorf("invalid target url: %w", err)
@@ -105,6 +108,18 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeadersWithTicket(
 	routingModel string,
 	routingServiceTier string,
 ) (http.Header, openAIWSSessionHeaderResolution, *openAICodexTicket, error) {
+	if account.IsOpenAICodex() {
+		headers := make(http.Header)
+		if c != nil && c.Request != nil {
+			headers = c.Request.Header.Clone()
+		}
+		headers.Del("Cookie")
+		headers.Del("Authorization")
+		enforceCodexIdentityHeaders(headers)
+		ticket, err := s.applyOpenAICodexTicketWithGeneration(ctx, account, routingModel, headers)
+		return headers, openAIWSSessionHeaderResolution{}, ticket, err
+	}
+
 	headers := make(http.Header)
 	if account == nil || !account.IsOpenAIAgentIdentity() {
 		headers.Set("authorization", "Bearer "+token)

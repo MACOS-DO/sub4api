@@ -132,6 +132,7 @@ type OpenAIQuotaResetResult struct {
 // for OpenAI OAuth accounts. It reuses the privacy client factory so all calls
 // flow through the impersonated HTTP client (Cloudflare-friendly TLS fingerprint).
 type OpenAIQuotaService struct {
+	codexGateway         *CodexGatewayService
 	accountRepo          AccountRepository
 	proxyRepo            ProxyRepository
 	tokenProvider        *OpenAITokenProvider
@@ -164,6 +165,15 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	if s.codexGateway != nil && s.codexGateway.client != nil {
+		account, err := s.accountRepo.GetByID(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		if account.IsOpenAICodex() {
+			return s.queryCodexGatewayQuota(ctx, accountID)
+		}
+	}
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -217,17 +227,22 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	if details != nil {
 		payload.autoResetCandidates = details.AutoResetCandidates
 		hasDetailCount := details.AvailableCount != nil
-		if payload.RateLimitResetCredits == nil {
-			payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
-		}
-		if details.CreditListPresent {
-			payload.RateLimitResetCredits.Credits = details.Credits
-		}
-		switch {
-		case hasDetailCount:
-			payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
-		case details.CreditListPresent:
-			payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+		// An empty or malformed reset-credit response is an unknown state. Do not
+		// synthesize an empty credit object, because the management UI must not
+		// present an unknown count as zero or offer a stale reset action.
+		if hasDetailCount || details.CreditListPresent {
+			if payload.RateLimitResetCredits == nil {
+				payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
+			}
+			if details.CreditListPresent {
+				payload.RateLimitResetCredits.Credits = details.Credits
+			}
+			switch {
+			case hasDetailCount:
+				payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
+			case details.CreditListPresent:
+				payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+			}
 		}
 	}
 	return &payload, nil
@@ -373,6 +388,9 @@ func (s *OpenAIQuotaService) resetCredit(ctx context.Context, accountID int64, c
 		}
 		if acc.IsShadow() {
 			return nil, ErrSparkShadowResetNotSupported
+		}
+		if acc.IsOpenAICodex() {
+			return s.resetCodexGatewayQuota(ctx, accountID, creditID, redeemRequestID)
 		}
 	}
 

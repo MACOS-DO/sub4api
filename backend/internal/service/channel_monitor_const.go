@@ -63,6 +63,7 @@ const (
 	// antigravity 无探活 adapter（仅配额），其余 3 个复用 OpenAI 兼容探活。
 	MonitorProviderOpenAI      = "openai"
 	MonitorProviderOpenAIBPS   = "openai_bps"
+	MonitorProviderOpenAICodex = "openai_codex"
 	MonitorProviderAnthropic   = "anthropic"
 	MonitorProviderGemini      = "gemini"
 	MonitorProviderGrok        = "grok"

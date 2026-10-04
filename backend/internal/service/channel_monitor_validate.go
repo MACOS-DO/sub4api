@@ -15,6 +15,7 @@ import (
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var monitorProviders = map[string]struct{}{
 	MonitorProviderOpenAIBPS:   {},
+	MonitorProviderOpenAICodex: {},
 	MonitorProviderOpenAI:      {},
 	MonitorProviderAnthropic:   {},
 	MonitorProviderGemini:      {},
@@ -31,15 +32,16 @@ var monitorProviders = map[string]struct{}{
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var probeCapableProviders = map[string]struct{}{
-	MonitorProviderOpenAIBPS: {},
-	MonitorProviderOpenAI:    {},
-	MonitorProviderAnthropic: {},
-	MonitorProviderGemini:    {},
-	MonitorProviderGrok:      {},
-	MonitorProviderKimi:      {},
-	MonitorProviderZhipu:     {},
-	MonitorProviderDeepseek:  {},
-	MonitorProviderMiniMax:   {},
+	MonitorProviderOpenAIBPS:   {},
+	MonitorProviderOpenAICodex: {},
+	MonitorProviderOpenAI:      {},
+	MonitorProviderAnthropic:   {},
+	MonitorProviderGemini:      {},
+	MonitorProviderGrok:        {},
+	MonitorProviderKimi:        {},
+	MonitorProviderZhipu:       {},
+	MonitorProviderDeepseek:    {},
+	MonitorProviderMiniMax:     {},
 }
 
 // validateProvider 校验 provider 字符串。
@@ -105,7 +107,7 @@ func validateAPIMode(provider, apiMode string) error {
 	case MonitorAPIModeChatCompletions:
 		return nil
 	case MonitorAPIModeResponses:
-		if provider == "" || provider == MonitorProviderOpenAI {
+		if provider == "" || provider == MonitorProviderOpenAI || provider == MonitorProviderOpenAICodex {
 			return nil
 		}
 		return ErrChannelMonitorInvalidAPIMode

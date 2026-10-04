@@ -207,8 +207,12 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 		a.Outcome, a.ReasonCode = "error", "upstream_unavailable"
 		return result, ErrCodexTicketUnavailable
 	}
-	token, _, tokenErr := s.GetAccessToken(ctx, account)
-	if tokenErr != nil || strings.TrimSpace(token) == "" {
+	token := ""
+	var tokenErr error
+	if !account.IsOpenAICodex() {
+		token, _, tokenErr = s.GetAccessToken(ctx, account)
+	}
+	if tokenErr != nil || (!account.IsOpenAICodex() && strings.TrimSpace(token) == "") {
 		a.Outcome, a.ReasonCode = "error", "credentials"
 		return result, nil
 	}
@@ -269,6 +273,9 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 	ticket := &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state),
 		GenerationID: generation, VerificationMethod: "modeltrace_v1", FingerprintCommit: commit,
 		CapturedAt: now, Attempts: 1, HTTPStatus: status, Cookie: cookie}
+	if account.IsOpenAICodex() {
+		ticket.ProxyID = &proxy.ID
+	}
 	if err := s.storeOpenAICodexTicket(ctx, account, ticket); err != nil {
 		a.Outcome, a.ReasonCode = "error", "persistence"
 		return result, nil

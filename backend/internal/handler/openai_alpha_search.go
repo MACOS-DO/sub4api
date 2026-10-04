@@ -30,7 +30,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
-	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
+	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformOpenAICodex && apiKey.Group.Platform != service.PlatformComposite {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex alpha search is only available for OpenAI and Composite groups")
 		return
 	}
@@ -75,7 +75,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		return
 	}
 	requestedModel := strings.TrimSpace(modelResult.String())
-	if !compositeTargetPlatformAllowed(c, apiKey, requestedModel, service.PlatformOpenAI) {
+	if !compositeTargetPlatformAllowed(c, apiKey, requestedModel, service.PlatformOpenAI, service.PlatformOpenAICodex) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex alpha search only supports OpenAI models for Composite groups")
 		return
 	}
@@ -149,7 +149,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			false,
 			false,
 			false,
-			service.PlatformOpenAI,
+			openAICompatibleRequestPlatform(c.Request.Context(), apiKey),
 		)
 		if err != nil || selection == nil || selection.Account == nil {
 			if failoverClientGone(c) {
@@ -157,7 +157,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 				return
 			}
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestedModel, requestedModel, service.PlatformOpenAI)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, requestedModel, requestedModel, openAICompatibleRequestPlatform(c.Request.Context(), apiKey))
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}

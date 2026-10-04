@@ -9,6 +9,7 @@
 
 import type { APIMode, CheckMode, Provider, MonitorStatus } from '@/api/admin/channelMonitor'
 
+export const PROVIDER_OPENAI_CODEX: Provider = 'openai_codex'
 export const PROVIDER_OPENAI: Provider = 'openai'
 export const PROVIDER_OPENAI_BPS: Provider = 'openai_bps'
 export const PROVIDER_ANTHROPIC: Provider = 'anthropic'
@@ -41,6 +42,7 @@ export const API_MODE_RESPONSES: APIMode = 'responses'
 export const PROVIDERS: readonly Provider[] = [
   PROVIDER_OPENAI_BPS,
   PROVIDER_OPENAI,
+  PROVIDER_OPENAI_CODEX,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,

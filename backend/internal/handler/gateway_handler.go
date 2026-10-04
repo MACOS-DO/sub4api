@@ -1155,8 +1155,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
-	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
-		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {
+	if (platform == service.PlatformOpenAI || platform == service.PlatformOpenAICodex) && apiKey != nil && apiKey.Group != nil &&
+		apiKey.Group.Platform == platform && apiKey.Group.CodexModelsManifestConfig.Enabled {
 		h.pinnedOpenAIModels(c, apiKey.Group)
 		return
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,9 +114,16 @@ func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
 		"-U", d.cfg.User,
 		"-d", d.cfg.DBName,
 		"--single-transaction",
+		"--file=-",
+		"--no-psqlrc",
+		"--set=ON_ERROR_STOP=on",
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	commandContext := d.commandContext
+	if commandContext == nil {
+		commandContext = exec.CommandContext
+	}
+	cmd := commandContext(ctx, "psql", args...)
 	if d.cfg.Password != "" {
 		cmd.Env = append(cmd.Environ(), "PGPASSWORD="+d.cfg.Password)
 	}
@@ -123,11 +131,29 @@ func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
 		cmd.Env = append(cmd.Environ(), "PGSSLMODE="+d.cfg.SSLMode)
 	}
 
-	cmd.Stdin = data
+	// Acquire both session locks inside the psql session that restores the dump.
+	// If that session is lost, its transaction and locks end together.
+	guard := fmt.Sprintf(`DO $sub4_restore_lock$ BEGIN
+IF NOT pg_try_advisory_lock(7161981693156876665::bigint) THEN
+RAISE EXCEPTION 'Stop Gateway before restoring the shared database'; END IF;
+IF NOT pg_try_advisory_lock(%d::bigint) THEN
+RAISE EXCEPTION 'Sub4API migration or backup is in progress'; END IF;
+END $sub4_restore_lock$;
+-- pg_dump --clean can emit DROP CONSTRAINT for inherited partition keys
+-- before their parent. Remove this application's partition root first inside
+-- the same transaction; the full-database dump recreates it and its children.
+DO $sub4_restore_partitions$ BEGIN
+IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+           WHERE n.nspname='public' AND c.relname='codex_ticket_attempts' AND c.relkind='p') THEN
+    DROP TABLE public.codex_ticket_attempts CASCADE;
+END IF;
+END $sub4_restore_partitions$;
+`, migrationsAdvisoryLockID)
+	cmd.Stdin = io.MultiReader(strings.NewReader(guard), data)
 
-	output, err := cmd.CombinedOutput()
+	_, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%v: %s", err, string(output))
+		return fmt.Errorf("database restore failed: %w", err)
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MACOS-DO/sub4api/internal/pkg/codexgateway"
 	infraerrors "github.com/MACOS-DO/sub4api/internal/pkg/errors"
 )
 
@@ -68,7 +69,7 @@ func (s *OpenAIQuotaService) referralAccount(ctx context.Context, id int64, send
 	if a == nil {
 		return nil, ErrAccountNotFound
 	}
-	if a.Platform != PlatformOpenAI || a.Type != AccountTypeOAuth {
+	if !a.IsOpenAICodex() && (a.Platform != PlatformOpenAI || a.Type != AccountTypeOAuth) {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_REFERRAL_INVALID_ACCOUNT", "referrals require an OpenAI OAuth account")
 	}
 	if a.IsShadow() {
@@ -81,6 +82,13 @@ func (s *OpenAIQuotaService) referralAccount(ctx context.Context, id int64, send
 }
 
 func referralProgram(a *Account) string {
+	if a.IsOpenAICodex() && a.Gateway != nil && a.Gateway.Snapshot != nil && a.Gateway.Snapshot.Metadata.PlanType != nil {
+		copy := *a
+		copy.Platform = PlatformOpenAI
+		copy.Type = AccountTypeOAuth
+		copy.Credentials = map[string]any{"plan_type": *a.Gateway.Snapshot.Metadata.PlanType}
+		return referralProgram(&copy)
+	}
 	if strings.EqualFold(a.GetCredential("account_type"), "workspace") {
 		return openAIReferralWorkspace
 	}
@@ -115,6 +123,12 @@ func (s *OpenAIQuotaService) QueryReferralEligibility(ctx context.Context, id in
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
 	program := referralProgram(account)
+	if account.IsOpenAICodex() {
+		if s.codexGateway == nil {
+			return nil, codexgateway.Unavailable()
+		}
+		return s.queryCodexGatewayReferral(callCtx, id, program)
+	}
 	call, err := s.referralCall(callCtx, id, program)
 	if err != nil {
 		return nil, err
@@ -170,6 +184,16 @@ func (s *OpenAIQuotaService) SendReferralInvite(ctx context.Context, id int64, i
 	}
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
+	if account.IsOpenAICodex() {
+		if s.codexGateway == nil {
+			return nil, codexgateway.Unavailable()
+		}
+		var result map[string]any
+		if err := s.codexGateway.Auxiliary(callCtx, id, http.MethodPost, "referrals/invites", map[string]any{"program_id": eligibility.ProgramID, "email": email}, &result); err != nil {
+			return nil, err
+		}
+		return &OpenAIReferralSendResult{Email: email, Sent: true}, nil
+	}
 	call, err := s.referralCall(callCtx, id, eligibility.ProgramID)
 	if err != nil {
 		return nil, err

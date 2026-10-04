@@ -41,6 +41,7 @@ const (
 	PlatformAnthropic   = domain.PlatformAnthropic
 	PlatformOpenAI      = domain.PlatformOpenAI
 	PlatformOpenAIBPS   = domain.PlatformOpenAIBPS
+	PlatformOpenAICodex = domain.PlatformOpenAICodex
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
@@ -126,6 +127,7 @@ func IsMultiProtocolAPIKeyProvider(platform string) bool {
 // ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），
 // 若新增平台需同步修改该 schema。
 var AllowedQuotaPlatforms = []string{
+	PlatformOpenAICodex,
 	PlatformOpenAIBPS,
 	PlatformAnthropic,
 	PlatformOpenAI,
@@ -164,6 +166,7 @@ func IsAllowedQuotaPlatform(s string) bool {
 
 // Account type constants
 const (
+	AccountTypeGateway        = domain.AccountTypeGateway
 	AccountTypeOAuth          = domain.AccountTypeOAuth          // OAuth类型账号（full scope: profile + inference）
 	AccountTypeSetupToken     = domain.AccountTypeSetupToken     // Setup Token类型账号（inference only scope）
 	AccountTypeAPIKey         = domain.AccountTypeAPIKey         // API Key类型账号

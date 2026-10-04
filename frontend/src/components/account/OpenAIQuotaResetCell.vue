@@ -35,7 +35,7 @@
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
         </svg>
-        {{ t('admin.accounts.openaiQuotaReset.count') }}<span v-if="data"> {{ availableResetCount }}</span>
+        {{ t('admin.accounts.openaiQuotaReset.count') }}<span v-if="data"> {{ availableResetCountDisplay }}</span>
       </button>
 
       <button
@@ -170,7 +170,7 @@
     <ConfirmDialog
       :show="showResetConfirm"
       :title="t('admin.accounts.openaiQuotaReset.confirmTitle')"
-      :message="t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCount })"
+      :message="t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCountDisplay })"
       :confirm-text="t('admin.accounts.openaiQuotaReset.reset')"
       :cancel-text="t('common.cancel')"
       danger
@@ -204,7 +204,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 // Visible only for OpenAI OAuth accounts.
-const visible = computed(() => props.account.platform === 'openai' && props.account.type === 'oauth')
+const visible = computed(() => (props.account.platform === 'openai' && props.account.type === 'oauth') || props.account.platform === 'openai_codex')
 
 const loading = ref(false)
 const resetting = ref(false)
@@ -333,7 +333,11 @@ data.value = cachedData.value
 // 重置必须在母账号上进行。前端据此禁用影子的重置入口(外审 F6)。
 const isShadow = computed(() => props.account.parent_account_id != null)
 
-const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
+const availableResetCount = computed<number | null>(() => {
+  const value = data.value?.rate_limit_reset_credits?.available_count
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+})
+const availableResetCountDisplay = computed(() => availableResetCount.value == null ? '—' : String(availableResetCount.value))
 // Prefer the live payload and fall back to the persisted snapshot only when the
 // live state is unknown, so the count and the expirations never come from two
 // different generations of the same data.
@@ -345,7 +349,7 @@ const resetCreditExpirations = computed(() =>
 )
 const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
 const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
-const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
+const canReset = computed(() => availableResetCount.value !== null && availableResetCount.value > 0 && !isShadow.value)
 
 const resetCreditDetailsTitle = computed(() =>
   resetCreditExpirations.value

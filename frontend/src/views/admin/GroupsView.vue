@@ -1442,7 +1442,7 @@
 
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
-          v-if="createForm.platform === 'openai'"
+          v-if="(createForm.platform === 'openai' || createForm.platform === 'openai_codex')"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
@@ -1637,7 +1637,7 @@
 
           <div
             v-if="
-              createForm.platform === 'openai' &&
+              (createForm.platform === 'openai' || createForm.platform === 'openai_codex') &&
               createForm.allow_messages_dispatch
             "
             class="mt-3"
@@ -3082,7 +3082,7 @@
 
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
-          v-if="editForm.platform === 'openai'"
+          v-if="(editForm.platform === 'openai' || editForm.platform === 'openai_codex')"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
@@ -3115,11 +3115,12 @@
           </div>
         </div>
 
-        <!-- 固定账号获取 Codex Model Manifest（仅 openai 平台，仅编辑对话框） -->
+        <!-- 固定账号获取 Codex Model Manifest（OpenAI/OpenAI Codex，仅编辑对话框） -->
         <CodexManifestAccountsField
-          v-if="editForm.platform === 'openai' && editingGroup"
+          v-if="(editForm.platform === 'openai' || editForm.platform === 'openai_codex') && editingGroup"
           ref="editCodexManifestRef"
           :group-id="editingGroup.id"
+          :platform="editForm.platform"
           :model-value="editCodexManifestConfig"
           @update:model-value="Object.assign(editCodexManifestConfig, $event)"
           :account-names="editCodexManifestAccountNames"
@@ -3287,7 +3288,7 @@
 
           <div
             v-if="
-              editForm.platform === 'openai' && editForm.allow_messages_dispatch
+              (editForm.platform === 'openai' || editForm.platform === 'openai_codex') && editForm.allow_messages_dispatch
             "
             class="mt-3"
           >
@@ -6283,9 +6284,9 @@ const handleUpdateGroup = async () => {
         editModelRoutingRules.value,
       ),
       model_allowlist: buildModelAllowlistConfig(editModelAllowlistState),
-      // 非 openai 平台提交关闭状态，与后端归一化一致
+      // 两种 Codex 模型目录平台均保留固定账号配置。
       codex_models_manifest_config:
-        editForm.platform === "openai"
+        editForm.platform === "openai" || editForm.platform === "openai_codex"
           ? {
               enabled: editCodexManifestConfig.value.enabled,
               account_ids: [...editCodexManifestConfig.value.account_ids],
