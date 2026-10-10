@@ -140,6 +140,8 @@ func TestCodexGatewayDeletedAccountReleasesBinding(t *testing.T) {
 	previous, err := repo.FindCodexBindingByCreationKey(ctx, creationKey)
 	require.NoError(t, err)
 	require.Nil(t, previous, "a soft-deleted account must not satisfy creation idempotency")
-	require.NoError(t, repo.DeleteCodexBinding(ctx, first.ID))
+	var bindingCount int
+	require.NoError(t, integrationDB.QueryRow("SELECT count(*) FROM public.openai_codex_account_bindings WHERE account_id=$1", first.ID).Scan(&bindingCount))
+	require.Zero(t, bindingCount, "account deletion must remove its Gateway binding in the same transaction")
 	require.NoError(t, repo.CreateWithAccountGroups(ctx, second, nil), "the Gateway ID must be reusable after local deletion")
 }

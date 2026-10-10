@@ -491,7 +491,9 @@ func (s *CodexGatewayService) Delete(ctx context.Context, id int64) error {
 		if s.Check(ctx) != nil {
 			return nil
 		}
-		_ = s.synchronizeLocked(ctx, id)
+		if err := s.synchronizeLocked(ctx, id); err != nil && ctx.Err() == nil {
+			slog.Warn("codex_gateway_delete_sync_failed", "account_id", id, "reason", err.Error())
+		}
 		return nil
 	})
 }
@@ -506,10 +508,7 @@ func (s *CodexGatewayService) finishLocalDelete(ctx context.Context, id int64) e
 			return err
 		}
 	}
-	if err = s.repo.Delete(ctx, id); err != nil {
-		return err
-	}
-	// Accounts are soft-deleted, so the foreign-key cascade never runs. Release
-	// the Gateway ID and creation key once the remote account is gone.
-	return s.bindings.DeleteCodexBinding(ctx, id)
+	// AccountRepository.Delete removes the soft-deleted account's binding in the
+	// same transaction, so a local cleanup failure remains retryable.
+	return s.repo.Delete(ctx, id)
 }

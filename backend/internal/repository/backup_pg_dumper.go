@@ -23,6 +23,11 @@ type PgDumper struct {
 	commandContext func(context.Context, string, ...string) *exec.Cmd
 }
 
+const (
+	restoreGuardStopGatewayMessage   = "Stop Gateway before restoring the shared database"
+	restoreGuardMigrationBusyMessage = "Sub4API migration or backup is in progress"
+)
+
 // NewPgDumper creates a new PgDumper
 func NewPgDumper(cfg *config.Config, db *sql.DB) service.DBDumper {
 	return &PgDumper{
@@ -135,9 +140,9 @@ func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
 	// If that session is lost, its transaction and locks end together.
 	guard := fmt.Sprintf(`DO $sub4_restore_lock$ BEGIN
 IF NOT pg_try_advisory_lock(7161981693156876665::bigint) THEN
-RAISE EXCEPTION 'Stop Gateway before restoring the shared database'; END IF;
+RAISE EXCEPTION '%s'; END IF;
 IF NOT pg_try_advisory_lock(%d::bigint) THEN
-RAISE EXCEPTION 'Sub4API migration or backup is in progress'; END IF;
+RAISE EXCEPTION '%s'; END IF;
 END $sub4_restore_lock$;
 -- pg_dump --clean can emit DROP CONSTRAINT for inherited partition keys
 -- before their parent. Remove this application's partition root first inside
@@ -148,7 +153,7 @@ IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     DROP TABLE public.codex_ticket_attempts CASCADE;
 END IF;
 END $sub4_restore_partitions$;
-`, migrationsAdvisoryLockID)
+`, restoreGuardStopGatewayMessage, migrationsAdvisoryLockID, restoreGuardMigrationBusyMessage)
 	cmd.Stdin = io.MultiReader(strings.NewReader(guard), data)
 
 	output, err := cmd.CombinedOutput()
@@ -161,26 +166,25 @@ END $sub4_restore_partitions$;
 	return nil
 }
 
-// restoreFailureSummary keeps only psql ERROR messages, such as the restore
-// guard's instruction to stop Gateway. Other output may echo dump contents.
+// restoreFailureSummary returns only fixed psql diagnostics emitted by the
+// restore guard. Other output may echo dump contents or database values.
 func restoreFailureSummary(output []byte) string {
-	const maxLines, maxLength = 3, 300
-	var messages []string
 	for _, line := range strings.Split(string(output), "\n") {
-		index := strings.Index(line, "ERROR:")
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "psql:<stdin>:") {
+			continue
+		}
+		index := strings.Index(line, ": ERROR:")
 		if index < 0 {
 			continue
 		}
-		message := strings.TrimSpace(line[index:])
-		if len(message) > maxLength {
-			message = message[:maxLength] + "..."
-		}
-		messages = append(messages, message)
-		if len(messages) == maxLines {
-			break
+		message := strings.TrimSpace(line[index+len(": ERROR:"):])
+		switch message {
+		case restoreGuardStopGatewayMessage, restoreGuardMigrationBusyMessage:
+			return message
 		}
 	}
-	return strings.Join(messages, "; ")
+	return ""
 }
 
 // cmdReadCloser wraps a command stdout pipe and waits for the process on Close

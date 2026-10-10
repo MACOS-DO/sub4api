@@ -167,3 +167,13 @@ func TestPgDumperRestoreReportsGuardErrorWithoutDumpContents(t *testing.T) {
 	require.Contains(t, err.Error(), "Stop Gateway before restoring the shared database")
 	require.NotContains(t, err.Error(), "secret-row")
 }
+
+func TestRestoreFailureSummaryRejectsUncontrolledPsqlOutput(t *testing.T) {
+	output := []byte("psql:<stdin>:4: ERROR:  invalid input syntax: secret-row\nERROR:  secret-row\n")
+	require.Empty(t, restoreFailureSummary(output))
+}
+
+func TestRestoreFailureSummaryKeepsOnlyKnownGuardMessage(t *testing.T) {
+	output := []byte("psql:<stdin>:4: ERROR:  invalid input syntax: secret-row\npsql:<stdin>:5: ERROR:  Sub4API migration or backup is in progress\n")
+	require.Equal(t, restoreGuardMigrationBusyMessage, restoreFailureSummary(output))
+}

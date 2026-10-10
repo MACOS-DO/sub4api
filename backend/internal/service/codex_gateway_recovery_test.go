@@ -21,11 +21,12 @@ import (
 
 type codexRecoveryRepository struct {
 	AccountRepository
-	account  *Account
-	binding  *CodexAccountBinding
-	failSave bool
-	mu       sync.Mutex
-	locks    map[string]*sync.Mutex
+	account    *Account
+	binding    *CodexAccountBinding
+	failSave   bool
+	failDelete bool
+	mu         sync.Mutex
+	locks      map[string]*sync.Mutex
 }
 
 func copyCodexBinding(b *CodexAccountBinding) *CodexAccountBinding {
@@ -80,14 +81,17 @@ func (r *codexRecoveryRepository) ListCodexBindingAccountIDs(context.Context) ([
 	}
 	return []int64{r.account.ID}, nil
 }
-func (r *codexRecoveryRepository) DeleteCodexBinding(context.Context, int64) error {
-	r.binding = nil
-	return nil
-}
 func (r *codexRecoveryRepository) ListShadowsByParent(context.Context, int64) ([]*Account, error) {
 	return nil, nil
 }
-func (r *codexRecoveryRepository) Delete(context.Context, int64) error { r.account = nil; return nil }
+func (r *codexRecoveryRepository) Delete(context.Context, int64) error {
+	if r.failDelete {
+		return errors.New("injected local delete failure")
+	}
+	r.account = nil
+	r.binding = nil
+	return nil
+}
 func (r *codexRecoveryRepository) WithCodexBindingLock(ctx context.Context, key string, fn func(context.Context) error) error {
 	r.mu.Lock()
 	if r.locks == nil {
@@ -263,6 +267,29 @@ func TestCodexGatewayDeletionNeverReopensScheduling(t *testing.T) {
 			require.EqualValues(t, 1, puts.Load(), "recovery must not replay credentials")
 		})
 	}
+}
+
+func TestCodexGatewayLocalDeleteFailureIsRetried(t *testing.T) {
+	admin, repo, _ := codexRecoveryFixture(t, "succeeded")
+	a, err := admin.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                "delete-retry",
+		Platform:            PlatformOpenAICodex,
+		Type:                AccountTypeGateway,
+		Concurrency:         1,
+		GatewayOperationKey: "delete-retry",
+		GatewayCredentials:  json.RawMessage(`{"type":"refresh_token","refresh_token":"synthetic"}`),
+	})
+	require.NoError(t, err)
+	repo.failDelete = true
+	require.NoError(t, admin.codexGateway.Delete(context.Background(), a.ID))
+	require.NotNil(t, repo.account, "a failed local cleanup must keep the account for retry")
+	require.NotNil(t, repo.binding, "a failed local cleanup must keep the binding for retry")
+	require.True(t, repo.binding.DeleteRequested)
+
+	repo.failDelete = false
+	require.NoError(t, admin.codexGateway.Synchronize(context.Background(), a.ID))
+	require.Nil(t, repo.account)
+	require.Nil(t, repo.binding)
 }
 
 func TestCodexGatewayDeletionWinsOverEveryEarlierMutationReceipt(t *testing.T) {

@@ -1021,6 +1021,9 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
 		return err
 	}
+	if err := deleteCodexBinding(ctx, txClient, id); err != nil {
+		return err
+	}
 	if _, err := txClient.Account.Delete().Where(dbaccount.IDEQ(id)).Exec(ctx); err != nil {
 		return err
 	}
