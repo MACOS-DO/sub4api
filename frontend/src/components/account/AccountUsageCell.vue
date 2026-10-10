@@ -819,7 +819,8 @@ const geminiUsageAvailable = computed(() => {
 })
 
 const hasOpenAIUsageFallback = computed(() => {
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  const isOpenAIOAuth = props.account.platform === 'openai' && props.account.type === 'oauth'
+  if (!isOpenAIOAuth && props.account.platform !== 'openai_codex') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
 
@@ -1682,7 +1683,8 @@ watch(
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
+  const isOpenAIOAuth = props.account.platform === 'openai' && props.account.type === 'oauth'
+  if (!isOpenAIOAuth && props.account.platform !== 'openai_codex') return
 
   if (isBatchManaged.value) {
     requestParentBatchUsage({ force: true })

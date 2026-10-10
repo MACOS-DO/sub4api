@@ -30,7 +30,8 @@ const isNonBlankString = (value: unknown): value is string => (
 )
 
 export const buildOpenAIUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'extra'>): string => {
-  if (account.platform !== 'openai' || account.type !== 'oauth') {
+  const isOpenAIOAuth = account.platform === 'openai' && account.type === 'oauth'
+  if (!isOpenAIOAuth && account.platform !== 'openai_codex') {
     return ''
   }
 

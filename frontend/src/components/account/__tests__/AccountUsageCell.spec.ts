@@ -616,6 +616,33 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|30')
   })
 
+  it('OpenAI Codex Gateway 账号会展示 5h/7d 用量窗口', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: { utilization: 25, resets_at: null, remaining_seconds: 0 },
+      seven_day: { utilization: 40, resets_at: null, remaining_seconds: 0 }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 6760, platform: 'openai_codex', type: 'gateway' })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label'],
+            template: '<div class="usage-bar">{{ label }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(6760)
+    expect(wrapper.findAll('.usage-bar').map((bar) => bar.text())).toEqual(['5h', '7d'])
+  })
+
   it.each([
     { id: 6801, utilization: 0, cost: 12 },
     { id: 6802, utilization: -1, cost: 12 },

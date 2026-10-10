@@ -28,6 +28,19 @@ describe('buildOpenAIUsageRefreshKey', () => {
     expect(buildOpenAIUsageRefreshKey(base)).not.toBe(buildOpenAIUsageRefreshKey(next))
   })
 
+  it('OpenAI Codex Gateway 账号同样会在 codex 快照变化时生成不同 key', () => {
+    const base = {
+      id: 2,
+      platform: 'openai_codex',
+      type: 'gateway',
+      extra: { codex_usage_updated_at: '2026-03-07T10:00:00Z', codex_5h_used_percent: 0 }
+    } as any
+    const next = { ...base, extra: { ...base.extra, codex_5h_used_percent: 50 } }
+
+    expect(buildOpenAIUsageRefreshKey(base)).not.toBe('')
+    expect(buildOpenAIUsageRefreshKey(base)).not.toBe(buildOpenAIUsageRefreshKey(next))
+  })
+
   it('会在 last_used_at 变化时生成不同 key', () => {
     const base = {
       id: 3,
