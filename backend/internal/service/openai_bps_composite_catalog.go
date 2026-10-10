@@ -54,6 +54,13 @@ func (s *GatewayService) CompleteCompositeBPSModelCatalog(ctx context.Context, g
 	if s.compositeResolver != nil && s.compositeResolver.repo != nil {
 		all, err := s.compositeResolver.repo.ListByGroup(ctx, *groupID, true)
 		if err != nil {
+			if !configured {
+				// No BPS account: keep the account-derived catalog, as for other route lookup failures.
+				if len(existing) == 0 {
+					return nil, nil
+				}
+				return existing, nil
+			}
 			return nil, fmt.Errorf("load composite catalog routes: %w", err)
 		}
 		for _, route := range all {
