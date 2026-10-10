@@ -2,6 +2,10 @@
 
 **TG 交流群：[t.me/macosdo](https://t.me/macosdo)**
 
+<a href="https://proxylane.dev/?utm_source=macosdo&utm_medium=partnership&utm_campaign=macosdo_sponsor_202610&utm_content=github_readme"><img src="assets/partners/proxylane.png" alt="ProxyLane 住宅代理" width="800"></a>
+
+**ProxyLane 住宅代理**：195 个国家，95%+ IP 获 Scamalytics 低风险评级。账号请求时区用新加坡，打票代理池也选新加坡住宅 IP，每个账号一个固定 IP，最长保持 72 小时。中文界面，支持 USDT 付款，首次购买使用优惠码 `MACOSDO30` 享 7 折。
+
 <div align="center">
 
 <img src="assets/logo.svg" alt="Sub4API 标志" width="128" />
