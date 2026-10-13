@@ -82,7 +82,7 @@ func TestCodexTicketParticipationHTTPAndWebSocketRequests(t *testing.T) {
 					// The global ticket was harvested by another account with gpt-6-sol.
 					var shared *openAICodexTicket
 					if savedTicket {
-						shared = verifiedTicket(ticketTestAccount(72), openAICodexTicketHarvestModel, "saved-state", "__oailb=saved")
+						shared = verifiedTicket(ticketTestAccount(72), openAICodexTicketHarvestModel, "saved-state", "__oailb=saved; __cflb=route")
 					}
 					raw, marshalErr := json.Marshal(shared)
 					require.NoError(t, marshalErr)
@@ -112,7 +112,7 @@ func TestCodexTicketParticipationHTTPAndWebSocketRequests(t *testing.T) {
 						return
 					}
 					require.NoError(t, err)
-					require.Equal(t, "__oailb=saved", headers.Get("Cookie"))
+					require.Equal(t, "__oailb=saved; __cflb=route", headers.Get("Cookie"))
 					require.Equal(t, "saved-state", headers.Get(openAICodexTurnStateHeader))
 				})
 			}

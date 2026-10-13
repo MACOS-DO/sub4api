@@ -255,8 +255,8 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 		a.Outcome, a.ReasonCode = "miss", "fingerprint_mismatch"
 		return result, nil
 	}
-	// turn-state 与 __oailb 缺一不可：缺任一项的票无法被失效判定观测到，不共享。
-	if strings.TrimSpace(state) == "" || !codexCookieHasOAILB(cookie) {
+	// 同一次打票必须得到 turn-state、__oailb 与 __cflb，缺少任一项都不共享。
+	if strings.TrimSpace(state) == "" || !codexCookieHasRoutingCookies(cookie) {
 		a.Outcome, a.ReasonCode = "miss", "missing_credentials"
 		return result, nil
 	}

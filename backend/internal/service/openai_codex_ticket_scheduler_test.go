@@ -12,7 +12,7 @@ import (
 
 func TestCodexTicketBlocksAccountIsModelSpecific(t *testing.T) {
 	account := ticketTestAccount(91)
-	ticket := verifiedTicket(ticketTestAccount(90), "gpt-5.6-sol", "private-state", "__oailb=private")
+	ticket := verifiedTicket(ticketTestAccount(90), "gpt-5.6-sol", "private-state", "__oailb=private; __cflb=route")
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
 	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
 	seedSharedCodexTicket(svc, ticket)
@@ -72,7 +72,7 @@ func (stub *codexSnapshotRefreshStub) RefreshSchedulerAccount(_ context.Context,
 func TestCodexTicketInvalidationDoesNotTouchAccountSnapshots(t *testing.T) {
 	account := ticketTestAccount(93)
 	account.Extra = map[string]any{"custom": true}
-	ticket := verifiedTicket(account, "gpt-5.6-sol", "old-state", "__oailb=old")
+	ticket := verifiedTicket(account, "gpt-5.6-sol", "old-state", "__oailb=old; __cflb=route")
 	capture := &codexInvalidationCapture{current: ticket}
 	refresher := &codexSnapshotRefreshStub{}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)

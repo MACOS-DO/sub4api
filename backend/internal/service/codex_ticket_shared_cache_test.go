@@ -129,7 +129,7 @@ func (r *countingTicketRepo) setErr(err error) {
 }
 
 func TestCodexSharedTicketRedisMissLoadsDatabaseOnce(t *testing.T) {
-	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket, delay: 20 * time.Millisecond}
 	cache := newMemoryCodexTicketCache()
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
@@ -159,7 +159,7 @@ func TestCodexSharedTicketRedisMissLoadsDatabaseOnce(t *testing.T) {
 }
 
 func TestCodexSharedTicketLockWaitFallsBackToDatabase(t *testing.T) {
-	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket}
 	cache := newMemoryCodexTicketCache()
 	cache.lockHeld = true
@@ -178,7 +178,7 @@ func TestCodexSharedTicketLockWaitFallsBackToDatabase(t *testing.T) {
 }
 
 func TestCodexSharedTicketFailuresKeepLastKnownTicket(t *testing.T) {
-	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket}
 	cache := newMemoryCodexTicketCache()
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
@@ -206,11 +206,11 @@ func TestCodexSharedTicketFailuresKeepLastKnownTicket(t *testing.T) {
 }
 
 func TestCodexSharedTicketStaleReadRefreshesInBackgroundOnce(t *testing.T) {
-	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket, delay: 100 * time.Millisecond}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
 	svc.openaiCodexTicketLifecycle = repo
-	old := verifiedTicket(ticketTestAccount(39), ticket.Model, "old-state", "__oailb=old")
+	old := verifiedTicket(ticketTestAccount(39), ticket.Model, "old-state", "__oailb=old; __cflb=route")
 	svc.openaiCodexTicket.Store(&openAICodexSharedTicketEntry{view: &codexSharedTicketView{ticket: old}, loadedAt: time.Now().Add(-time.Minute)})
 
 	start := time.Now()
@@ -225,7 +225,7 @@ func TestCodexSharedTicketStaleReadRefreshesInBackgroundOnce(t *testing.T) {
 }
 
 func TestCodexSharedTicketColdReadLoadsSynchronously(t *testing.T) {
-	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
 	svc.openaiCodexTicketLifecycle = repo
@@ -235,8 +235,8 @@ func TestCodexSharedTicketColdReadLoadsSynchronously(t *testing.T) {
 
 func TestCodexSharedTicketWritePublishesNewVersion(t *testing.T) {
 	source := ticketTestAccount(40)
-	ticket := verifiedTicket(source, "gpt-6-astra", "shared-state", "__oailb=shared")
-	repo := &countingTicketRepo{ticket: verifiedTicket(source, ticket.Model, "before-state", "__oailb=before"), version: 1}
+	ticket := verifiedTicket(source, "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
+	repo := &countingTicketRepo{ticket: verifiedTicket(source, ticket.Model, "before-state", "__oailb=before; __cflb=route"), version: 1}
 	cache := newMemoryCodexTicketCache()
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
 	svc.openaiCodexTicketLifecycle = repo
@@ -264,7 +264,7 @@ func TestCodexSharedTicketWritePublishesNewVersion(t *testing.T) {
 
 func TestCodexSharedTicketWriteEvictsWhenReloadFails(t *testing.T) {
 	source := ticketTestAccount(40)
-	ticket := verifiedTicket(source, "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(source, "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket}
 	cache := newMemoryCodexTicketCache()
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
@@ -285,7 +285,7 @@ func TestCodexSharedTicketWriteEvictsWhenReloadFails(t *testing.T) {
 // A write that leaves the shared state unchanged (a repeated or stale invalidation)
 // neither reloads the database nor rewrites Redis.
 func TestCodexSharedTicketUnchangedWriteSkipsPublish(t *testing.T) {
-	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared")
+	ticket := verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route")
 	repo := &countingTicketRepo{ticket: ticket, version: 1}
 	cache := newMemoryCodexTicketCache()
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)

@@ -206,14 +206,14 @@ const text = computed(() => String(locale?.value ?? '').startsWith('zh') ? {
   available: '共享票', fingerprint: '指纹版本', updateBank: '校验并更新', tabs: '票据中心导航',
   current: '当前票据', attempts: '打票流水', invalidations: '票据过期历史',
   noTicket: '此账号不使用共享票', globalTicket: '全站共享票', harvestModel: '打票模型', length: '票据长度', acquired: '获取于', present: '已携带', absent: '未携带', sourceAccount: '来源账号',
-  sharedHint: '全站只有一张票（turn-state + Cookie），由参与账号用 gpt-6-sol 打出，所有参与账号在所有门控模型上共用。',
+  sharedHint: '全站只有一张票（turn-state + __oailb + __cflb），由参与账号用 gpt-6-sol 打出，所有参与账号在所有门控模型上共用。',
   accountParticipation: '此账号参与共享票',
   participationHint: '切换即保存。关闭后该号既不打票也不使用共享票，请求跳过无票限制；重新开启后恢复原无票策略。实际打票还受全局开关、账号状态和 gpt-6-sol 限流约束。',
   savingParticipation: '正在保存参与设置…', participationSaved: '参与设置已保存', participationRefreshError: '参与设置已保存，但账号详情刷新失败，请点击刷新重试。',
   harvestActive: '已允许打票', harvestInactive: '当前未允许打票',
-  superseded: '打票成功，本轮已有票未采用', credentialsChanged: 'turn-state 与 __oailb 同时变化', legacyStateChanged: '旧规则：turn-state 变化',
+  superseded: '打票成功，本轮已有票未采用', credentialsChanged: 'turn-state 变化且 __oailb 或 __cflb 变化', legacyOailbChanged: '旧规则：turn-state 与 __oailb 同时变化', legacyStateChanged: '旧规则：turn-state 变化',
   ready: '可用', missing: '无票', paused: '暂停', invalidatedForAccount: '本号已失效，等待新票', manual: '手动打票', running: '运行中…',
-  attemptsDesc: '成功、未命中与执行错误只在这里展示，不代表当前票失效。', invalidationsDesc: '此账号携带共享票的请求，上游同时返回新的 turn-state 与 __oailb 时，这一代票仅对本账号失效，其他账号继续使用，并立即重新打票；新票打出后本账号恢复。旧版仅比较 turn-state；均不表示推算的 TTL 到期。',
+  attemptsDesc: '成功、未命中与执行错误只在这里展示，不代表当前票失效。', invalidationsDesc: '此账号携带共享票的请求，上游返回新的 turn-state，且 __oailb 或 __cflb 至少一个值变化时，这一代票仅对本账号失效，其他账号继续使用，并立即重新打票；新票打出后本账号恢复。历史记录按当时的失效规则展示；均不表示推算的 TTL 到期。',
   filter: '结果', model: '模型', all: '全部结果', success: '打票成功', failure: '失败与错误', invalidation: '票据失效', allModels: '全部模型',
   loading: '正在加载…', empty: '没有符合条件的记录（最多保留 90 天）', records: '条记录', legacy: '旧版长度校验',
   details: '流水详情', copy: '复制', copied: '已复制', notCarried: '未携带', notReturned: '上游未返回',
@@ -224,14 +224,14 @@ const text = computed(() => String(locale?.value ?? '').startsWith('zh') ? {
   available: 'Shared ticket', fingerprint: 'Fingerprint version', updateBank: 'Verify & update', tabs: 'Ticket center navigation',
   current: 'Current tickets', attempts: 'Ticket attempts', invalidations: 'Ticket expiry history',
   noTicket: 'This account does not use the shared ticket', globalTicket: 'Global shared ticket', harvestModel: 'harvested with', length: 'Ticket length', acquired: 'Acquired', present: 'Present', absent: 'Absent', sourceAccount: 'Source account',
-  sharedHint: 'There is one ticket (turn-state + cookie) for the whole site. Participating accounts harvest it with gpt-6-sol and every participating account uses it on every gated model.',
+  sharedHint: 'There is one ticket (turn-state + __oailb + __cflb) for the whole site. Participating accounts harvest it with gpt-6-sol and every participating account uses it on every gated model.',
   accountParticipation: 'Use the shared ticket on this account',
   participationHint: 'Saves immediately. When off, this account neither harvests nor uses the shared ticket and its requests bypass missing-ticket restrictions; turning it back on restores the saved policy. Harvesting also depends on the global switch, account status and gpt-6-sol rate limits.',
   savingParticipation: 'Saving participation…', participationSaved: 'Participation saved', participationRefreshError: 'Participation was saved, but account details could not be refreshed. Select Refresh to retry.',
   harvestActive: 'Harvesting allowed', harvestInactive: 'Harvesting disabled',
-  superseded: 'Harvested; another ticket was already adopted this round', credentialsChanged: 'Both turn-state and __oailb changed', legacyStateChanged: 'Legacy rule: turn-state changed',
+  superseded: 'Harvested; another ticket was already adopted this round', credentialsChanged: 'Turn-state and either __oailb or __cflb changed', legacyOailbChanged: 'Legacy rule: both turn-state and __oailb changed', legacyStateChanged: 'Legacy rule: turn-state changed',
   ready: 'Ready', missing: 'Missing', paused: 'Paused', invalidatedForAccount: 'Invalid for this account; awaiting new ticket', manual: 'Harvest', running: 'Running…',
-  attemptsDesc: 'Success, misses and errors are shown here; failed attempts do not mean the current ticket is invalid.', invalidationsDesc: 'Recorded when a request from this account carrying the shared ticket receives both a new turn-state and a new __oailb. The generation becomes invalid for this account only; other accounts keep using it while a new ticket is harvested at once, and this account recovers when it arrives. Legacy events only compared turn-state. Neither is an inferred TTL expiry.',
+  attemptsDesc: 'Success, misses and errors are shown here; failed attempts do not mean the current ticket is invalid.', invalidationsDesc: 'Recorded when a request from this account carrying the shared ticket receives a new turn-state and a changed value for either __oailb or __cflb. The generation becomes invalid for this account only; other accounts keep using it while a new ticket is harvested at once, and this account recovers when it arrives. Historical events retain their original invalidation rules. These are not inferred TTL expiries.',
   filter: 'Result', model: 'Model', all: 'All results', success: 'Success', failure: 'Failures & errors', invalidation: 'Invalidation', allModels: 'All models',
   loading: 'Loading…', empty: 'No matching records (90-day retention)', records: 'records', legacy: 'Legacy length check',
   details: 'Event details', copy: 'Copy', copied: 'Copied', notCarried: 'Not carried', notReturned: 'Not returned by upstream',
@@ -312,7 +312,8 @@ function eventBadge(kind: string) {
 function kindLabel(kind: string) { return kind === 'success' ? text.value.success : kind === 'invalidation' ? text.value.invalidation : text.value.failure }
 function reasonLabel(reason?: string) {
   if (reason === 'superseded') return text.value.superseded
-  if (reason === 'upstream_turn_state_and_oailb_changed') return text.value.credentialsChanged
+  if (reason === 'upstream_turn_state_and_routing_cookie_changed') return text.value.credentialsChanged
+  if (reason === 'upstream_turn_state_and_oailb_changed') return text.value.legacyOailbChanged
   if (reason === 'upstream_new_turn_state') return text.value.legacyStateChanged
   return reason || ''
 }

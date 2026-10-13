@@ -12,9 +12,11 @@ import (
 
 type codexTicketRequestContextKey struct{}
 
-// CodexTicketInvalidationCredentialsChanged 表示上游对携带共享票的请求同时返回了新的 turn-state 与 __oailb：
-// 观测到的账号不再使用这一代票。
+// CodexTicketInvalidationCredentialsChanged 保留历史记录的旧规则：turn-state 与 __oailb 同时变化。
 const CodexTicketInvalidationCredentialsChanged = "upstream_turn_state_and_oailb_changed"
+
+// CodexTicketInvalidationRoutingCookieChanged 表示 turn-state 与任一路由 Cookie 同时变化。
+const CodexTicketInvalidationRoutingCookieChanged = "upstream_turn_state_and_routing_cookie_changed"
 
 // Capture before dispatch: neither a later header rewrite nor a newly harvested
 // generation may change the credentials against which this response is checked.
@@ -45,19 +47,11 @@ func snapshotCodexTicketRequest(ticket *openAICodexTicket, accountID int64, head
 		return nil
 	}
 	cookie := strings.Join(headers.Values("Cookie"), "; ")
-	sentCookies, err := http.ParseCookie(cookie)
-	if err != nil {
-		return nil
-	}
-	ticketCookies, err := http.ParseCookie(ticket.Cookie)
-	if err != nil {
-		return nil
-	}
-	sentOAILB, sentOK := codexOAILBValue(sentCookies)
-	ticketOAILB, ticketOK := codexOAILBValue(ticketCookies)
+	sentCookies, sentOK := parseCodexTicketRoutingCookies(cookie)
+	ticketCookies, ticketOK := parseCodexTicketRoutingCookies(ticket.Cookie)
 	// A reused WS connection can replace the turn-state with its own historical
 	// state. Only credentials actually sent for this generation can invalidate it.
-	if !sentOK || !ticketOK || sentOAILB != ticketOAILB {
+	if !sentOK || !ticketOK || sentCookies != ticketCookies {
 		return nil
 	}
 	if strings.Contains(route, "/responses") {
@@ -91,38 +85,6 @@ func snapshotCodexTicketHTTPRequest(request *http.Request, account *Account) *co
 	return snapshotCodexTicketRequest(ticket, account.ID, request.Header, kind, route)
 }
 
-// Only a single unambiguous __oailb value counts. Missing or malformed cookies
-// are not evidence of a change; attributes and unrelated cookies are ignored.
-func codexOAILBValue(cookies []*http.Cookie) (string, bool) {
-	value, found := "", false
-	for _, cookie := range cookies {
-		if cookie.Name != "__oailb" {
-			continue
-		}
-		if found && value != cookie.Value {
-			return "", false
-		}
-		value, found = cookie.Value, true
-	}
-	return value, found
-}
-
-func codexResponseOAILB(headers http.Header) (string, bool) {
-	var cookies []*http.Cookie
-	for _, line := range headers.Values("Set-Cookie") {
-		name, _, _ := strings.Cut(line, "=")
-		if strings.TrimSpace(name) != "__oailb" {
-			continue
-		}
-		cookie, err := http.ParseSetCookie(line)
-		if err != nil {
-			return "", false
-		}
-		cookies = append(cookies, cookie)
-	}
-	return codexOAILBValue(cookies)
-}
-
 func (s *OpenAIGatewayService) observeCodexTicketResponse(request *http.Request, response *http.Response, account *Account) {
 	s.observeCodexTicketHTTPResponse(snapshotCodexTicketHTTPRequest(request, account), response)
 }
@@ -149,8 +111,8 @@ func (s *OpenAIGatewayService) codexTicketHandshakeObserver(ctx context.Context,
 	}
 }
 
-// observeCodexTicketHeaders 在上游同时返回新的 turn-state 与新的 __oailb 时，判定这一代票对该账号失效，
-// 其他账号照常使用，同时立即唤醒打票器打新票。只有其中一项变化不影响票据。
+// observeCodexTicketHeaders 在 turn-state 变化且 __oailb 或 __cflb 至少一个变化时，
+// 判定这一代票对该账号失效；其他账号照常使用，同时立即唤醒打票器。
 func (s *OpenAIGatewayService) observeCodexTicketHeaders(snapshot *codexTicketRequestSnapshot, status int, headers http.Header) {
 	if snapshot == nil || s.openaiCodexTicketLifecycle == nil {
 		return
@@ -159,18 +121,18 @@ func (s *OpenAIGatewayService) observeCodexTicketHeaders(snapshot *codexTicketRe
 	if snapshot.state == "" || returned == "" || returned == snapshot.state {
 		return
 	}
-	cookies, err := http.ParseCookie(snapshot.cookie)
-	if err != nil {
+	original, ok := parseCodexTicketRoutingCookies(snapshot.cookie)
+	if !ok {
 		return
 	}
-	originalOAILB, originalOK := codexOAILBValue(cookies)
-	returnedOAILB, returnedOK := codexResponseOAILB(headers)
-	if !originalOK || !returnedOK || originalOAILB == returnedOAILB {
+	returnedOAILB, oailbOK := codexResponseCookieValue(headers, codexOAILBCookie)
+	returnedCFLB, cflbOK := codexResponseCookieValue(headers, codexCFLBCookie)
+	if !(oailbOK && returnedOAILB != original.oailb) && !(cflbOK && returnedCFLB != original.cflb) {
 		return
 	}
 	event := &CodexTicketInvalidation{
 		AccountID: snapshot.accountID, Model: snapshot.model, TicketGenerationID: snapshot.generationID,
-		OccurredAt: time.Now().UTC(), ReasonCode: CodexTicketInvalidationCredentialsChanged,
+		OccurredAt: time.Now().UTC(), ReasonCode: CodexTicketInvalidationRoutingCookieChanged,
 		ResponseHTTPStatus: &status, RequestKind: snapshot.kind, RequestRoute: snapshot.route,
 		OriginalTicket:     optionalCodexCredential(snapshot.state),
 		OriginalCookie:     optionalCodexCredential(snapshot.cookie),
@@ -181,7 +143,7 @@ func (s *OpenAIGatewayService) observeCodexTicketHeaders(snapshot *codexTicketRe
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var inserted bool
-	err = s.writeSharedCodexTicket(ctx, func(ctx context.Context) (bool, error) {
+	err := s.writeSharedCodexTicket(ctx, func(ctx context.Context) (bool, error) {
 		var err error
 		inserted, err = s.openaiCodexTicketLifecycle.Invalidate(ctx, event)
 		// 只有新记录且命中当前这一代时共享状态才变化；重复上报与旧一代上报不重新发布。

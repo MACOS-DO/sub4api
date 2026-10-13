@@ -34,7 +34,7 @@ func (d *codexObservationDialer) Dial(_ context.Context, _ string, headers http.
 
 func TestCodexTicketWSObservationRealDialsOnly(t *testing.T) {
 	account := ticketTestAccount(71)
-	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
+	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old; __cflb=route")
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
 	capture := &codexInvalidationCapture{current: ticket}
 	svc.openaiCodexTicketLifecycle = capture
@@ -55,7 +55,7 @@ func TestCodexTicketWSObservationRealDialsOnly(t *testing.T) {
 	id := lease.ConnID()
 	lease.Release()
 	require.Len(t, capture.events, 1)
-	require.Equal(t, "__oailb=old", *capture.events[0].OriginalCookie)
+	require.Equal(t, "__oailb=old; __cflb=route", *capture.events[0].OriginalCookie)
 	req.PreferredConnID = id
 	req.ForcePreferredConn = true
 	lease, err = pool.Acquire(context.Background(), req)
@@ -75,7 +75,7 @@ func TestCodexTicketWSObservationRealDialsOnly(t *testing.T) {
 
 func TestCodexTicketWSObservationFailedHandshake(t *testing.T) {
 	account := ticketTestAccount(71)
-	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
+	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old; __cflb=route")
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
 	capture := &codexInvalidationCapture{current: ticket}
 	svc.openaiCodexTicketLifecycle = capture
@@ -91,7 +91,7 @@ func TestCodexTicketWSObservationFailedHandshake(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, *capture.events[0].ResponseHTTPStatus)
 	require.Equal(t, "diagnostic", capture.events[0].RequestKind)
 	require.Equal(t, account.ID, capture.events[0].AccountID)
-	require.Equal(t, CodexTicketInvalidationCredentialsChanged, capture.events[0].ReasonCode)
+	require.Equal(t, CodexTicketInvalidationRoutingCookieChanged, capture.events[0].ReasonCode)
 	require.Equal(t, "old-state", *capture.events[0].OriginalTicket)
 	require.Equal(t, "new-state", *capture.events[0].ReturnedTicket)
 	require.Nil(t, svc.codexTicketHandshakeObserver(context.Background(), account.ID, nil))
@@ -99,7 +99,7 @@ func TestCodexTicketWSObservationFailedHandshake(t *testing.T) {
 
 func TestCodexTicketWSHeadersPreserveInjectedGeneration(t *testing.T) {
 	account := ticketTestAccount(71)
-	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
+	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old; __cflb=route")
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)
 	seedSharedCodexTicket(svc, ticket)
 	headers, _, injected, err := svc.buildOpenAIWSHeadersWithTicket(context.Background(), nil, account, "token", OpenAIWSProtocolDecision{}, true, "client-state", "", "session", ticket.Model, "")
@@ -116,7 +116,7 @@ func TestCodexTicketWSPassthroughObservesSuccessAndFailure(t *testing.T) {
 			account := ticketTestAccount(901)
 			account.Concurrency = 1
 			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough}
-			ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
+			ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old; __cflb=route")
 			capture := &codexInvalidationCapture{current: ticket}
 			cfg := passthroughLifecycleConfig()
 			cfg.Gateway.OpenAIWS.OAuthEnabled = true
@@ -142,7 +142,7 @@ func TestCodexTicketWSPassthroughObservesSuccessAndFailure(t *testing.T) {
 			}
 			require.Len(t, capture.events, 1)
 			require.Equal(t, ticket.GenerationID, capture.events[0].TicketGenerationID)
-			require.Equal(t, "__oailb=old", *capture.events[0].OriginalCookie)
+			require.Equal(t, "__oailb=old; __cflb=route", *capture.events[0].OriginalCookie)
 		})
 	}
 }
@@ -152,7 +152,7 @@ func TestCodexTicketWSPrewarmChecksSentCredentials(t *testing.T) {
 		for _, rewrite := range []string{"none", "turn-state", "cookie"} {
 			t.Run(map[bool]string{false: "success", true: "failed"}[fail]+"/"+rewrite, func(t *testing.T) {
 				account := ticketTestAccount(71)
-				ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
+				ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old; __cflb=route")
 				capture := &codexInvalidationCapture{current: ticket}
 				svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
 				svc.openaiCodexTicketLifecycle = capture

@@ -82,7 +82,7 @@ func TestCodexTicketInvalidationMatchesGenerationCaseInsensitively(t *testing.T)
 	require.NoError(t, repo.StoreTicket(ctx, upper, id, time.Now().UTC(), raw))
 	returned := "returned-state"
 	event := &service.CodexTicketInvalidation{AccountID: id, Model: "gpt-6-astra", TicketGenerationID: upper, OccurredAt: time.Now().UTC(),
-		ReasonCode: service.CodexTicketInvalidationCredentialsChanged, RequestKind: "user_request", RequestRoute: "/v1/responses", ReturnedTicket: &returned}
+		ReasonCode: service.CodexTicketInvalidationRoutingCookieChanged, RequestKind: "user_request", RequestRoute: "/v1/responses", ReturnedTicket: &returned}
 	inserted, err := repo.Invalidate(ctx, event)
 	require.NoError(t, err)
 	require.True(t, inserted)

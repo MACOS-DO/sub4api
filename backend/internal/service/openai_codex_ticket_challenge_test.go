@@ -216,7 +216,7 @@ func TestCodexTicketHarvestStoresSharedTicketForAllAccounts(t *testing.T) {
 	require.Equal(t, source.ID, stored.AccountID)
 	require.Equal(t, fakeCodexTicketState(292), stored.State)
 	require.Equal(t, 292, stored.Length)
-	require.Equal(t, "__oailb=harvested", stored.Cookie)
+	require.Equal(t, "__oailb=harvested; __cflb=route", stored.Cookie)
 	require.Equal(t, *result.TicketGenerationID, stored.GenerationID)
 	require.Equal(t, stored, capture.current)
 	_, retry := svc.openaiCodexTicketNextAttempt.Load(codexTicketRetryKey(borrower.ID))
@@ -227,7 +227,7 @@ func TestCodexTicketHarvestStoresSharedTicketForAllAccounts(t *testing.T) {
 	injected, err := svc.applyOpenAICodexTicketWithGeneration(context.Background(), borrower, "gpt-6-astra", headers)
 	require.NoError(t, err)
 	require.Equal(t, stored.GenerationID, injected.GenerationID)
-	require.Equal(t, "__oailb=harvested", headers.Get("Cookie"))
+	require.Equal(t, "__oailb=harvested; __cflb=route", headers.Get("Cookie"))
 	require.Equal(t, stored.State, headers.Get(openAICodexTurnStateHeader))
 	require.Equal(t, openAICodexTicketHarvestModel, stored.Model)
 	status := OpenAICodexTicketStatusOf(borrower, svc.openAICodexTicketConfig(), svc.CodexSharedTicketSnapshot(context.Background()), time.Now())
@@ -301,7 +301,7 @@ func (failingStoreTicketRepo) StoreTicket(context.Context, string, int64, time.T
 	return errors.New("write failed")
 }
 
-func TestCodexTicketHarvestRequiresTurnStateAndOAILB(t *testing.T) {
+func TestCodexTicketHarvestRequiresTurnStateAndBothRoutingCookies(t *testing.T) {
 	output := modelTraceReferenceOutput(t, openAICodexTicketHarvestModel)
 	for name, test := range map[string]struct {
 		keepState bool
@@ -313,8 +313,18 @@ func TestCodexTicketHarvestRequiresTurnStateAndOAILB(t *testing.T) {
 		"turn-state only":           {keepState: true},
 		"turn-state without oailb":  {keepState: true, cookies: []string{"session=x; Path=/"}, cookie: "session=x"},
 		"oailb only":                {cookies: []string{"__oailb=lb; Path=/"}, cookie: "__oailb=lb"},
-		"turn-state and oailb":      {keepState: true, cookies: []string{"__oailb=lb; Path=/"}, success: true, cookie: "__oailb=lb"},
-		"turn-state, oailb, others": {keepState: true, cookies: []string{"route=a; Path=/", "__oailb=lb; Path=/"}, success: true, cookie: "route=a; __oailb=lb"},
+		"missing cflb":              {keepState: true, cookies: []string{"__oailb=lb; Path=/"}, cookie: "__oailb=lb"},
+		"missing oailb":             {keepState: true, cookies: []string{"__cflb=cf; Path=/"}, cookie: "__cflb=cf"},
+		"missing state":             {cookies: []string{"__oailb=lb", "__cflb=cf"}, cookie: "__oailb=lb; __cflb=cf"},
+		"empty oailb":               {keepState: true, cookies: []string{"__oailb=", "__cflb=cf"}, cookie: "__oailb=; __cflb=cf"},
+		"empty cflb":                {keepState: true, cookies: []string{"__oailb=lb", "__cflb="}, cookie: "__oailb=lb; __cflb="},
+		"conflicting oailb":         {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", "__oailb=other; Path=/other"}},
+		"conflicting cflb":          {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", "__cflb=other; Path=/other"}},
+		"malformed oailb duplicate": {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", `__oailb="unfinished`}},
+		"malformed cflb duplicate":  {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", `__cflb="unfinished`}},
+		"all credentials":           {keepState: true, cookies: []string{"__oailb=lb; Path=/", "__cflb=cf; Secure"}, success: true, cookie: "__oailb=lb; __cflb=cf"},
+		"identical duplicates":      {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", "__oailb=lb; Path=/other", "__cflb=cf; Path=/other"}, success: true, cookie: "__oailb=lb; __cflb=cf"},
+		"other cookies retained":    {keepState: true, cookies: []string{"route=a; Path=/", "__oailb=lb; Path=/", "__cflb=cf; Secure"}, success: true, cookie: "route=a; __oailb=lb; __cflb=cf"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			upstream := &codexTicketFuncUpstream{do: func(*http.Request) (*http.Response, error) {
@@ -329,7 +339,8 @@ func TestCodexTicketHarvestRequiresTurnStateAndOAILB(t *testing.T) {
 				return response, nil
 			}}
 			svc, account, history := challengeHarvestService(t, upstream)
-			capture := &codexInvalidationCapture{}
+			previous := verifiedTicket(account, openAICodexTicketHarvestModel, "previous-state", "__oailb=old; __cflb=old")
+			capture := &codexInvalidationCapture{current: previous}
 			svc.openaiCodexTicketLifecycle = capture
 			result, err := svc.runCodexTicketAttemptWithChallengeGenerator(context.Background(), account, "manual", func() (ModelTraceChallenge, error) {
 				return newModelTraceChallenge(bytes.NewReader([]byte{0, 0, 0, 0, 0}))
@@ -343,6 +354,7 @@ func TestCodexTicketHarvestRequiresTurnStateAndOAILB(t *testing.T) {
 				require.Equal(t, "missing_credentials", result.ReasonCode)
 				require.Nil(t, result.TicketGenerationID)
 				require.Empty(t, capture.stored)
+				require.Same(t, previous, capture.current, "incomplete or ambiguous credentials never replace the existing ticket")
 				_, scheduled := svc.openaiCodexTicketNextAttempt.Load(codexTicketRetryKey(account.ID))
 				require.True(t, scheduled)
 				return

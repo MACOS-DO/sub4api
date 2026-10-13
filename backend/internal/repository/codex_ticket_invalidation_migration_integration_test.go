@@ -179,7 +179,7 @@ func TestCodexTicketInvalidationConcurrentLifecycle(t *testing.T) {
 	}
 	store(old)
 	originalTicket, returnedTicket := "state-"+old, "returned-state"
-	event := service.CodexTicketInvalidation{AccountID: id, Model: model, TicketGenerationID: old, OccurredAt: time.Now().UTC(), ReasonCode: service.CodexTicketInvalidationCredentialsChanged, RequestKind: "user_request", RequestRoute: "/v1/responses",
+	event := service.CodexTicketInvalidation{AccountID: id, Model: model, TicketGenerationID: old, OccurredAt: time.Now().UTC(), ReasonCode: service.CodexTicketInvalidationRoutingCookieChanged, RequestKind: "user_request", RequestRoute: "/v1/responses",
 		OriginalTicket: &originalTicket, ReturnedTicket: &returnedTicket}
 	var wg sync.WaitGroup
 	const requests = 8

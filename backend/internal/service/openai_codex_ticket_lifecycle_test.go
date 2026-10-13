@@ -28,6 +28,7 @@ func codexTicketResponse() *http.Response {
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, fakeCodexTicketState(292))
 	h.Add("Set-Cookie", "__oailb=harvested; Path=/; Secure; HttpOnly")
+	h.Add("Set-Cookie", "__cflb=route; Path=/; Secure; HttpOnly")
 	return &http.Response{StatusCode: http.StatusOK, Header: h, Body: io.NopCloser(strings.NewReader("data: {}\n\n"))}
 }
 
@@ -72,7 +73,7 @@ func TestCodexTicketProbeBypassesPluginDuringWiring(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 		require.Len(t, state, 292)
-		require.Equal(t, "__oailb=harvested", cookie)
+		require.Equal(t, "__oailb=harvested; __cflb=route", cookie)
 	}
 	wg.Wait()
 	require.Equal(t, int64(20), calls.Load())
@@ -105,7 +106,7 @@ func TestCodexTicketProbeDoesNotCarryExistingTicket(t *testing.T) {
 		return codexTicketResponse(), nil
 	}}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
-	seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(42), "gpt-6-astra", "old-state", "__oailb=old; session=old"))
+	seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(42), "gpt-6-astra", "old-state", "__oailb=old; session=old; __cflb=route"))
 	_, _, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, status)

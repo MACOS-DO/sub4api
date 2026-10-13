@@ -27,7 +27,7 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: false, FailClosed: true}, nil)
 	svc.settingService = settings
 	account := ticketTestAccount(41)
-	seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared"))
+	seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared; __cflb=route"))
 
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, "client-state")
@@ -43,7 +43,7 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	h.Set(openAICodexTurnStateHeader, "client-state")
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
 	require.Equal(t, "shared-state", h.Get(openAICodexTurnStateHeader))
-	require.Equal(t, "__oailb=shared", h.Get("Cookie"))
+	require.Equal(t, "__oailb=shared; __cflb=route", h.Get("Cookie"))
 
 	repo.values[SettingKeyOpenAICodexTicketEnabled] = "false"
 	settings.InvalidateOpenAICodexTicketEnabledCache()

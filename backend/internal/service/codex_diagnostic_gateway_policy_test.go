@@ -87,7 +87,7 @@ func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
 				// Exercise the production lifecycle lookup, including SQL-normalized JSON null.
 				var shared *openAICodexTicket
 				if test.ticket {
-					shared = verifiedTicket(ticketTestAccount(40), model, "saved-state", "__oailb=saved")
+					shared = verifiedTicket(ticketTestAccount(40), model, "saved-state", "__oailb=saved; __cflb=route")
 				}
 				raw, err := json.Marshal(shared)
 				require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
 					}
 					participating := !test.harvestDisabled
 					if test.ticket && participating {
-						require.Equal(t, "__oailb=saved", headers.Get("Cookie"))
+						require.Equal(t, "__oailb=saved; __cflb=route", headers.Get("Cookie"))
 						require.Equal(t, "saved-state", headers.Get(openAICodexTurnStateHeader))
 					} else {
 						require.Empty(t, headers.Get("Cookie"), "non-participating accounts never borrow the shared ticket")

@@ -99,7 +99,7 @@ func TestCodexTicketWSReusedHandshakeDoesNotInvalidateNewGeneration(t *testing.T
 		},
 	}
 
-	ticket := verifiedTicket(account, "gpt-6-astra", "first-ticket", "__oailb=first-cookie")
+	ticket := verifiedTicket(account, "gpt-6-astra", "first-ticket", "__oailb=first-cookie; __cflb=route")
 	capture := &codexInvalidationCapture{current: ticket}
 	svc.openaiCodexTicketLifecycle = capture
 	svc.openaiCodexTicketWake = make(chan struct{}, 1)
@@ -175,7 +175,7 @@ func TestCodexTicketWSReusedHandshakeDoesNotInvalidateNewGeneration(t *testing.T
 	runSingleTurnSession("resp_retry_first")
 	require.Empty(t, capture.events)
 	// Another account harvested a new shared generation in the meantime.
-	freshTicket := verifiedTicket(ticketTestAccount(444), "gpt-6-astra", "current-ticket", "__oailb=current-cookie")
+	freshTicket := verifiedTicket(ticketTestAccount(444), "gpt-6-astra", "current-ticket", "__oailb=current-cookie; __cflb=route")
 	capture.current = freshTicket
 	key := openAICodexTicketKey(account.ID, freshTicket.Model)
 	retry := time.Now().Add(time.Hour)

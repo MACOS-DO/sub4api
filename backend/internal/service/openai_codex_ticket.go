@@ -219,21 +219,11 @@ func (s *OpenAIGatewayService) openAICodexTicketEnabledContext(ctx context.Conte
 	return fallback
 }
 
-// structurallyValid 只校验票据形状（打票元数据、turn-state 与含 __oailb 的 Cookie 缺一不可），不看有效期。
-// 两项凭据都在才能被失效判定观测到，缺任一项的票不共享。
+// structurallyValid 校验打票元数据、turn-state 及 __oailb、__cflb 两种路由 Cookie，不看有效期。
+// 缺少任一项凭据的存量票与新票都不共享。
 func (t *openAICodexTicket) structurallyValid(_ int) bool {
 	return t != nil && t.GenerationID != "" && t.VerificationMethod == "modeltrace_v1" && t.FingerprintCommit != "" &&
-		strings.TrimSpace(t.State) != "" && codexCookieHasOAILB(t.Cookie)
-}
-
-// codexCookieHasOAILB 判断 Cookie 头是否带有唯一、无歧义的 __oailb 值。
-func codexCookieHasOAILB(cookie string) bool {
-	cookies, err := http.ParseCookie(strings.TrimSpace(cookie))
-	if err != nil {
-		return false
-	}
-	_, ok := codexOAILBValue(cookies)
-	return ok
+		strings.TrimSpace(t.State) != "" && codexCookieHasRoutingCookies(t.Cookie)
 }
 
 func (t *openAICodexTicket) usable(_ time.Time, _ int, _ bool, _ time.Duration) bool {
@@ -444,7 +434,7 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 			_ = resp.Body.Close()
 		}
 	}()
-	state, cookie, status = extractOpenAICodexTurnState(resp.Header), extractOpenAICodexResponseCookies(resp.Header), resp.StatusCode
+	state, cookie, status = extractOpenAICodexTurnState(resp.Header), extractOpenAICodexHarvestCookies(resp.Header), resp.StatusCode
 	if resp.Body == nil {
 		return "", state, cookie, status, nil
 	}

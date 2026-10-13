@@ -31,7 +31,7 @@ func ticketTestService(t *testing.T, cfg config.OpenAICodexTicketConfig, upstrea
 
 // verifiedTicket builds a harvested shared ticket whose source is account. State
 // and cookie are used verbatim: a structurally valid ticket needs both a turn-state
-// and an __oailb cookie.
+// and both __oailb and __cflb routing cookies.
 func verifiedTicket(account *Account, model, state, cookie string) *openAICodexTicket {
 	return &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state), Cookie: cookie,
 		GenerationID: uuid.NewString(), VerificationMethod: "modeltrace_v1",
@@ -72,12 +72,12 @@ func TestCodexTicketMissingEitherCredentialIsNotReusable(t *testing.T) {
 		require.Empty(t, headers.Get("Cookie"))
 		require.Equal(t, "client-state", headers.Get(openAICodexTurnStateHeader))
 	}
-	require.True(t, verifiedTicket(account, "gpt-6-sol", "state", "route=a; __oailb=lb").structurallyValid(0))
+	require.True(t, verifiedTicket(account, "gpt-6-sol", "state", "route=a; __oailb=lb; __cflb=route").structurallyValid(0))
 }
 
 func TestCodexTicketStructuralValidityRequiresHarvestMetadata(t *testing.T) {
 	account := ticketTestAccount(41)
-	require.True(t, verifiedTicket(account, "gpt-6-sol", "lb-state", "__oailb=lb").structurallyValid(0))
+	require.True(t, verifiedTicket(account, "gpt-6-sol", "lb-state", "__oailb=lb; __cflb=route").structurallyValid(0))
 	for name, mutate := range map[string]func(*openAICodexTicket){
 		"generation":   func(ticket *openAICodexTicket) { ticket.GenerationID = "" },
 		"verification": func(ticket *openAICodexTicket) { ticket.VerificationMethod = "legacy" },
@@ -85,7 +85,7 @@ func TestCodexTicketStructuralValidityRequiresHarvestMetadata(t *testing.T) {
 		"state":        func(ticket *openAICodexTicket) { ticket.State = " " },
 		"oailb":        func(ticket *openAICodexTicket) { ticket.Cookie = "session=1" },
 	} {
-		ticket := verifiedTicket(account, "gpt-6-sol", "lb-state", "__oailb=lb")
+		ticket := verifiedTicket(account, "gpt-6-sol", "lb-state", "__oailb=lb; __cflb=route")
 		mutate(ticket)
 		require.False(t, ticket.structurallyValid(0), name)
 	}
@@ -96,24 +96,24 @@ func TestCodexTicketStructuralValidityRequiresHarvestMetadata(t *testing.T) {
 func TestCodexTicketInjectionSetsTurnStateAndAppendsCookie(t *testing.T) {
 	account := ticketTestAccount(41)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	seedSharedCodexTicket(svc, verifiedTicket(account, "gpt-6-sol", "ticket-state", "__oailb=old; session=old"))
+	seedSharedCodexTicket(svc, verifiedTicket(account, "gpt-6-sol", "ticket-state", "__oailb=old; session=old; __cflb=route"))
 	headers := http.Header{}
 	headers.Set(openAICodexTurnStateHeader, "client-old")
 	headers.Set("Cookie", "existing=1")
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
 	require.Equal(t, []string{"ticket-state"}, headers.Values(openAICodexTurnStateHeader), "the shared ticket replaces the client turn-state")
-	require.Equal(t, "existing=1; __oailb=old; session=old", headers.Get("Cookie"))
+	require.Equal(t, "existing=1; __oailb=old; session=old; __cflb=route", headers.Get("Cookie"))
 
 	headers = http.Header{}
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
 	require.Equal(t, "ticket-state", headers.Get(openAICodexTurnStateHeader))
-	require.Equal(t, "__oailb=old; session=old", headers.Get("Cookie"))
+	require.Equal(t, "__oailb=old; session=old; __cflb=route", headers.Get("Cookie"))
 }
 
 func TestCodexTicketStatusReflectsSharedTicketAndParticipation(t *testing.T) {
 	source := ticketTestAccount(41)
 	viewer := ticketTestAccount(42)
-	ticket := verifiedTicket(source, "gpt-6-sol", fakeCodexTicketState(292), "__oailb=old")
+	ticket := verifiedTicket(source, "gpt-6-sol", fakeCodexTicketState(292), "__oailb=old; __cflb=route")
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
 	seedSharedCodexTicket(svc, ticket)
 	shared := svc.CodexSharedTicketSnapshot(context.Background())
@@ -143,7 +143,7 @@ func TestCodexTicketStatusReflectsSharedTicketAndParticipation(t *testing.T) {
 
 func TestCodexTicketVerifiedOldCaptureDoesNotExpireByTTL(t *testing.T) {
 	account := ticketTestAccount(41)
-	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
+	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old; __cflb=route")
 	ticket.CapturedAt = time.Now().Add(-7 * 24 * time.Hour)
 	ticket.ExpiresAt = time.Now().Add(-6 * 24 * time.Hour)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true, TargetLength: 292}, nil)
@@ -157,12 +157,12 @@ func TestCodexTicketVerifiedOldCaptureDoesNotExpireByTTL(t *testing.T) {
 func TestCodexTicketGlobalTicketServesEveryGatedModel(t *testing.T) {
 	account := ticketTestAccount(41)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	seedSharedCodexTicket(svc, verifiedTicket(account, "gpt-6-sol", "global-state", "__oailb=global"))
+	seedSharedCodexTicket(svc, verifiedTicket(account, "gpt-6-sol", "global-state", "__oailb=global; __cflb=route"))
 	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol"} {
 		headers := http.Header{}
 		require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, model, headers), model)
 		require.Equal(t, "global-state", headers.Get(openAICodexTurnStateHeader), model)
-		require.Equal(t, "__oailb=global", headers.Get("Cookie"), model)
+		require.Equal(t, "__oailb=global; __cflb=route", headers.Get("Cookie"), model)
 		require.False(t, svc.openAICodexTicketBlocksAccount(account, model), model)
 	}
 	ungated := http.Header{}
@@ -174,7 +174,7 @@ func TestCodexTicketGlobalTicketServesEveryGatedModel(t *testing.T) {
 func TestCodexTicketSharedAcrossAccounts(t *testing.T) {
 	source, other := ticketTestAccount(41), ticketTestAccount(42)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	ticket := verifiedTicket(source, "gpt-6-sol", "shared-state", "__oailb=shared; route=a")
+	ticket := verifiedTicket(source, "gpt-6-sol", "shared-state", "__oailb=shared; route=a; __cflb=route")
 	require.NoError(t, svc.storeOpenAICodexTicket(context.Background(), source, ticket))
 	for _, account := range []*Account{source, other} {
 		headers := http.Header{}
@@ -183,7 +183,7 @@ func TestCodexTicketSharedAcrossAccounts(t *testing.T) {
 		require.NotNil(t, injected)
 		require.Equal(t, ticket.GenerationID, injected.GenerationID)
 		require.Equal(t, source.ID, injected.AccountID, "the ticket records its source account")
-		require.Equal(t, "__oailb=shared; route=a", headers.Get("Cookie"))
+		require.Equal(t, "__oailb=shared; route=a; __cflb=route", headers.Get("Cookie"))
 		require.Equal(t, "shared-state", headers.Get(openAICodexTurnStateHeader))
 		require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 	}
@@ -195,8 +195,8 @@ func TestCodexTicketSharedAcrossAccounts(t *testing.T) {
 func TestCodexTicketLaterHarvestOverwritesSharedTicket(t *testing.T) {
 	first, second := ticketTestAccount(41), ticketTestAccount(42)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	require.NoError(t, svc.storeOpenAICodexTicket(context.Background(), first, verifiedTicket(first, "gpt-6-sol", "first-state", "__oailb=first")))
-	latest := verifiedTicket(second, "gpt-6-sol", "second-state", "__oailb=second")
+	require.NoError(t, svc.storeOpenAICodexTicket(context.Background(), first, verifiedTicket(first, "gpt-6-sol", "first-state", "__oailb=first; __cflb=route")))
+	latest := verifiedTicket(second, "gpt-6-sol", "second-state", "__oailb=second; __cflb=route")
 	require.NoError(t, svc.storeOpenAICodexTicket(context.Background(), second, latest))
 	cached, ok := cachedSharedCodexTicket(svc)
 	require.True(t, ok)
@@ -204,13 +204,13 @@ func TestCodexTicketLaterHarvestOverwritesSharedTicket(t *testing.T) {
 	headers := http.Header{}
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), first, "gpt-6-astra", headers))
 	require.Equal(t, "second-state", headers.Get(openAICodexTurnStateHeader))
-	require.Equal(t, "__oailb=second", headers.Get("Cookie"))
+	require.Equal(t, "__oailb=second; __cflb=route", headers.Get("Cookie"))
 }
 
 func TestCodexTicketNonParticipatingAccountGetsNoCookie(t *testing.T) {
 	source := ticketTestAccount(41)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	seedSharedCodexTicket(svc, verifiedTicket(source, "gpt-6-sol", "shared-state", "__oailb=shared"))
+	seedSharedCodexTicket(svc, verifiedTicket(source, "gpt-6-sol", "shared-state", "__oailb=shared; __cflb=route"))
 	account := ticketTestAccount(42)
 	account.Extra = map[string]any{codexTicketAccountEnabledKey: false}
 	headers := http.Header{}
@@ -228,7 +228,7 @@ func TestCodexTicketNonParticipatingAccountGetsNoCookie(t *testing.T) {
 func TestCodexTicketRetiredPerModelSwitchesAreIgnored(t *testing.T) {
 	source := ticketTestAccount(41)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	seedSharedCodexTicket(svc, verifiedTicket(source, "gpt-6-sol", "shared-state", "__oailb=shared"))
+	seedSharedCodexTicket(svc, verifiedTicket(source, "gpt-6-sol", "shared-state", "__oailb=shared; __cflb=route"))
 	account := ticketTestAccount(42)
 	account.Extra = map[string]any{codexTicketRetiredModelsKey: map[string]any{"gpt-6-sol": false, "gpt-6-astra": false}}
 	require.True(t, CodexTicketHarvestEnabled(account))
@@ -247,7 +247,7 @@ func TestCodexTicketAutomaticDueFollowsSharedTicket(t *testing.T) {
 		require.True(t, svc.codexTicketAutomaticDue(account, now), "missing shared ticket is due for every participating account")
 	}
 
-	ticket := verifiedTicket(accounts[0], model, "fresh-state", "__oailb=fresh")
+	ticket := verifiedTicket(accounts[0], model, "fresh-state", "__oailb=fresh; __cflb=route")
 	ticket.CapturedAt = now
 	seedSharedCodexTicket(svc, ticket)
 	for _, account := range accounts {
@@ -277,7 +277,7 @@ func TestCodexTicketAutomaticDueHonorsPerAccountBackoff(t *testing.T) {
 	require.True(t, svc.codexTicketAutomaticDue(second, now))
 	require.True(t, svc.codexTicketAutomaticDue(first, now.Add(2*time.Minute)))
 
-	ticket := verifiedTicket(second, "gpt-6-sol", "fresh-state", "__oailb=fresh")
+	ticket := verifiedTicket(second, "gpt-6-sol", "fresh-state", "__oailb=fresh; __cflb=route")
 	require.NoError(t, svc.storeOpenAICodexTicket(context.Background(), second, ticket))
 	svc.scheduleCodexTicketAfterSuccess(ticket)
 	_, ok := svc.openaiCodexTicketNextAttempt.Load(codexTicketRetryKey(first.ID))
