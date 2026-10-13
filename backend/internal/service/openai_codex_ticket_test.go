@@ -93,21 +93,26 @@ func TestCodexTicketStructuralValidityRequiresHarvestMetadata(t *testing.T) {
 	require.False(t, missing.structurallyValid(0))
 }
 
-func TestCodexTicketInjectionSetsTurnStateAndAppendsCookie(t *testing.T) {
+func TestCodexTicketInjectionReplacesOnlyRoutingCookies(t *testing.T) {
 	account := ticketTestAccount(41)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
 	seedSharedCodexTicket(svc, verifiedTicket(account, "gpt-6-sol", "ticket-state", "__oailb=old; session=old; __cflb=route"))
 	headers := http.Header{}
 	headers.Set(openAICodexTurnStateHeader, "client-old")
-	headers.Set("Cookie", "existing=1")
+	headers.Add("Cookie", `session=keep; __oailb=stale; preference="a b"`)
+	headers.Add("Cookie", "__cflb=stale; existing=1; __oailb=duplicate; __cflb=duplicate")
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
 	require.Equal(t, []string{"ticket-state"}, headers.Values(openAICodexTurnStateHeader), "the shared ticket replaces the client turn-state")
-	require.Equal(t, "existing=1; __oailb=old; session=old; __cflb=route", headers.Get("Cookie"))
+	require.Equal(t, []string{`session=keep; preference="a b"; existing=1; __oailb=old; __cflb=route`}, headers.Values("Cookie"))
+	// Reapplying a ticket must not accumulate duplicate routing cookies.
+	before := headers.Get("Cookie")
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
+	require.Equal(t, before, headers.Get("Cookie"))
 
 	headers = http.Header{}
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
 	require.Equal(t, "ticket-state", headers.Get(openAICodexTurnStateHeader))
-	require.Equal(t, "__oailb=old; session=old; __cflb=route", headers.Get("Cookie"))
+	require.Equal(t, "__oailb=old; __cflb=route", headers.Get("Cookie"))
 }
 
 func TestCodexTicketStatusReflectsSharedTicketAndParticipation(t *testing.T) {
@@ -183,7 +188,7 @@ func TestCodexTicketSharedAcrossAccounts(t *testing.T) {
 		require.NotNil(t, injected)
 		require.Equal(t, ticket.GenerationID, injected.GenerationID)
 		require.Equal(t, source.ID, injected.AccountID, "the ticket records its source account")
-		require.Equal(t, "__oailb=shared; route=a; __cflb=route", headers.Get("Cookie"))
+		require.Equal(t, "__oailb=shared; __cflb=route", headers.Get("Cookie"))
 		require.Equal(t, "shared-state", headers.Get(openAICodexTurnStateHeader))
 		require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 	}

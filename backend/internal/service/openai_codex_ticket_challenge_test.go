@@ -311,7 +311,7 @@ func TestCodexTicketHarvestRequiresTurnStateAndBothRoutingCookies(t *testing.T) 
 	}{
 		"no credentials":            {},
 		"turn-state only":           {keepState: true},
-		"turn-state without oailb":  {keepState: true, cookies: []string{"session=x; Path=/"}, cookie: "session=x"},
+		"turn-state without oailb":  {keepState: true, cookies: []string{"session=x; Path=/"}},
 		"oailb only":                {cookies: []string{"__oailb=lb; Path=/"}, cookie: "__oailb=lb"},
 		"missing cflb":              {keepState: true, cookies: []string{"__oailb=lb; Path=/"}, cookie: "__oailb=lb"},
 		"missing oailb":             {keepState: true, cookies: []string{"__cflb=cf; Path=/"}, cookie: "__cflb=cf"},
@@ -324,7 +324,7 @@ func TestCodexTicketHarvestRequiresTurnStateAndBothRoutingCookies(t *testing.T) 
 		"malformed cflb duplicate":  {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", `__cflb="unfinished`}},
 		"all credentials":           {keepState: true, cookies: []string{"__oailb=lb; Path=/", "__cflb=cf; Secure"}, success: true, cookie: "__oailb=lb; __cflb=cf"},
 		"identical duplicates":      {keepState: true, cookies: []string{"__oailb=lb", "__cflb=cf", "__oailb=lb; Path=/other", "__cflb=cf; Path=/other"}, success: true, cookie: "__oailb=lb; __cflb=cf"},
-		"other cookies retained":    {keepState: true, cookies: []string{"route=a; Path=/", "__oailb=lb; Path=/", "__cflb=cf; Secure"}, success: true, cookie: "route=a; __oailb=lb; __cflb=cf"},
+		"other cookies ignored":     {keepState: true, cookies: []string{"route=a; Path=/", "__oailb=lb; Path=/", "__cflb=cf; Secure"}, success: true, cookie: "__oailb=lb; __cflb=cf"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			upstream := &codexTicketFuncUpstream{do: func(*http.Request) (*http.Response, error) {

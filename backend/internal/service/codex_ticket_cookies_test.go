@@ -11,6 +11,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCodexTicketOnlyRoutingCookiesSurviveStorage(t *testing.T) {
+	account := ticketTestAccount(41)
+	legacy := verifiedTicket(account, openAICodexTicketHarvestModel, "old-state", "session=legacy; __cflb=old-cf; __oailb=old-lb; other=value")
+	repo := &codexInvalidationCapture{current: legacy}
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{}, nil)
+	svc.openaiCodexTicketLifecycle = repo
+	loaded := svc.sharedCodexTicketView().current()
+	require.NotNil(t, loaded)
+	require.Equal(t, "__oailb=old-lb; __cflb=old-cf", loaded.Cookie)
+	require.Equal(t, legacy.State, loaded.State)
+	require.Equal(t, legacy.GenerationID, loaded.GenerationID)
+
+	fresh := verifiedTicket(account, openAICodexTicketHarvestModel, "new-state", "__cflb=new-cf; session=ignored; __oailb=new-lb")
+	require.NoError(t, svc.storeOpenAICodexTicket(context.Background(), account, fresh))
+	require.Len(t, repo.stored, 1)
+	require.Equal(t, "__oailb=new-lb; __cflb=new-cf", repo.stored[0].Cookie)
+	require.Equal(t, "new-state", repo.stored[0].State)
+	require.Equal(t, fresh.GenerationID, repo.stored[0].GenerationID)
+	require.Equal(t, repo.stored[0].Cookie, svc.sharedCodexTicketView().current().Cookie)
+}
+
 func TestCodexTicketStoredRoutingCookieValidation(t *testing.T) {
 	for name, test := range map[string]struct {
 		cookie string

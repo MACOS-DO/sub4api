@@ -108,6 +108,7 @@
       <div class="border-b border-gray-100 px-4 py-4 dark:border-dark-700 sm:px-5">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ activeTab === 'attempts' ? text.attempts : text.invalidations }}</h3>
         <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ activeTab === 'attempts' ? text.attemptsDesc : text.invalidationsDesc }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ text.accountEventsHint }}</p>
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <div v-if="activeTab === 'attempts'" class="w-full sm:w-40"><Select v-model="filter" :options="attemptOptions" :aria-label="text.filter" /></div>
           <div class="w-full sm:w-48"><Select v-model="modelFilter" :options="modelOptions" searchable :aria-label="text.model" /></div>
@@ -128,6 +129,7 @@
             <span class="badge shrink-0 self-start sm:self-center" :class="eventBadge(event.kind)">{{ kindLabel(event.kind) }}</span>
             <span class="min-w-0 flex-1">
               <span class="block break-all font-mono text-xs font-semibold text-gray-900 dark:text-white">{{ event.model }} <span v-if="event.kind !== 'invalidation' && !event.verification_method" class="font-sans font-normal text-amber-600 dark:text-amber-400">{{ text.legacy }}</span></span>
+              <span class="mt-1 block break-words text-xs text-gray-700 dark:text-dark-200" data-testid="event-account">{{ text.eventAccount }}: {{ eventAccountLabel(event) }}</span>
               <span class="mt-1 block break-words text-xs text-gray-500 dark:text-dark-400">{{ eventSummary(event) }}</span>
             </span>
             <span class="flex shrink-0 items-center gap-2"><time class="text-xs tabular-nums text-gray-500 dark:text-dark-400">{{ formatTime(event.occurred_at, true) }}</time><Icon name="chevronRight" size="sm" class="hidden text-gray-300 transition-colors group-hover:text-gray-500 dark:text-dark-600 sm:block" /></span>
@@ -149,6 +151,7 @@
     <template #header="{ titleId }">
       <div class="min-w-0">
         <h3 :id="titleId" class="break-all text-lg font-semibold text-gray-900 dark:text-white">{{ text.details }} · <span class="font-mono">{{ detail?.model }}</span></h3>
+        <p v-if="detail" class="mt-1 break-words text-xs text-gray-700 dark:text-dark-200" data-testid="detail-account">{{ text.eventAccount }}: {{ eventAccountLabel(detail) }}</p>
         <p v-if="detail" class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-dark-400"><span class="badge" :class="eventBadge(detail.kind)">{{ kindLabel(detail.kind) }}</span><span class="tabular-nums">{{ formatTime(detail.occurred_at) }}</span></p>
       </div>
       <button type="button" class="ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-700" :aria-label="text.close" @click="closeDetail"><Icon name="x" size="md" /></button>
@@ -205,7 +208,8 @@ const text = computed(() => String(locale?.value ?? '').startsWith('zh') ? {
   title: '票据中心', retention: '流水保留 90 天 · 失效凭据仅管理员可查看', refresh: '刷新', close: '关闭',
   available: '共享票', fingerprint: '指纹版本', updateBank: '校验并更新', tabs: '票据中心导航',
   current: '当前票据', attempts: '打票流水', invalidations: '票据过期历史',
-  noTicket: '此账号不使用共享票', globalTicket: '全站共享票', harvestModel: '打票模型', length: '票据长度', acquired: '获取于', present: '已携带', absent: '未携带', sourceAccount: '来源账号',
+  noTicket: '此账号不使用共享票', globalTicket: '全站共享票', harvestModel: '打票模型', length: '票据长度', acquired: '获取于', present: '已携带', absent: '未携带', sourceAccount: '共享票来源账号',
+  eventAccount: '所属账号', accountEventsHint: '仅显示当前账号的流水；共享票可能由其他账号打出。',
   sharedHint: '全站只有一张票（turn-state + __oailb + __cflb），由参与账号用 gpt-6-sol 打出，所有参与账号在所有门控模型上共用。',
   accountParticipation: '此账号参与共享票',
   participationHint: '切换即保存。关闭后该号既不打票也不使用共享票，请求跳过无票限制；重新开启后恢复原无票策略。实际打票还受全局开关、账号状态和 gpt-6-sol 限流约束。',
@@ -223,7 +227,8 @@ const text = computed(() => String(locale?.value ?? '').startsWith('zh') ? {
   title: 'Ticket center', retention: 'Records retained for 90 days · credentials visible to admins only', refresh: 'Refresh', close: 'Close',
   available: 'Shared ticket', fingerprint: 'Fingerprint version', updateBank: 'Verify & update', tabs: 'Ticket center navigation',
   current: 'Current tickets', attempts: 'Ticket attempts', invalidations: 'Ticket expiry history',
-  noTicket: 'This account does not use the shared ticket', globalTicket: 'Global shared ticket', harvestModel: 'harvested with', length: 'Ticket length', acquired: 'Acquired', present: 'Present', absent: 'Absent', sourceAccount: 'Source account',
+  noTicket: 'This account does not use the shared ticket', globalTicket: 'Global shared ticket', harvestModel: 'harvested with', length: 'Ticket length', acquired: 'Acquired', present: 'Present', absent: 'Absent', sourceAccount: 'Shared ticket source account',
+  eventAccount: 'Account', accountEventsHint: 'Only this account’s events are shown; the shared ticket may have been harvested by another account.',
   sharedHint: 'There is one ticket (turn-state + __oailb + __cflb) for the whole site. Participating accounts harvest it with gpt-6-sol and every participating account uses it on every gated model.',
   accountParticipation: 'Use the shared ticket on this account',
   participationHint: 'Saves immediately. When off, this account neither harvests nor uses the shared ticket and its requests bypass missing-ticket restrictions; turning it back on restores the saved policy. Harvesting also depends on the global switch, account status and gpt-6-sol rate limits.',
@@ -316,6 +321,11 @@ function reasonLabel(reason?: string) {
   if (reason === 'upstream_turn_state_and_oailb_changed') return text.value.legacyOailbChanged
   if (reason === 'upstream_new_turn_state') return text.value.legacyStateChanged
   return reason || ''
+}
+function eventAccountLabel(event: tickets.TicketEvent) {
+  const account = accountDetail.value ?? props.account
+  const name = account?.id === event.account_id ? account.name?.trim() : ''
+  return name ? `${name} (#${event.account_id})` : `#${event.account_id}`
 }
 function eventSummary(event: tickets.TicketEvent) {
   return [reasonLabel(event.reason_code), event.ticket_length != null ? `${text.value.length} ${event.ticket_length}` : '',

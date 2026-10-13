@@ -86,6 +86,8 @@ func TestCodexTicketProbeParsesNormalSSEAndCookies(t *testing.T) {
 		header.Set(openAICodexTurnStateHeader, "new-state")
 		header.Add("Set-Cookie", "session=first; HttpOnly")
 		header.Add("Set-Cookie", "route=second; Secure")
+		header.Add("Set-Cookie", "__oailb=lb; Secure")
+		header.Add("Set-Cookie", "__cflb=cf; Secure")
 		return &http.Response{StatusCode: http.StatusOK, Header: header, Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.output_text.delta\",\"delta\":\"1 2 3\"}\n\ndata: [DONE]\n\n"))}, nil
 	}}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
@@ -93,8 +95,7 @@ func TestCodexTicketProbeParsesNormalSSEAndCookies(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1 2 3", output)
 	require.Equal(t, "new-state", state)
-	require.Contains(t, cookie, "session=first")
-	require.Contains(t, cookie, "route=second")
+	require.Equal(t, "__oailb=lb; __cflb=cf", cookie)
 	require.Equal(t, http.StatusOK, status)
 }
 

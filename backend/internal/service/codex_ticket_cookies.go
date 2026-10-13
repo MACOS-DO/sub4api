@@ -15,6 +15,15 @@ type codexTicketRoutingCookies struct {
 	cflb  string
 }
 
+func (cookies codexTicketRoutingCookies) header() string {
+	return (&http.Cookie{Name: codexOAILBCookie, Value: cookies.oailb}).String() + "; " +
+		(&http.Cookie{Name: codexCFLBCookie, Value: cookies.cflb}).String()
+}
+
+func isCodexTicketRoutingCookie(name string) bool {
+	return name == codexOAILBCookie || name == codexCFLBCookie
+}
+
 // codexCookieValue accepts repeated identical values, but rejects conflicting
 // values. An empty value is still present: a response can explicitly clear it.
 func codexCookieValue(cookies []*http.Cookie, name string) (string, bool) {
@@ -69,8 +78,16 @@ func codexResponseCookieValue(headers http.Header, name string) (string, bool) {
 }
 
 func extractOpenAICodexHarvestCookies(headers http.Header) string {
-	cookie := extractOpenAICodexResponseCookies(headers)
-	if !codexCookieHasRoutingCookies(cookie) {
+	filtered := make(http.Header)
+	for _, line := range headers.Values("Set-Cookie") {
+		name, _, _ := strings.Cut(line, "=")
+		if isCodexTicketRoutingCookie(strings.TrimSpace(name)) {
+			filtered.Add("Set-Cookie", line)
+		}
+	}
+	cookie := extractOpenAICodexResponseCookies(filtered)
+	routing, valid := parseCodexTicketRoutingCookies(cookie)
+	if !valid {
 		// Preserve partial credentials for attempt diagnostics; the shared
 		// validity check will reject them as missing_credentials.
 		return cookie
@@ -82,5 +99,5 @@ func extractOpenAICodexHarvestCookies(headers http.Header) string {
 			return ""
 		}
 	}
-	return cookie
+	return routing.header()
 }

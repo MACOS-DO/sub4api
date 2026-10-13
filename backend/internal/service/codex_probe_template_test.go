@@ -229,7 +229,7 @@ func TestCodexTicketAllowWithoutTicketPrecedenceAndInjection(t *testing.T) {
 			headers := http.Header{}
 			require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
 			require.Equal(t, "test-state", headers.Get(openAICodexTurnStateHeader))
-			require.Equal(t, "__oailb=test; session=test; __cflb=route", headers.Get("Cookie"))
+			require.Equal(t, "__oailb=test; __cflb=route", headers.Get("Cookie"))
 			require.Equal(t, test.global, repo.values[SettingKeyOpenAICodexTicketAllowWithoutTicket])
 		})
 	}

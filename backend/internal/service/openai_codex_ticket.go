@@ -271,6 +271,9 @@ func parseOpenAICodexTicketFromAny(accountID int64, model string, raw any) *open
 	if !ticket.structurallyValid(0) {
 		return nil
 	}
+	// Older tickets may contain unrelated cookies; only routing values are reused.
+	routing, _ := parseCodexTicketRoutingCookies(ticket.Cookie)
+	ticket.Cookie = routing.header()
 	return &ticket
 }
 
@@ -279,6 +282,11 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 	if s == nil || account == nil || ticket == nil || account.ID <= 0 {
 		return ErrCodexTicketUnavailable
 	}
+	routing, valid := parseCodexTicketRoutingCookies(ticket.Cookie)
+	if !valid {
+		return ErrCodexTicketUnavailable
+	}
+	ticket.Cookie = routing.header()
 	ticket.Model = normalizeOpenAICodexTicketModel(ticket.Model)
 	ticket.AccountID = account.ID
 	if s.openaiCodexTicketLifecycle == nil {
@@ -297,7 +305,7 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 	})
 }
 
-// applyOpenAICodexTicket 在门控模型的出站请求上用全局共享票覆盖 x-codex-turn-state 并追加票据 Cookie。
+// applyOpenAICodexTicket 在门控模型的出站请求上覆盖 x-codex-turn-state 和两个票据路由 Cookie。
 // 请求路径只注入已捕获的共享票，不现场打票；仅在无票策略禁止时返回
 // ErrOpenAICodexTicketUnavailable。关闭全局或账号参与时不限制无票请求。
 func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) error {
@@ -335,21 +343,27 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicketWithGeneration(ctx context.
 	return nil, ErrOpenAICodexTicketUnavailable
 }
 
-// applyOpenAICodexTicketCookie 把打票成功时捕获的 Cookie 与票据一并复用。
-// 已有 Cookie（当前出站路径默认不透传客户端 Cookie）按追加处理，避免覆盖其他来源。
+// applyOpenAICodexTicketCookie 只替换 __oailb、__cflb，保留其他 Cookie 的值和顺序。
 func applyOpenAICodexTicketCookie(h http.Header, ticket *openAICodexTicket) {
 	if h == nil || ticket == nil {
 		return
 	}
-	cookie := strings.TrimSpace(ticket.Cookie)
-	if cookie == "" {
+	routing, valid := parseCodexTicketRoutingCookies(ticket.Cookie)
+	if !valid {
 		return
 	}
-	if existing := strings.TrimSpace(h.Get("Cookie")); existing != "" {
-		h.Set("Cookie", existing+"; "+cookie)
-		return
+	var kept []string
+	for _, header := range h.Values("Cookie") {
+		for _, part := range strings.Split(header, ";") {
+			part = strings.TrimSpace(part)
+			name, _, _ := strings.Cut(part, "=")
+			if part != "" && !isCodexTicketRoutingCookie(strings.TrimSpace(name)) {
+				kept = append(kept, part)
+			}
+		}
 	}
-	h.Set("Cookie", cookie)
+	kept = append(kept, routing.header())
+	h.Set("Cookie", strings.Join(kept, "; "))
 }
 
 // openAICodexTicketOutboundModel 预测本请求真正出站的模型名，也就是

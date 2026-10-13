@@ -17,8 +17,8 @@ const account = {
   id: 19, name: 'GPT Account', platform: 'openai', type: 'oauth',
   codex_ticket: { model: 'gpt-6-sol', ready: true, remaining_seconds: 0, blocked: false, source_account_id: 7, length: 292, turn_state_present: true, cookie_present: true, harvest_enabled: true }
 } as Account
-const attempt = { id: 1, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T08:00:00Z', kind: 'miss', reason_code: 'fingerprint_mismatch' }
-const expired = { id: 2, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T09:00:00Z', kind: 'invalidation', reason_code: 'upstream_new_turn_state' }
+const attempt = { id: 1, account_id: 19, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T08:00:00Z', kind: 'miss', reason_code: 'fingerprint_mismatch' }
+const expired = { id: 2, account_id: 19, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T09:00:00Z', kind: 'invalidation', reason_code: 'upstream_new_turn_state' }
 
 function mountDashboard(value: Account = account) {
   return mount(CodexTicketDashboard, {
@@ -52,6 +52,7 @@ describe('Codex ticket dashboard', () => {
     expect(wrapper.text()).toContain('全站共享票')
     expect(wrapper.text()).toContain('gpt-6-sol')
     expect(wrapper.text()).toContain('#7')
+    expect(wrapper.text()).toContain('共享票来源账号')
     expect(wrapper.text()).not.toContain('fingerprint_mismatch')
     expect(events).not.toHaveBeenCalled()
     expect(ownKeys).not.toHaveBeenCalled()
@@ -63,21 +64,26 @@ describe('Codex ticket dashboard', () => {
     expect(events).toHaveBeenLastCalledWith(19, expect.objectContaining({ filter: 'attempts' }))
     expect(wrapper.text()).toContain('fingerprint_mismatch')
     expect(wrapper.text()).not.toContain('old-secret')
+    expect(wrapper.text()).toContain('仅显示当前账号的流水')
+    expect(wrapper.get('[data-testid="event-account"]').text()).toBe('所属账号: GPT Account (#19)')
+    expect(getById).toHaveBeenCalledTimes(1)
 
     await tab('票据过期历史').trigger('click')
     await flushPromises()
     expect(events).toHaveBeenLastCalledWith(19, expect.objectContaining({ filter: 'invalidation' }))
     expect(invalidation).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('old-secret')
+    expect(wrapper.get('[data-testid="event-account"]').text()).toBe('所属账号: GPT Account (#19)')
     await wrapper.find('section[aria-label="票据过期历史"] button').trigger('click')
     await flushPromises()
     expect(invalidation).toHaveBeenCalledWith(19, 2)
     expect(wrapper.text()).toContain('old-secret')
+    expect(wrapper.get('[data-testid="detail-account"]').text()).toBe('所属账号: GPT Account (#19)')
     wrapper.unmount()
   })
 
   it('labels superseded successful harvests that have no ticket generation', async () => {
-    const superseded = { id: 3, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T10:00:00Z', kind: 'success', reason_code: 'superseded', verification_method: 'fingerprint' }
+    const superseded = { id: 3, account_id: 19, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T10:00:00Z', kind: 'success', reason_code: 'superseded', verification_method: 'fingerprint' }
     events.mockResolvedValue({ items: [superseded], total: 1 })
     const wrapper = mountDashboard()
     await flushPromises()
@@ -86,11 +92,32 @@ describe('Codex ticket dashboard', () => {
     expect(wrapper.text()).toContain('打票成功，本轮已有票未采用')
     expect(wrapper.text()).not.toContain('superseded')
     expect(wrapper.text()).not.toContain('undefined')
+    expect(wrapper.get('[data-testid="event-account"]').text()).toBe('所属账号: GPT Account (#19)')
 
     await wrapper.find('section[aria-label="打票流水"] button').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('打票成功，本轮已有票未采用 · —')
+    expect(wrapper.get('[data-testid="detail-account"]').text()).toBe('所属账号: GPT Account (#19)')
     expect(wrapper.text()).not.toContain('undefined')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { name: '', eventAccountID: 19 },
+    { name: 'GPT Account', eventAccountID: 99 }
+  ])('uses the event account ID when its name is unavailable: $eventAccountID', async ({ name, eventAccountID }) => {
+    const current = { ...account, name }
+    getById.mockResolvedValue(current)
+    events.mockResolvedValue({ items: [{ ...attempt, account_id: eventAccountID, kind: 'error' }], total: 1 })
+    const wrapper = mountDashboard(current)
+    await flushPromises()
+    await wrapper.findAll('nav button')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="event-account"]').text()).toBe(`所属账号: #${eventAccountID}`)
+    await wrapper.find('section[aria-label="打票流水"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-account"]').text()).toBe(`所属账号: #${eventAccountID}`)
+    expect(getById).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 

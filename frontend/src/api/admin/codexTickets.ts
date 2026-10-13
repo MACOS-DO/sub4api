@@ -14,6 +14,7 @@ export type TicketStatus = NonNullable<Account['codex_ticket']> & {
 
 export interface TicketEvent {
   id: number
+  account_id: number
   model: string
   occurred_at: string
   kind: 'success' | 'miss' | 'error' | 'invalidation'
