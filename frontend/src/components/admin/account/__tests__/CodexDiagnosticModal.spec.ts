@@ -20,7 +20,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN'), t: (key: st
 
 const account = {
   id: 19, name: 'GPT Account', platform: 'openai', type: 'oauth',
-  codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: true, length: 292, turn_state_present: true, cookie_present: false, harvest_enabled: true }]
+  codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: true, source_account_id: 7, length: 292, turn_state_present: true, cookie_present: true, harvest_enabled: true }]
 } as Account
 
 function mountModal(value: Account = account) {
@@ -70,7 +70,7 @@ describe('Codex diagnostic modal', () => {
     const noTicket = {
       ...account,
       extra: { codex_ticket_harvest_enabled: false, codex_ticket_harvest_models: { 'gpt-5.6-sol': false } },
-      codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: false, harvest_enabled: false, turn_state_present: false, cookie_present: false }]
+      codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: false, harvest_enabled: false, cookie_present: false }]
     } as Account
     getById.mockResolvedValue(noTicket)
     diagnose.mockResolvedValue({ items: [{ model: 'gpt-5.6-sol', status: 'normal' }] })

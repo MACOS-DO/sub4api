@@ -20,7 +20,7 @@ type CodexTicketInvalidation struct {
 	InvalidatedCurrent bool      `json:"invalidated_current"`
 	OriginalTicket     *string   `json:"original_ticket,omitempty"`
 	OriginalCookie     *string   `json:"original_cookie,omitempty"`
-	ReturnedTicket     string    `json:"returned_ticket,omitempty"`
+	ReturnedTicket     *string   `json:"returned_ticket,omitempty"`
 	ReturnedCookie     *string   `json:"returned_cookie,omitempty"`
 	ReturnedSetCookies []string  `json:"returned_set_cookies,omitempty"`
 }
@@ -57,8 +57,11 @@ func (event CodexTicketInvalidation) Summary() CodexTicketInvalidationSummary {
 	}
 }
 
+// CodexTicketLifecycleRepository persists the single global shared ticket and the
+// accounts that can no longer use its current generation.
 type CodexTicketLifecycleRepository interface {
-	CurrentTicket(context.Context, int64, string) (json.RawMessage, error)
+	CurrentTicket(context.Context) (*CodexSharedTicketState, error)
+	StoreTicket(ctx context.Context, generationID string, sourceAccountID int64, capturedAt time.Time, ticket json.RawMessage) error
 	Invalidate(context.Context, *CodexTicketInvalidation) (bool, error)
 	ListInvalidations(context.Context, int64, string, time.Time, time.Time, int, int) ([]CodexTicketInvalidationSummary, int64, error)
 	GetInvalidation(context.Context, int64, int64) (*CodexTicketInvalidation, error)

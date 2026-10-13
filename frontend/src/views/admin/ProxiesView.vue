@@ -2,7 +2,6 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <CodexTicketProxyPool />
         <div class="flex flex-wrap items-center gap-3">
           <!-- Left: Search + Filters -->
           <div class="relative w-full sm:w-64">
@@ -73,6 +72,9 @@
             >
               <Icon name="trash" size="md" class="mr-2" />
               {{ t('admin.proxies.batchDeleteAction') }}
+            </button>
+            <button @click="showTicketPoolModal = true" class="btn btn-secondary">
+              {{ t('admin.proxies.codexTicketPool') }}
             </button>
             <button @click="showImportData = true" class="btn btn-secondary">
               {{ t('admin.proxies.dataImport') }}
@@ -961,6 +963,8 @@
         </div>
       </template>
     </BaseDialog>
+
+    <CodexTicketProxyPool :show="showTicketPoolModal" @close="showTicketPoolModal = false" />
   </AppLayout>
 </template>
 
@@ -1065,6 +1069,7 @@ const showEditModal = ref(false)
 const editPasswordVisible = ref(false)
 const editPasswordDirty = ref(false)
 const showImportData = ref(false)
+const showTicketPoolModal = ref(false)
 const showDeleteDialog = ref(false)
 const showBatchDeleteDialog = ref(false)
 const showExportDataDialog = ref(false)

@@ -2371,9 +2371,9 @@
         <p class="input-hint">{{ t('admin.accounts.openai.codexTicketAccountPolicyDesc') }}</p>
       </div>
 
-      <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTicket" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between gap-3"><label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketHistory') }}</label><button type="button" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400" @click="emit('codex-tickets')">{{ t('admin.accounts.openai.codexTicketHistory') }} →</button></div>
-        <div class="mt-3 grid gap-2 sm:grid-cols-2"><div v-for="ticket in codexTurnTickets" :key="ticket.model" class="rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600"><div class="flex justify-between gap-2"><span class="break-all font-mono font-semibold">{{ ticket.model }}</span><span :class="ticket.ready ? 'text-emerald-600' : 'text-amber-600'">{{ ticket.ready ? '●' : '○' }} {{ t(ticket.ready ? 'admin.accounts.openai.codexTicketReadyShort' : 'admin.accounts.openai.codexTicketMissingShort') }}</span></div><p class="mt-2 text-gray-500">{{ ticket.length }} bytes · turn-state {{ ticket.turn_state_present ? '✓' : '—' }} · Cookie {{ ticket.cookie_present ? '✓' : '—' }}</p></div></div>
+        <div class="mt-3 rounded-lg border border-gray-200 p-3 text-xs dark:border-dark-600"><div class="flex justify-between gap-2"><span class="font-semibold">{{ t('admin.accounts.openai.codexTicketGlobal', { model: codexTicket.model }) }}</span><span :class="codexTicket.ready ? 'text-emerald-600' : 'text-amber-600'">{{ codexTicket.ready ? '●' : '○' }} {{ t(codexTicket.ready ? 'admin.accounts.openai.codexTicketReadyShort' : 'admin.accounts.openai.codexTicketMissingShort') }}</span></div><p class="mt-2 text-gray-500">{{ t('admin.accounts.openai.codexTicketSharedSource', { id: codexTicket.source_account_id ? `#${codexTicket.source_account_id}` : '—' }) }} · {{ codexTicket.length ?? '—' }} bytes · turn-state {{ codexTicket.turn_state_present ? '✓' : '—' }} · Cookie {{ codexTicket.cookie_present ? '✓' : '—' }}</p></div>
       </div>
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
@@ -3290,7 +3290,7 @@ const selectableGroups = computed(() => {
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
 
-const codexTurnTickets = computed(() => props.account?.codex_turn_tickets ?? [])
+const codexTicket = computed(() => props.account?.codex_ticket)
 
 
 

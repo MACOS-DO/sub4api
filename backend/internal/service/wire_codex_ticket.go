@@ -31,6 +31,7 @@ func ProvideOpenAIGatewayService(
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	history CodexTicketAttemptRepository,
+	ticketCache CodexSharedTicketCache,
 ) *OpenAIGatewayService {
 	s := NewOpenAIGatewayService(accountRepo, usageLogRepo, usageBillingRepo, userRepo,
 		userSubRepo, userGroupRateRepo, cache, cfg, schedulerSnapshot, concurrencyService,
@@ -38,6 +39,7 @@ func ProvideOpenAIGatewayService(
 		openAITokenProvider, grokTokenProvider, resolver, channelService, balanceNotifyService,
 		settingService, userPlatformQuotaRepo)
 	s.SetCodexTicketHistory(history)
+	s.SetCodexSharedTicketCache(ticketCache)
 	if settingService != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = settingService.LoadModelTraceBank(ctx)

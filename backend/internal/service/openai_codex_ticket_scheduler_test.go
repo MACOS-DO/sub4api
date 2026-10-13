@@ -10,45 +10,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCodexTicketSchedulerProjectionIsModelSpecific(t *testing.T) {
+func TestCodexTicketBlocksAccountIsModelSpecific(t *testing.T) {
 	account := ticketTestAccount(91)
-	ticket := verifiedTicket(account, "gpt-5.6-sol", "private-turn-state", "private=cookie")
-	account.Extra = map[string]any{openAICodexTicketExtraKey(ticket.Model): ticket}
-	ready := OpenAICodexTicketReadyModels(account)
-	require.Equal(t, map[string]bool{"gpt-5.6-sol": true}, ready)
-
+	ticket := verifiedTicket(ticketTestAccount(90), "gpt-5.6-sol", "private-state", "__oailb=private")
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
-	projected := ticketTestAccount(account.ID)
-	projected.Extra = map[string]any{CodexTicketReadyModelsExtraKey: ready}
-	projected.SchedulerTicketProjection = true
-	svc.openaiCodexTickets.Store(openAICodexTicketKey(account.ID, ticket.Model), ticket)
-	require.False(t, svc.openAICodexTicketBlocksAccount(projected, "gpt-5.6-sol"))
-	require.True(t, svc.openAICodexTicketBlocksAccount(projected, "gpt-6-astra"))
-	require.False(t, svc.openAICodexTicketBlocksAccount(projected, "gpt-5.4"))
-	_, cached := svc.openaiCodexTickets.Load(openAICodexTicketKey(account.ID, ticket.Model))
-	require.True(t, cached, "metadata prefilter must not delete the real ticket")
-	require.False(t, svc.openAICodexTicketBlocksAccount(account, ticket.Model))
-	account.Extra[CodexTicketReadyModelsExtraKey] = map[string]bool{"gpt-6-astra": true}
-	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"), "full account must ignore a projected readiness key")
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
+	seedSharedCodexTicket(svc, ticket)
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.6-sol"))
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"), "the global ticket serves every gated model")
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-5.4"))
+	cached, ok := cachedSharedCodexTicket(svc)
+	require.True(t, ok, "the scheduler check must not delete the shared ticket")
+	require.Same(t, ticket, cached)
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, ticket.Model, make(map[string][]string)))
-
-	delete(account.Extra, openAICodexTicketExtraKey(ticket.Model))
-	require.Empty(t, OpenAICodexTicketReadyModels(account))
+	// Legacy per-account readiness metadata no longer influences scheduling.
+	svc.openaiCodexTicket.Store(nil)
+	account.Extra = map[string]any{"codex_ticket_ready_models": map[string]bool{"gpt-6-astra": true}}
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 }
 
 func TestCodexTicketAccountOverrideIsThreeState(t *testing.T) {
 	account := ticketTestAccount(92)
-	require.False(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", false))
-	require.True(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", true))
+	require.False(t, OpenAICodexAllowsWithoutTicket(account, false))
+	require.True(t, OpenAICodexAllowsWithoutTicket(account, true))
 	account.Extra = map[string]any{"codex_allow_without_ticket": true}
-	require.True(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", false))
+	require.True(t, OpenAICodexAllowsWithoutTicket(account, false))
 	account.Extra["codex_allow_without_ticket"] = false
-	require.False(t, OpenAICodexAllowsWithoutTicket(account, "gpt-6-astra", true))
-	statuses := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, time.Now())
-	require.NotEmpty(t, statuses)
-	require.True(t, statuses[0].Blocked)
-	statuses = OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: false, FailClosed: true}, time.Now())
-	require.False(t, statuses[0].Blocked)
+	require.False(t, OpenAICodexAllowsWithoutTicket(account, true))
+	status := OpenAICodexTicketStatusOf(account, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, CodexSharedTickets{}, time.Now())
+	require.NotNil(t, status)
+	require.True(t, status.Blocked)
+	status = OpenAICodexTicketStatusOf(account, config.OpenAICodexTicketConfig{Enabled: false, FailClosed: true}, CodexSharedTickets{}, time.Now())
+	require.False(t, status.Blocked)
 }
 
 func TestCodexTicketGlobalAllowSettingCachesAndInvalidates(t *testing.T) {
@@ -76,15 +69,16 @@ func (stub *codexSnapshotRefreshStub) RefreshSchedulerAccount(_ context.Context,
 	stub.accountID = accountID
 }
 
-func TestCodexTicketInvalidationRefreshesSchedulerAccount(t *testing.T) {
+func TestCodexTicketInvalidationDoesNotTouchAccountSnapshots(t *testing.T) {
 	account := ticketTestAccount(93)
+	account.Extra = map[string]any{"custom": true}
 	ticket := verifiedTicket(account, "gpt-5.6-sol", "old-state", "__oailb=old")
-	account.Extra = map[string]any{openAICodexTicketExtraKey(ticket.Model): ticket}
 	capture := &codexInvalidationCapture{current: ticket}
 	refresher := &codexSnapshotRefreshStub{}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)
 	svc.accountRepo = refresher
 	svc.openaiCodexTicketLifecycle = capture
+	svc.openaiCodexTicketWake = make(chan struct{}, 1)
 	request, err := http.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
 	require.NoError(t, err)
 	request = request.WithContext(context.WithValue(request.Context(), codexTicketRequestContextKey{}, ticket))
@@ -94,6 +88,8 @@ func TestCodexTicketInvalidationRefreshesSchedulerAccount(t *testing.T) {
 	header.Set(openAICodexTurnStateHeader, "new-state")
 	header.Set("Set-Cookie", "__oailb=new; Path=/")
 	svc.observeCodexTicketResponse(request, &http.Response{StatusCode: http.StatusOK, Header: header}, account)
-	require.Equal(t, account.ID, refresher.accountID)
-	require.Contains(t, account.Extra, openAICodexTicketExtraKey(ticket.Model), "shared account snapshots must not be mutated")
+	require.Len(t, capture.events, 1)
+	require.Zero(t, refresher.accountID, "the shared ticket lives outside account snapshots")
+	require.Equal(t, map[string]any{"custom": true}, account.Extra, "shared account snapshots must not be mutated")
+	require.Len(t, svc.openaiCodexTicketWake, 1, "the harvester is notified instead")
 }

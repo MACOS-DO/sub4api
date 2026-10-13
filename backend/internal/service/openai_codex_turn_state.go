@@ -15,11 +15,14 @@ import (
 // codex-api/src/sse/responses.rs 与 endpoint/compact.rs）。
 const openAICodexTurnStateHeader = "x-codex-turn-state"
 
-// turn-state blob 是上游在"出站身份"（含 #5553 指纹收敛改写后的
-// installation/session/thread 标识）下铸造的，同账号回放自洽；跨账号回放
-// （failover 换号后客户端仍回带旧账号的 blob）是代理链独有、真实 Codex
-// 永远不会产生的矛盾信号。溯源表记录每个下游会话最近一次铸造该 blob 的
-// 账号，出站守卫据此剥离已知异账号的回带值。
+// 客户端回带的 turn-state 是上游在某个账号的出站身份下铸造给该下游会话的；
+// failover 换号后客户端仍回带旧账号的 blob，这种会话级的跨账号回带由溯源表
+// 记录每个下游会话最近一次铸造该 blob 的账号，出站守卫据此剥离已知异账号的回带值。
+//
+// 这与全局共享票（openai_codex_ticket.go）是两回事：共享票的 turn-state 与 Cookie
+// 是打票得到的有效凭据，有意在所有参与账号、所有门控模型上复用。注入共享票时
+// 守卫之后的 applyOpenAICodexTicket 会用共享票覆盖 turn-state；守卫只在没有注入
+// 共享票（账号不参与、非门控模型或允许无票）时起作用。
 type openAICodexTurnStateOrigin struct {
 	accountID int64
 	expiresAt time.Time
@@ -116,8 +119,8 @@ func (s *OpenAIGatewayService) noteOpenAICodexTurnStateProvenance(c *gin.Context
 }
 
 // guardOpenAICodexTurnStateEcho 出站守卫：客户端回带的 turn-state 若已知由
-// 其他账号铸造则剥离，同账号或无溯源记录时保持原样。跨账号剥离之后，
-// applyOpenAICodexTicket 会按 (账号, 模型) 覆盖为已捕获的 292 门票。
+// 其他账号铸造则剥离，同账号或无溯源记录时保持原样。门控模型请求随后由
+// applyOpenAICodexTicket 用全局共享票覆盖 turn-state。
 func (s *OpenAIGatewayService) guardOpenAICodexTurnStateEcho(c *gin.Context, account *Account, h http.Header) {
 	if s == nil || h == nil || account == nil {
 		return

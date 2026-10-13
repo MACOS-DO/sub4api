@@ -27,13 +27,14 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: false, FailClosed: true}, nil)
 	svc.settingService = settings
 	account := ticketTestAccount(41)
-	account.Extra = map[string]any{openAICodexTicketExtraKey("gpt-6-astra"): verifiedTicket(account, "gpt-6-astra", fakeCodexTicketState(292), "")}
+	seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "shared-state", "__oailb=shared"))
 
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, "client-state")
 	require.False(t, svc.openAICodexTicketEnabled())
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
 	require.Equal(t, "client-state", h.Get(openAICodexTurnStateHeader))
+	require.Empty(t, h.Get("Cookie"))
 
 	repo.values[SettingKeyOpenAICodexTicketEnabled] = "true"
 	settings.InvalidateOpenAICodexTicketEnabledCache()
@@ -41,7 +42,8 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	h = http.Header{}
 	h.Set(openAICodexTurnStateHeader, "client-state")
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
-	require.Equal(t, fakeCodexTicketState(292), h.Get(openAICodexTurnStateHeader))
+	require.Equal(t, "shared-state", h.Get(openAICodexTurnStateHeader))
+	require.Equal(t, "__oailb=shared", h.Get("Cookie"))
 
 	repo.values[SettingKeyOpenAICodexTicketEnabled] = "false"
 	settings.InvalidateOpenAICodexTicketEnabledCache()
@@ -50,6 +52,7 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	h.Set(openAICodexTurnStateHeader, "client-state")
 	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
 	require.Equal(t, "client-state", h.Get(openAICodexTurnStateHeader))
+	require.Empty(t, h.Get("Cookie"))
 }
 
 func TestRefreshOpenAICodexTickets_DisabledSkipsHarvest(t *testing.T) {

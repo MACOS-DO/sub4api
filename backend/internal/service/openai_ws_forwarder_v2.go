@@ -206,7 +206,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		Account:          account,
 		WSURL:            wsURL,
 		Headers:          wsHeaders,
-		ObserveHandshake: s.codexTicketHandshakeObserver(ctx, ticket),
+		ObserveHandshake: s.codexTicketHandshakeObserver(ctx, account.ID, ticket),
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},

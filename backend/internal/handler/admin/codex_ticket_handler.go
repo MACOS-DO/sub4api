@@ -135,18 +135,12 @@ func (h *AccountHandler) HarvestCodexTicket(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var input struct {
-		Model string `json:"model" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		response.BadRequest(c, "model is required")
-		return
-	}
 	if h.codexTicketGateway == nil {
 		codexTicketError(c, service.ErrCodexTicketUnavailable)
 		return
 	}
-	result, err := h.codexTicketGateway.ManualCodexTicketHarvest(c.Request.Context(), id, input.Model)
+	// 打票模型固定为 gpt-6-sol，打出的票全站共享。
+	result, err := h.codexTicketGateway.ManualCodexTicketHarvest(c.Request.Context(), id)
 	if err != nil {
 		codexTicketError(c, err)
 		return
@@ -160,22 +154,21 @@ func (h *AccountHandler) SetCodexTicketParticipation(c *gin.Context) {
 		return
 	}
 	var input struct {
-		Enabled *bool           `json:"enabled" binding:"required"`
-		Models  map[string]bool `json:"models" binding:"required"`
+		Enabled *bool `json:"enabled" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		response.BadRequest(c, "enabled and models are required")
+		response.BadRequest(c, "enabled is required")
 		return
 	}
 	if h.codexTicketGateway == nil {
 		codexTicketError(c, service.ErrCodexTicketUnavailable)
 		return
 	}
-	if err := h.codexTicketGateway.SetCodexTicketParticipation(c.Request.Context(), id, *input.Enabled, input.Models); err != nil {
+	if err := h.codexTicketGateway.SetCodexTicketParticipation(c.Request.Context(), id, *input.Enabled); err != nil {
 		codexTicketError(c, err)
 		return
 	}
-	response.Success(c, gin.H{"enabled": *input.Enabled, "models": input.Models})
+	response.Success(c, gin.H{"enabled": *input.Enabled})
 }
 
 func (h *ProxyHandler) GetCodexTicketPool(c *gin.Context) {

@@ -10,7 +10,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN') }) }))
 
 describe('ticket cadence unified save', () => {
   beforeEach(() => {
-    cadence.mockResolvedValue({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 1800 })
+    cadence.mockResolvedValue({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 1800, batch_size: 10 })
     saveCadence.mockResolvedValue(undefined)
   })
   afterEach(() => vi.clearAllMocks())
@@ -26,7 +26,7 @@ describe('ticket cadence unified save', () => {
   })
 
   it('preserves an explicitly saved zero and saves only an edited cadence', async () => {
-    cadence.mockResolvedValue({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 0 })
+    cadence.mockResolvedValue({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 0, batch_size: 10 })
     const wrapper = mount(CodexTicketCadenceSettings, { props: { saving: false } })
     await flushPromises()
     expect((wrapper.findAll('input')[2].element as HTMLInputElement).value).toBe('0')
@@ -36,8 +36,22 @@ describe('ticket cadence unified save', () => {
     expect(wrapper.vm.isDirty()).toBe(true)
     wrapper.vm.validate()
     await wrapper.vm.save()
-    expect(saveCadence).toHaveBeenCalledWith({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 1800 })
+    expect(saveCadence).toHaveBeenCalledWith({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 1800, batch_size: 10 })
     expect(wrapper.vm.isDirty()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('edits and validates the harvest batch size', async () => {
+    const wrapper = mount(CodexTicketCadenceSettings, { props: { saving: false } })
+    await flushPromises()
+    const batch = wrapper.findAll('input')[3]
+    expect((batch.element as HTMLInputElement).value).toBe('10')
+    await batch.setValue('0')
+    expect(() => wrapper.vm.validate()).toThrow()
+    await batch.setValue('25')
+    wrapper.vm.validate()
+    await wrapper.vm.save()
+    expect(saveCadence).toHaveBeenCalledWith({ retry_min_seconds: 10, retry_max_seconds: 30, refresh_seconds: 1800, batch_size: 25 })
     wrapper.unmount()
   })
 })

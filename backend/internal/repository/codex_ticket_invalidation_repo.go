@@ -9,20 +9,48 @@ import (
 	"time"
 
 	"github.com/MACOS-DO/sub4api/internal/service"
+	"github.com/lib/pq"
 )
 
-func (r *codexTicketAttemptRepository) CurrentTicket(ctx context.Context, accountID int64, model string) (json.RawMessage, error) {
+// CurrentTicket returns the global shared ticket together with the accounts that
+// invalidated its current generation and the row version that orders cache writes.
+// A missing ticket yields an empty state at version 0.
+func (r *codexTicketAttemptRepository) CurrentTicket(ctx context.Context) (*service.CodexSharedTicketState, error) {
 	var raw json.RawMessage
-	// A missing JSONB key is SQL NULL, which cannot be scanned into RawMessage.
-	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(extra->$2, 'null'::jsonb) FROM accounts WHERE id=$1 AND deleted_at IS NULL`, accountID, "codex_turn_ticket:"+model).Scan(&raw)
+	var invalidated pq.Int64Array
+	var version int64
+	err := r.db.QueryRowContext(ctx, `SELECT t.ticket,
+		ARRAY(SELECT i.account_id FROM codex_ticket_invalidations i WHERE i.ticket_generation_id=t.generation_id ORDER BY i.account_id),
+		t.version
+		FROM codex_shared_tickets t WHERE t.id=1`).Scan(&raw, &invalidated, &version)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return &service.CodexSharedTicketState{}, nil
 	}
-	return raw, err
+	if err != nil {
+		return nil, err
+	}
+	return &service.CodexSharedTicketState{Ticket: raw, InvalidatedAccountIDs: []int64(invalidated), Version: version}, nil
 }
 
+// StoreTicket replaces the global shared ticket; the latest successful harvest wins.
+// Every replacement bumps the version so a cache can reject older reads.
+func (r *codexTicketAttemptRepository) StoreTicket(ctx context.Context, generationID string, sourceAccountID int64, capturedAt time.Time, ticket json.RawMessage) error {
+	if generationID == "" || len(ticket) == 0 {
+		return errors.New("invalid shared ticket")
+	}
+	_, err := r.db.ExecContext(ctx, `INSERT INTO codex_shared_tickets (id,generation_id,source_account_id,ticket,captured_at,updated_at)
+		VALUES (1,$1,$2,$3,$4,NOW())
+		ON CONFLICT (id) DO UPDATE SET generation_id=EXCLUDED.generation_id, source_account_id=EXCLUDED.source_account_id,
+			ticket=EXCLUDED.ticket, captured_at=EXCLUDED.captured_at, updated_at=NOW(), version=codex_shared_tickets.version+1`,
+		generationID, sourceAccountID, []byte(ticket), capturedAt)
+	return err
+}
+
+// Invalidate records that event.AccountID can no longer use the generation. The
+// shared ticket itself stays for every other account until a new one replaces it;
+// a repeated report from the same account for the same generation is ignored.
 func (r *codexTicketAttemptRepository) Invalidate(ctx context.Context, event *service.CodexTicketInvalidation) (bool, error) {
-	if event == nil || event.TicketGenerationID == "" || event.ReturnedTicket == "" {
+	if event == nil || event.TicketGenerationID == "" || event.Model == "" || event.ReturnedTicket == nil || *event.ReturnedTicket == "" {
 		return false, errors.New("invalid ticket invalidation")
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -30,10 +58,11 @@ func (r *codexTicketAttemptRepository) Invalidate(ctx context.Context, event *se
 		return false, err
 	}
 	defer tx.Rollback()
-	key := "codex_turn_ticket:" + event.Model
-	var current sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT extra->$2->>'generation_id' FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, event.AccountID, key).Scan(&current)
-	if err != nil {
+	// Lock the ticket row so a concurrent StoreTicket cannot swap generations mid-check.
+	// Compare as UUIDs so the textual case of the generation id never matters.
+	var current bool
+	err = tx.QueryRowContext(ctx, `SELECT generation_id = $1::uuid FROM codex_shared_tickets WHERE id=1 FOR UPDATE`, event.TicketGenerationID).Scan(&current)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
 	rawCookies, err := json.Marshal(event.ReturnedSetCookies)
@@ -44,9 +73,12 @@ func (r *codexTicketAttemptRepository) Invalidate(ctx context.Context, event *se
 	if len(event.ReturnedSetCookies) > 0 {
 		cookies = string(rawCookies)
 	}
-	var originalTicket, originalCookie, returnedCookie any
+	var originalTicket, originalCookie, returnedTicket, returnedCookie any
 	if event.OriginalTicket != nil {
 		originalTicket = *event.OriginalTicket
+	}
+	if event.ReturnedTicket != nil {
+		returnedTicket = *event.ReturnedTicket
 	}
 	if event.OriginalCookie != nil {
 		originalCookie = *event.OriginalCookie
@@ -59,27 +91,20 @@ func (r *codexTicketAttemptRepository) Invalidate(ctx context.Context, event *se
 		(account_id,model,ticket_generation_id,occurred_at,reason_code,response_http_status,request_kind,request_route,invalidated_current,
 		 original_ticket,original_cookie,returned_ticket,returned_cookie,returned_set_cookies)
 		VALUES ($1,$2,$3,$4,$14,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-		ON CONFLICT (ticket_generation_id) DO NOTHING RETURNING id`,
+		ON CONFLICT (account_id, ticket_generation_id) DO NOTHING RETURNING id`,
 		event.AccountID, event.Model, event.TicketGenerationID, event.OccurredAt, event.ResponseHTTPStatus, event.RequestKind, event.RequestRoute,
-		current.Valid && current.String == event.TicketGenerationID, originalTicket, originalCookie, event.ReturnedTicket, returnedCookie, cookies, event.ReasonCode).Scan(&insertedID)
+		current, originalTicket, originalCookie, returnedTicket, returnedCookie, cookies, event.ReasonCode).Scan(&insertedID)
 	if errors.Is(err, sql.ErrNoRows) {
-		_, updateErr := tx.ExecContext(ctx, `UPDATE codex_ticket_invalidations SET
-			occurred_at=$2,response_http_status=$3,request_kind=$4,request_route=$5,
-			original_ticket=$6,original_cookie=$7,returned_ticket=$8,returned_cookie=$9,returned_set_cookies=$10
-			WHERE ticket_generation_id=$1 AND occurred_at>$2`,
-			event.TicketGenerationID, event.OccurredAt, event.ResponseHTTPStatus, event.RequestKind, event.RequestRoute,
-			originalTicket, originalCookie, event.ReturnedTicket, returnedCookie, cookies)
-		if updateErr != nil {
-			return false, updateErr
-		}
 		return false, tx.Commit()
 	}
 	if err != nil {
 		return false, err
 	}
-	invalidated := current.Valid && current.String == event.TicketGenerationID
+	invalidated := current
 	if invalidated {
-		if _, err := tx.ExecContext(ctx, `UPDATE accounts SET extra=COALESCE(extra,'{}'::jsonb)-$2, updated_at=NOW() WHERE id=$1`, event.AccountID, key); err != nil {
+		// The invalidated account set is part of the cached state; bump the version
+		// so a cache write carrying the previous set is rejected.
+		if _, err := tx.ExecContext(ctx, `UPDATE codex_shared_tickets SET version=version+1 WHERE id=1`); err != nil {
 			return false, err
 		}
 	}
@@ -127,10 +152,10 @@ func (r *codexTicketAttemptRepository) GetInvalidation(ctx context.Context, acco
 		FROM codex_ticket_invalidations WHERE account_id=$1 AND id=$2 AND occurred_at >= NOW()-INTERVAL '90 days'`, accountID, id)
 	item := &service.CodexTicketInvalidation{AccountID: accountID}
 	var status sql.NullInt64
-	var original, oldCookie, newCookie sql.NullString
+	var original, oldCookie, newTicket, newCookie sql.NullString
 	var cookies []byte
 	if err := row.Scan(&item.ID, &item.Model, &item.TicketGenerationID, &item.OccurredAt, &item.RecordedAt, &item.ReasonCode, &status, &item.RequestKind, &item.RequestRoute, &item.InvalidatedCurrent,
-		&original, &oldCookie, &item.ReturnedTicket, &newCookie, &cookies); err != nil {
+		&original, &oldCookie, &newTicket, &newCookie, &cookies); err != nil {
 		return nil, err
 	}
 	if status.Valid {
@@ -142,6 +167,9 @@ func (r *codexTicketAttemptRepository) GetInvalidation(ctx context.Context, acco
 	}
 	if oldCookie.Valid {
 		item.OriginalCookie = &oldCookie.String
+	}
+	if newTicket.Valid {
+		item.ReturnedTicket = &newTicket.String
 	}
 	if newCookie.Valid {
 		item.ReturnedCookie = &newCookie.String

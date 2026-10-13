@@ -8,42 +8,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccountResponseCodexTicketsUsesConfiguredPolicy(t *testing.T) {
+func TestAccountResponseCodexTicketUsesConfiguredPolicy(t *testing.T) {
 	account := &service.Account{ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive}
 	h := &AccountHandler{cfg: &config.Config{}}
-	models, err := service.ModelTraceTicketModels()
-	require.NoError(t, err)
-	initial := h.accountResponseFromService(account).CodexTurnTickets
-	require.Len(t, initial, len(models))
-	for _, ticket := range initial {
-		require.False(t, ticket.HarvestEnabled)
-	}
-	h.cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{Enabled: true, Models: models, FailClosed: false}
-	status := h.accountListResponseFromService(account).CodexTurnTickets
-	require.Len(t, status, len(models))
-	require.Equal(t, models[0], status[0].Model)
-	require.True(t, status[0].HarvestEnabled)
-	require.False(t, status[0].Blocked)
+	initial := h.accountResponseFromService(account).CodexTicket
+	require.NotNil(t, initial)
+	require.False(t, initial.HarvestEnabled)
+	h.cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{Enabled: true, FailClosed: false}
+	status := h.accountListResponseFromService(account).CodexTicket
+	require.Equal(t, "gpt-6-sol", status.Model, "the global ticket is harvested with gpt-6-sol")
+	require.True(t, status.HarvestEnabled)
+	require.False(t, status.Blocked)
 	h.cfg.Gateway.OpenAICodexTicket.FailClosed = true
-	require.True(t, h.accountResponseFromService(account).CodexTurnTickets[0].Blocked)
+	require.True(t, h.accountResponseFromService(account).CodexTicket.Blocked)
+
+	other := &service.Account{ID: 42, Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}
+	require.Nil(t, h.accountResponseFromService(other).CodexTicket)
 }
 
-func TestAccountResponseCodexTicketsReadsLiveSettingsAfterRestart(t *testing.T) {
+func TestAccountResponseCodexTicketReadsLiveSettingsAfterRestart(t *testing.T) {
 	cfg := &config.Config{}
 	repo := &settingHandlerRepoStub{values: map[string]string{service.SettingKeyOpenAICodexTicketEnabled: "true"}}
 	settings := service.NewSettingService(repo, cfg)
 	h := &AccountHandler{cfg: cfg}
 	h.SetCodexTicketSettings(settings)
 	account := &service.Account{ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeSetupToken, Status: service.StatusActive}
-	models, err := service.ModelTraceTicketModels()
-	require.NoError(t, err)
-	status := h.accountListResponseFromService(account).CodexTurnTickets
-	require.Len(t, status, len(models))
-	require.True(t, status[0].HarvestEnabled)
+	require.True(t, h.accountListResponseFromService(account).CodexTicket.HarvestEnabled)
 	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled)
 	repo.values[service.SettingKeyOpenAICodexTicketEnabled] = "false"
 	settings.InvalidateOpenAICodexTicketEnabledCache()
-	status = h.accountResponseFromService(account).CodexTurnTickets
-	require.Len(t, status, len(models))
-	require.False(t, status[0].HarvestEnabled)
+	require.False(t, h.accountResponseFromService(account).CodexTicket.HarvestEnabled)
 }

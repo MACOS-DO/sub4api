@@ -15,7 +15,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN'), t: (key: st
 
 const account = {
   id: 19, name: 'GPT Account', platform: 'openai', type: 'oauth',
-  codex_turn_tickets: [{ model: 'gpt-5.6-sol', ready: true, length: 292, turn_state_present: true, cookie_present: false, harvest_enabled: true }]
+  codex_ticket: { model: 'gpt-6-sol', ready: true, remaining_seconds: 0, blocked: false, source_account_id: 7, length: 292, turn_state_present: true, cookie_present: true, harvest_enabled: true }
 } as Account
 const attempt = { id: 1, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T08:00:00Z', kind: 'miss', reason_code: 'fingerprint_mismatch' }
 const expired = { id: 2, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T09:00:00Z', kind: 'invalidation', reason_code: 'upstream_new_turn_state' }
@@ -48,7 +48,9 @@ describe('Codex ticket dashboard', () => {
   it('separates current tickets, failed attempts and invalidation history', async () => {
     const wrapper = mountDashboard()
     await flushPromises()
-    expect(wrapper.text()).toContain('1 / 1')
+    expect(wrapper.text()).toContain('全站共享票')
+    expect(wrapper.text()).toContain('gpt-6-sol')
+    expect(wrapper.text()).toContain('#7')
     expect(wrapper.text()).not.toContain('fingerprint_mismatch')
     expect(events).not.toHaveBeenCalled()
     expect(ownKeys).not.toHaveBeenCalled()
@@ -70,6 +72,24 @@ describe('Codex ticket dashboard', () => {
     await flushPromises()
     expect(invalidation).toHaveBeenCalledWith(19, 2)
     expect(wrapper.text()).toContain('old-secret')
+    wrapper.unmount()
+  })
+
+  it('labels superseded successful harvests that have no ticket generation', async () => {
+    const superseded = { id: 3, model: 'gpt-5.6-sol', occurred_at: '2026-09-22T10:00:00Z', kind: 'success', reason_code: 'superseded', verification_method: 'fingerprint' }
+    events.mockResolvedValue({ items: [superseded], total: 1 })
+    const wrapper = mountDashboard()
+    await flushPromises()
+    await wrapper.findAll('nav button').find(button => button.text() === '打票流水')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('打票成功，本轮已有票未采用')
+    expect(wrapper.text()).not.toContain('superseded')
+    expect(wrapper.text()).not.toContain('undefined')
+
+    await wrapper.find('section[aria-label="打票流水"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('打票成功，本轮已有票未采用 · —')
+    expect(wrapper.text()).not.toContain('undefined')
     wrapper.unmount()
   })
 

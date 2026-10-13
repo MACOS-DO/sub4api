@@ -18,9 +18,12 @@ type codexTicketLookupStub struct {
 	calls int
 }
 
-func (stub *codexTicketLookupStub) CurrentTicket(context.Context, int64, string) (json.RawMessage, error) {
+func (stub *codexTicketLookupStub) CurrentTicket(context.Context) (*CodexSharedTicketState, error) {
 	stub.calls++
-	return stub.raw, stub.err
+	if stub.err != nil {
+		return nil, stub.err
+	}
+	return &CodexSharedTicketState{Ticket: stub.raw}, nil
 }
 
 func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
@@ -40,11 +43,10 @@ func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
 		{name: "account excluded bypasses configured deny", enabled: true, failClosed: true, harvestDisabled: true, allowed: true},
 		{name: "account excluded bypasses global deny", enabled: true, global: "false", harvestDisabled: true, allowed: true},
 		{name: "account excluded bypasses explicit account deny", enabled: true, global: "false", accountPolicy: false, harvestDisabled: true, allowed: true},
-		{name: "account excluded still injects saved ticket", enabled: true, failClosed: true, harvestDisabled: true, ticket: true, allowed: true},
-		{name: "model excluded bypasses config deny", enabled: true, failClosed: true, modelDisabled: true, allowed: true},
-		{name: "model excluded bypasses global deny", enabled: true, global: "false", modelDisabled: true, allowed: true},
-		{name: "model excluded bypasses account deny", enabled: true, accountPolicy: false, modelDisabled: true, allowed: true},
-		{name: "model excluded still injects saved ticket", enabled: true, failClosed: true, modelDisabled: true, ticket: true, allowed: true},
+		{name: "account excluded ignores shared ticket", enabled: true, failClosed: true, harvestDisabled: true, ticket: true, allowed: true},
+		// The retired per-model switch is ignored: participation is account-level only.
+		{name: "retired model switch does not bypass deny", enabled: true, failClosed: true, modelDisabled: true},
+		{name: "retired model switch still uses shared ticket", enabled: true, failClosed: true, modelDisabled: true, ticket: true, allowed: true},
 		{name: "enabled defaults allow", enabled: true, allowed: true},
 		{name: "configured deny", enabled: true, failClosed: true},
 		{name: "saved global allow", enabled: true, failClosed: true, global: "true", allowed: true},
@@ -66,16 +68,13 @@ func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
 				account.Schedulable = true
 				account.Extra = map[string]any{}
 				if test.modelDisabled {
-					account.Extra[codexTicketModelsEnabledKey] = map[string]bool{model: false}
+					account.Extra[codexTicketRetiredModelsKey] = map[string]any{model: false, openAICodexTicketHarvestModel: false}
 				}
 				if test.harvestDisabled {
 					account.Extra[codexTicketAccountEnabledKey] = false
 				}
 				if test.accountPolicy != nil {
 					account.Extra["codex_allow_without_ticket"] = test.accountPolicy
-				}
-				if test.ticket {
-					account.Extra[openAICodexTicketExtraKey(model)] = verifiedTicket(account, model, "saved-state", "__oailb=saved")
 				}
 				cfg := &config.Config{}
 				cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{Enabled: test.enabled, FailClosed: test.failClosed}
@@ -86,7 +85,11 @@ func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
 				svc := &OpenAIGatewayService{cfg: cfg, accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{*account}}, cache: &schedulerTestGatewayCache{}, concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
 					settingService: NewSettingService(&codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: values}}, cfg)}
 				// Exercise the production lifecycle lookup, including SQL-normalized JSON null.
-				raw, err := json.Marshal(account.Extra[openAICodexTicketExtraKey(model)])
+				var shared *openAICodexTicket
+				if test.ticket {
+					shared = verifiedTicket(ticketTestAccount(40), model, "saved-state", "__oailb=saved")
+				}
+				raw, err := json.Marshal(shared)
 				require.NoError(t, err)
 				lookup := &codexTicketLookupStub{raw: raw}
 				svc.openaiCodexTicketLifecycle = lookup
@@ -109,13 +112,18 @@ func TestCodexDiagnosticAndNormalRequestsUseSameTicketPolicy(t *testing.T) {
 					} else {
 						require.ErrorIs(t, err, ErrOpenAICodexTicketUnavailable)
 					}
-					if test.ticket {
-						require.Equal(t, "saved-state", headers.Get(openAICodexTurnStateHeader))
+					participating := !test.harvestDisabled
+					if test.ticket && participating {
 						require.Equal(t, "__oailb=saved", headers.Get("Cookie"))
+						require.Equal(t, "saved-state", headers.Get(openAICodexTurnStateHeader))
+					} else {
+						require.Empty(t, headers.Get("Cookie"), "non-participating accounts never borrow the shared ticket")
+						require.Empty(t, headers.Get(openAICodexTurnStateHeader))
 					}
 				}
-				if test.enabled && svc.openAICodexTicketGatedModel(model) {
-					require.Equal(t, 2, lookup.calls)
+				if test.enabled && svc.openAICodexTicketGatedModel(model) && !test.harvestDisabled {
+					// Scheduling and injection share the cached shared ticket instead of reading per request.
+					require.Equal(t, 1, lookup.calls)
 				} else {
 					require.Zero(t, lookup.calls)
 				}

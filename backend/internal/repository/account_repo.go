@@ -729,18 +729,17 @@ func lockAndMergeAccountProbeExtra(
 
 	// extra 理论上恒为 JSON 对象，但历史数据若存成非对象（数组/标量），在此硬失败
 	// 会让该账号的任何编辑都保存不了——而这条路径覆盖所有平台的账号更新。
-	// 门票是 1 小时 TTL 的临时凭据，下个打票周期会自动补回，因此解析失败时降级为
-	// 「无门票可保留」继续完成编辑，不要把整个账号更新拖垮。
+	// 解析失败时降级为「无运行态可保留」继续完成编辑，不要把整个账号更新拖垮。
 	var currentExtra map[string]any
 	if len(currentExtraJSON) > 0 {
 		if err := json.Unmarshal(currentExtraJSON, &currentExtra); err != nil {
 			logger.LegacyPrintf("repository.account",
-				"[Account] current extra unmarshal failed, codex ticket preservation skipped: id=%d err=%v",
+				"[Account] current extra unmarshal failed, runtime state preservation skipped: id=%d err=%v",
 				account.ID, err)
 			currentExtra = nil
 		}
 	}
-	extra := service.MergeOpenAICodexTicketExtra(copyJSONMap(normalizeJSONMap(account.Extra)), currentExtra)
+	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	extra = service.MergeOpenAIBPSCredentialStateExtra(account, extra, currentExtra, identityUnchanged)
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,

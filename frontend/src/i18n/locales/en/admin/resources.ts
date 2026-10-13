@@ -53,6 +53,7 @@ export default {
       deleteConfirmMessage: "Are you sure you want to delete proxy '{name}'?",
       testProxy: 'Test Proxy',
       dataImport: 'Import',
+      codexTicketPool: 'Ticket proxy pool',
       dataExportSelected: 'Export Selected',
       dataImportTitle: 'Import Proxies',
       dataImportHint: 'Upload the exported proxy JSON file to import proxies in bulk.',

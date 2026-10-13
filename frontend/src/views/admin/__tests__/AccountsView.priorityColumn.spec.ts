@@ -204,10 +204,7 @@ describe('admin AccountsView ticket column', () => {
         {
           id: 1, name: 'Codex', platform: 'openai', type: 'oauth',
           extra: { codex_ticket_harvest_enabled: false },
-          codex_turn_tickets: [
-            { model: 'gpt-5.6-sol', ready: true, harvest_enabled: false },
-            { model: 'gpt-6-astra', ready: false, harvest_enabled: false }
-          ]
+          codex_ticket: { model: 'gpt-6-sol', ready: true, remaining_seconds: 0, blocked: false, harvest_enabled: false }
         },
         { id: 2, name: 'Other', platform: 'anthropic', type: 'api-key' }
       ],
@@ -215,11 +212,11 @@ describe('admin AccountsView ticket column', () => {
     })
   })
 
-  it('shows counts and the column option when globally enabled, without loading row details', async () => {
+  it('shows the shared ticket state and the column option when globally enabled, without loading row details', async () => {
     const wrapper = mountView()
     await flushPromises()
     expect(wrapper.get('[data-column="codex_ticket"]').text()).toBe('fixed')
-    expect(wrapper.get('button[aria-label="admin.accounts.openai.codexTicketSummary"]').text()).toBe('1 / 2')
+    expect(wrapper.get('button[aria-label="admin.accounts.openai.codexTicketSummary"]').text()).toBe('admin.accounts.openai.codexTicketReadyShort')
     expect(wrapper.get('[data-test="data-table"]').text()).toContain('—')
     await toggleColumnMenu(wrapper)
     expect(ticketMenuOption(wrapper)).toBeDefined()

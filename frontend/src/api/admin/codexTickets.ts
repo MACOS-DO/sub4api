@@ -1,8 +1,10 @@
 import { apiClient } from '../client'
 import type { Account, ApiKey } from '@/types'
 
-export type TicketStatus = NonNullable<Account['codex_turn_tickets']>[number] & {
+export type TicketStatus = NonNullable<Account['codex_ticket']> & {
   captured_at?: string
+  source_account_id?: number
+  invalidated_for_account?: boolean
   turn_state_present: boolean
   cookie_present: boolean
   fingerprint_commit?: string
@@ -83,8 +85,9 @@ export async function invalidation(id: number, eventID: number): Promise<TicketI
   return data
 }
 
-export async function harvest(id: number, model: string): Promise<{ outcome: string; reason_code?: string }> {
-  const { data } = await apiClient.post(`${base(id)}/codex-ticket-harvest`, { model }, { timeout: 120000 })
+// Harvests the global ticket with gpt-6-sol on this account.
+export async function harvest(id: number): Promise<{ outcome: string; reason_code?: string }> {
+  const { data } = await apiClient.post(`${base(id)}/codex-ticket-harvest`, {}, { timeout: 120000 })
   return data
 }
 
@@ -102,18 +105,24 @@ export async function ownKeys(): Promise<ApiKey[]> {
   }
 }
 
-export async function cadence(): Promise<{ retry_min_seconds: number; retry_max_seconds: number; refresh_seconds: number }> {
+export interface TicketCadence {
+  retry_min_seconds: number
+  retry_max_seconds: number
+  refresh_seconds: number
+  batch_size: number
+}
+
+export async function cadence(): Promise<TicketCadence> {
   const { data } = await apiClient.get('/admin/accounts/codex-ticket-cadence')
   return data
 }
 
-export async function saveCadence(value: { retry_min_seconds: number; retry_max_seconds: number; refresh_seconds: number }): Promise<void> {
+export async function saveCadence(value: TicketCadence): Promise<void> {
   await apiClient.put('/admin/accounts/codex-ticket-cadence', value)
 }
 
 export interface TicketParticipation {
   enabled: boolean
-  models: Record<string, boolean>
 }
 
 export async function saveParticipation(id: number, value: TicketParticipation): Promise<TicketParticipation> {

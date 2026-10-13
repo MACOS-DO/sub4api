@@ -355,8 +355,12 @@ type AccountSchedulerGroupScore struct {
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
+	return h.accountResponseWithTickets(account, h.codexTicketStatusContext())
+}
+
+func (h *AccountHandler) accountResponseWithTickets(account *service.Account, tickets *codexTicketStatusContext) *dto.Account {
 	out := dto.AccountFromService(account)
-	h.enrichCodexTicketStatus(account, out)
+	tickets.enrich(account, out)
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
@@ -364,8 +368,12 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 }
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
+	return h.accountListResponseWithTickets(account, h.codexTicketStatusContext())
+}
+
+func (h *AccountHandler) accountListResponseWithTickets(account *service.Account, tickets *codexTicketStatusContext) *dto.Account {
 	out := dto.AccountFromServiceShallow(account)
-	h.enrichCodexTicketStatus(account, out)
+	tickets.enrich(account, out)
 	if out != nil && account != nil {
 		out.Proxy = dto.ProxyFromService(account.Proxy)
 	}
@@ -375,14 +383,28 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 	return out
 }
 
-func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
-	if h != nil && h.cfg != nil && out != nil {
-		cfg := h.cfg.Gateway.OpenAICodexTicket
-		if h.codexTicketSettings != nil {
-			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
-			cfg.FailClosed = !h.codexTicketSettings.GetOpenAICodexTicketAllowWithoutTicket(context.Background(), !cfg.FailClosed)
-		}
-		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+// codexTicketStatusContext 持有一次响应内共用的打票配置与全局共享票快照，列表页只计算一次。
+type codexTicketStatusContext struct {
+	cfg    config.OpenAICodexTicketConfig
+	shared service.CodexSharedTickets
+	now    time.Time
+}
+
+func (h *AccountHandler) codexTicketStatusContext() *codexTicketStatusContext {
+	if h == nil || h.cfg == nil {
+		return nil
+	}
+	cfg := h.cfg.Gateway.OpenAICodexTicket
+	if h.codexTicketSettings != nil {
+		cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+		cfg.FailClosed = !h.codexTicketSettings.GetOpenAICodexTicketAllowWithoutTicket(context.Background(), !cfg.FailClosed)
+	}
+	return &codexTicketStatusContext{cfg: cfg, shared: h.codexTicketGateway.CodexSharedTicketSnapshot(context.Background()), now: time.Now()}
+}
+
+func (c *codexTicketStatusContext) enrich(account *service.Account, out *dto.Account) {
+	if c != nil && out != nil {
+		out.CodexTicket = service.OpenAICodexTicketStatusOf(account, c.cfg, c.shared, c.now)
 	}
 }
 
@@ -840,14 +862,17 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
+	tickets := h.codexTicketStatusContext()
 	for i := range accounts {
 		acc := &accounts[i]
-		accountResponse := h.accountResponseFromService(acc)
+		var accountResponse *dto.Account
 		if lite {
-			accountResponse = h.accountListResponseFromService(acc)
+			accountResponse = h.accountListResponseWithTickets(acc, tickets)
 			if h.isSimpleMode() {
 				accountResponse.GroupIDs = filterSimpleModeGroupIDs(accountResponse.GroupIDs, simpleModeCompositeServiceGroupIDs(acc))
 			}
+		} else {
+			accountResponse = h.accountResponseWithTickets(acc, tickets)
 		}
 		if event, ok := ticketEvents[acc.ID]; ok {
 			accountResponse.CodexTicketLatestEvent = &event

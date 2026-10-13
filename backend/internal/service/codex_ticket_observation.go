@@ -12,6 +12,8 @@ import (
 
 type codexTicketRequestContextKey struct{}
 
+// CodexTicketInvalidationCredentialsChanged 表示上游对携带共享票的请求同时返回了新的 turn-state 与 __oailb：
+// 观测到的账号不再使用这一代票。
 const CodexTicketInvalidationCredentialsChanged = "upstream_turn_state_and_oailb_changed"
 
 // Capture before dispatch: neither a later header rewrite nor a newly harvested
@@ -33,7 +35,8 @@ func optionalCodexCredential(value string) *string {
 	return &value
 }
 
-func snapshotCodexTicketRequest(ticket *openAICodexTicket, headers http.Header, kind, route string) *codexTicketRequestSnapshot {
+// accountID 是实际发出请求的账号：共享票被所有参与账号复用，失效事件记在观测到的账号上。
+func snapshotCodexTicketRequest(ticket *openAICodexTicket, accountID int64, headers http.Header, kind, route string) *codexTicketRequestSnapshot {
 	if ticket == nil || ticket.GenerationID == "" {
 		return nil
 	}
@@ -64,7 +67,7 @@ func snapshotCodexTicketRequest(ticket *openAICodexTicket, headers http.Header, 
 		route = "/v1/messages"
 	}
 	return &codexTicketRequestSnapshot{
-		accountID: ticket.AccountID, model: ticket.Model, generationID: ticket.GenerationID,
+		accountID: accountID, model: ticket.Model, generationID: ticket.GenerationID,
 		state: state, cookie: cookie, kind: kind, route: route,
 	}
 }
@@ -74,7 +77,7 @@ func snapshotCodexTicketHTTPRequest(request *http.Request, account *Account) *co
 		return nil
 	}
 	ticket, _ := request.Context().Value(codexTicketRequestContextKey{}).(*openAICodexTicket)
-	if ticket == nil || ticket.AccountID != account.ID {
+	if ticket == nil {
 		return nil
 	}
 	kind := "user_request"
@@ -85,7 +88,7 @@ func snapshotCodexTicketHTTPRequest(request *http.Request, account *Account) *co
 	if request.URL != nil {
 		route = request.URL.Path
 	}
-	return snapshotCodexTicketRequest(ticket, request.Header, kind, route)
+	return snapshotCodexTicketRequest(ticket, account.ID, request.Header, kind, route)
 }
 
 // Only a single unambiguous __oailb value counts. Missing or malformed cookies
@@ -132,7 +135,7 @@ func (s *OpenAIGatewayService) observeCodexTicketHTTPResponse(snapshot *codexTic
 
 // The pool invokes this callback only after a real dial, including failed
 // handshakes. Reusing a connection must not replay its historical response.
-func (s *OpenAIGatewayService) codexTicketHandshakeObserver(ctx context.Context, ticket *openAICodexTicket) func(http.Header, int, http.Header) {
+func (s *OpenAIGatewayService) codexTicketHandshakeObserver(ctx context.Context, accountID int64, ticket *openAICodexTicket) func(http.Header, int, http.Header) {
 	if ticket == nil {
 		return nil
 	}
@@ -142,10 +145,12 @@ func (s *OpenAIGatewayService) codexTicketHandshakeObserver(ctx context.Context,
 		kind = "diagnostic"
 	}
 	return func(sent http.Header, status int, returned http.Header) {
-		s.observeCodexTicketHeaders(snapshotCodexTicketRequest(&generation, sent, kind, "/v1/responses"), status, returned)
+		s.observeCodexTicketHeaders(snapshotCodexTicketRequest(&generation, accountID, sent, kind, "/v1/responses"), status, returned)
 	}
 }
 
+// observeCodexTicketHeaders 在上游同时返回新的 turn-state 与新的 __oailb 时，判定这一代票对该账号失效，
+// 其他账号照常使用，同时立即唤醒打票器打新票。只有其中一项变化不影响票据。
 func (s *OpenAIGatewayService) observeCodexTicketHeaders(snapshot *codexTicketRequestSnapshot, status int, headers http.Header) {
 	if snapshot == nil || s.openaiCodexTicketLifecycle == nil {
 		return
@@ -167,15 +172,21 @@ func (s *OpenAIGatewayService) observeCodexTicketHeaders(snapshot *codexTicketRe
 		AccountID: snapshot.accountID, Model: snapshot.model, TicketGenerationID: snapshot.generationID,
 		OccurredAt: time.Now().UTC(), ReasonCode: CodexTicketInvalidationCredentialsChanged,
 		ResponseHTTPStatus: &status, RequestKind: snapshot.kind, RequestRoute: snapshot.route,
-		OriginalTicket: optionalCodexCredential(snapshot.state), OriginalCookie: optionalCodexCredential(snapshot.cookie),
-		ReturnedTicket: returned, ReturnedCookie: optionalCodexCredential(extractOpenAICodexResponseCookies(headers)),
+		OriginalTicket:     optionalCodexCredential(snapshot.state),
+		OriginalCookie:     optionalCodexCredential(snapshot.cookie),
+		ReturnedTicket:     optionalCodexCredential(returned),
+		ReturnedCookie:     optionalCodexCredential(extractOpenAICodexResponseCookies(headers)),
 		ReturnedSetCookies: append([]string(nil), headers.Values("Set-Cookie")...),
 	}
-	key := openAICodexTicketKey(snapshot.accountID, snapshot.model)
-	retry, hadRetry := s.openaiCodexTicketNextAttempt.Load(key)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	inserted, err := s.openaiCodexTicketLifecycle.Invalidate(ctx, event)
+	var inserted bool
+	err = s.writeSharedCodexTicket(ctx, func(ctx context.Context) (bool, error) {
+		var err error
+		inserted, err = s.openaiCodexTicketLifecycle.Invalidate(ctx, event)
+		// 只有新记录且命中当前这一代时共享状态才变化；重复上报与旧一代上报不重新发布。
+		return err == nil && inserted && event.InvalidatedCurrent, err
+	})
 	if err != nil {
 		logger.L().Error("codex ticket invalidation persist failed", zap.Int64("account_id", snapshot.accountID), zap.String("model", snapshot.model), zap.Error(err))
 		return
@@ -183,22 +194,6 @@ func (s *OpenAIGatewayService) observeCodexTicketHeaders(snapshot *codexTicketRe
 	if !inserted || !event.InvalidatedCurrent {
 		return
 	}
-	// The database transaction already removed exactly this generation. Account
-	// snapshots may be shared by other requests, so refresh rather than mutate them.
-	newerCached := false
-	if cached, ok := s.openaiCodexTickets.Load(key); ok {
-		if current, ok := cached.(*openAICodexTicket); ok {
-			newerCached = current.GenerationID != snapshot.generationID
-			if !newerCached {
-				s.openaiCodexTickets.CompareAndDelete(key, cached)
-			}
-		}
-	}
-	if hadRetry && !newerCached {
-		s.openaiCodexTicketNextAttempt.CompareAndDelete(key, retry)
-	}
-	if refresher, ok := s.accountRepo.(interface{ RefreshSchedulerAccount(context.Context, int64) }); ok {
-		refresher.RefreshSchedulerAccount(ctx, snapshot.accountID)
-	}
+	s.clearCodexTicketRetries()
 	s.notifyOpenAICodexTicketHarvester()
 }

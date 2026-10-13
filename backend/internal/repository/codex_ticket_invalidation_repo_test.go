@@ -13,58 +13,93 @@ import (
 )
 
 func TestCodexTicketInvalidationTransaction(t *testing.T) {
-	for _, scenario := range []string{"current", "late response", "duplicate", "insert failure", "delete failure", "commit failure"} {
+	for _, scenario := range []string{"current", "late response", "no shared ticket", "duplicate", "lock failure", "insert failure", "commit failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer db.Close()
 			repo := &codexTicketAttemptRepository{db: db}
-			event := &service.CodexTicketInvalidation{AccountID: 7, Model: "gpt-6-astra", TicketGenerationID: "11111111-1111-4111-8111-111111111111", OccurredAt: time.Now().UTC(), ReasonCode: service.CodexTicketInvalidationCredentialsChanged, RequestKind: "user_request", RequestRoute: "/v1/responses", ReturnedTicket: "new-state"}
-			current := event.TicketGenerationID
-			if scenario == "late response" {
-				current = "22222222-2222-4222-8222-222222222222"
-			}
+			returnedTicket := "new-state"
+			event := &service.CodexTicketInvalidation{AccountID: 7, Model: "gpt-6-astra", TicketGenerationID: "11111111-1111-4111-8111-111111111111", OccurredAt: time.Now().UTC(), ReasonCode: service.CodexTicketInvalidationCredentialsChanged, RequestKind: "user_request", RequestRoute: "/v1/responses", ReturnedTicket: &returnedTicket}
+			// The database compares the ids as UUIDs and reports whether the row holds this generation.
+			current := scenario != "late response"
 			mock.ExpectBegin()
-			mock.ExpectQuery(`SELECT extra->\$2->>'generation_id'.*FOR UPDATE`).WithArgs(event.AccountID, "codex_turn_ticket:"+event.Model).WillReturnRows(sqlmock.NewRows([]string{"generation"}).AddRow(current))
-			args := []driver.Value{event.AccountID, event.Model, event.TicketGenerationID, event.OccurredAt, nil, event.RequestKind, event.RequestRoute, current == event.TicketGenerationID, nil, nil, event.ReturnedTicket, nil, nil, event.ReasonCode}
-			insert := mock.ExpectQuery(`INSERT INTO codex_ticket_invalidations.*VALUES \(\$1,\$2,\$3,\$4,\$14,.*ON CONFLICT \(ticket_generation_id\) DO NOTHING RETURNING id`).WithArgs(args...)
+			lock := mock.ExpectQuery(`SELECT generation_id = \$1::uuid FROM codex_shared_tickets WHERE id=1 FOR UPDATE`).WithArgs(event.TicketGenerationID)
 			switch scenario {
-			case "insert failure":
-				insert.WillReturnError(errors.New("insert failed"))
+			case "lock failure":
+				lock.WillReturnError(errors.New("lock failed"))
 				mock.ExpectRollback()
-			case "duplicate":
-				insert.WillReturnRows(sqlmock.NewRows([]string{"id"}))
-				mock.ExpectExec(`UPDATE codex_ticket_invalidations SET.*WHERE ticket_generation_id=\$1 AND occurred_at>\$2`).WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectCommit()
+			case "no shared ticket":
+				lock.WillReturnRows(sqlmock.NewRows([]string{"current"}))
 			default:
-				insert.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-				if scenario != "late response" {
-					deleteTicket := mock.ExpectExec(`UPDATE accounts SET extra=COALESCE\(extra,'\{\}'::jsonb\)-\$2, updated_at=NOW\(\) WHERE id=\$1`).WithArgs(event.AccountID, "codex_turn_ticket:"+event.Model)
-					if scenario == "delete failure" {
-						deleteTicket.WillReturnError(errors.New("delete failed"))
-					} else {
-						deleteTicket.WillReturnResult(sqlmock.NewResult(0, 1))
-					}
-				}
-				if scenario == "delete failure" {
+				lock.WillReturnRows(sqlmock.NewRows([]string{"current"}).AddRow(current))
+			}
+			invalidates := scenario != "late response" && scenario != "no shared ticket"
+			if scenario != "lock failure" {
+				args := []driver.Value{event.AccountID, event.Model, event.TicketGenerationID, event.OccurredAt, nil, event.RequestKind, event.RequestRoute, invalidates, nil, nil, returnedTicket, nil, nil, event.ReasonCode}
+				insert := mock.ExpectQuery(`INSERT INTO codex_ticket_invalidations.*VALUES \(\$1,\$2,\$3,\$4,\$14,.*ON CONFLICT \(account_id, ticket_generation_id\) DO NOTHING RETURNING id`).WithArgs(args...)
+				switch scenario {
+				case "insert failure":
+					insert.WillReturnError(errors.New("insert failed"))
 					mock.ExpectRollback()
-				} else if scenario == "commit failure" {
+				case "duplicate":
+					// The same account reporting the same generation again changes nothing.
+					insert.WillReturnRows(sqlmock.NewRows([]string{"id"}))
+					mock.ExpectCommit()
+				case "commit failure":
+					insert.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+					expectCodexTicketVersionBump(mock)
 					mock.ExpectCommit().WillReturnError(errors.New("commit failed"))
-				} else {
+				default:
+					// The shared ticket row is never deleted: other accounts keep using it.
+					insert.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+					if invalidates {
+						expectCodexTicketVersionBump(mock)
+					}
 					mock.ExpectCommit()
 				}
 			}
 			inserted, err := repo.Invalidate(context.Background(), event)
-			if scenario == "insert failure" || scenario == "delete failure" || scenario == "commit failure" {
+			switch scenario {
+			case "lock failure", "insert failure", "commit failure":
 				require.Error(t, err)
 				require.False(t, inserted)
 				require.False(t, event.InvalidatedCurrent)
-			} else {
+			default:
 				require.NoError(t, err)
 				require.Equal(t, scenario != "duplicate", inserted)
 				require.Equal(t, scenario == "current", event.InvalidatedCurrent)
+				if inserted {
+					require.Equal(t, int64(1), event.ID)
+				}
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+// An invalidation of the current generation changes the cached state, so it bumps the row version.
+func expectCodexTicketVersionBump(mock sqlmock.Sqlmock) {
+	mock.ExpectExec(`UPDATE codex_shared_tickets SET version=version\+1 WHERE id=1`).WillReturnResult(sqlmock.NewResult(0, 1))
+}
+
+func TestCodexTicketInvalidationRejectsIncompleteEvents(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := &codexTicketAttemptRepository{db: db}
+	returned, empty := "new-state", ""
+	generation := "11111111-1111-4111-8111-111111111111"
+	for _, event := range []*service.CodexTicketInvalidation{nil,
+		{Model: "gpt-6-astra", ReturnedTicket: &returned},
+		{TicketGenerationID: generation, ReturnedTicket: &returned},
+		// The returned turn-state is the evidence of the invalidation and must be present.
+		{Model: "gpt-6-astra", TicketGenerationID: generation},
+		{Model: "gpt-6-astra", TicketGenerationID: generation, ReturnedTicket: &empty},
+	} {
+		inserted, err := repo.Invalidate(context.Background(), event)
+		require.Error(t, err)
+		require.False(t, inserted)
+	}
+	require.NoError(t, mock.ExpectationsWereMet())
 }

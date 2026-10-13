@@ -46,8 +46,7 @@ type Account struct {
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 
-	Schedulable               bool
-	SchedulerTicketProjection bool `json:"-"`
+	Schedulable bool
 
 	RateLimitedAt    *time.Time
 	RateLimitResetAt *time.Time

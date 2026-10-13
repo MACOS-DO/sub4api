@@ -793,7 +793,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		Account:          account,
 		WSURL:            wsURL,
 		Headers:          wsHeaders,
-		ObserveHandshake: s.codexTicketHandshakeObserver(ctx, ticket),
+		ObserveHandshake: s.codexTicketHandshakeObserver(ctx, account.ID, ticket),
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},
@@ -1936,7 +1936,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				logOpenAIWSModeInfo("ingress_ws_update_headers_failed account_id=%d err=%v", account.ID, updHdrErr)
 			} else {
 				baseAcquireReq.Headers = updatedHeaders
-				baseAcquireReq.ObserveHandshake = s.codexTicketHandshakeObserver(ctx, updatedTicket)
+				baseAcquireReq.ObserveHandshake = s.codexTicketHandshakeObserver(ctx, account.ID, updatedTicket)
 			}
 		}
 		setOpenAICodexRoutingHint(baseAcquireReq.Headers, account, nextRoutingFields[0].String(), nextRoutingFields[1].String())

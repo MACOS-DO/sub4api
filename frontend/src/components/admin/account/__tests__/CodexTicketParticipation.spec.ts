@@ -14,10 +14,10 @@ vi.mock('@/api/admin/codexTickets', () => ({
 }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: ref('zh-CN'), t: (key: string) => key }) }))
 
-const models = ['gpt-6-astra', 'gpt-5.6-sol']
+const models = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-6-sol']
 function account(id = 19, extra: Record<string, unknown> = {}, runtime = false): Account {
   return { id, name: `Account ${id}`, platform: 'openai', type: 'oauth', extra,
-    codex_turn_tickets: models.map(model => ({ model, ready: false, harvest_enabled: runtime, harvest_paused: false }))
+    codex_ticket: { model: 'gpt-6-sol', ready: false, remaining_seconds: 0, blocked: false, harvest_enabled: runtime, harvest_paused: false }
   } as Account
 }
 function deferred<T>() {
@@ -38,7 +38,7 @@ function mountDashboard(value: Account) {
 function switches(wrapper: ReturnType<typeof mountDashboard>) { return wrapper.findAll('button[role="switch"]') }
 function values(wrapper: ReturnType<typeof mountDashboard>) { return switches(wrapper).map(item => item.attributes('aria-checked')) }
 function refresh(wrapper: ReturnType<typeof mountDashboard>) { return wrapper.findAll('button').find(button => button.text() === '刷新')! }
-function harvesting(wrapper: ReturnType<typeof mountDashboard>) { return wrapper.findAll('button').filter(button => button.text() === '手动打票') }
+function harvesting(wrapper: ReturnType<typeof mountDashboard>) { return wrapper.findAll('button').find(button => button.text() === '手动打票')! }
 
 describe('Ticket participation', () => {
   let stored: Account
@@ -49,8 +49,8 @@ describe('Ticket participation', () => {
     fingerprint.mockResolvedValue({ commit: 'abc123', models })
     events.mockResolvedValue({ items: [], total: 0 })
     saveParticipation.mockImplementation(async (_id: number, value: TicketParticipation) => {
-      stored = { ...stored, extra: { ...stored.extra, codex_ticket_harvest_enabled: value.enabled, codex_ticket_harvest_models: { ...value.models } },
-        codex_turn_tickets: stored.codex_turn_tickets?.map(status => ({ ...status, harvest_enabled: value.enabled && value.models[status.model] !== false })) }
+      stored = { ...stored, extra: { ...stored.extra, codex_ticket_harvest_enabled: value.enabled },
+        codex_ticket: stored.codex_ticket && { ...stored.codex_ticket, harvest_enabled: value.enabled } }
       return value
     })
   })
@@ -60,43 +60,46 @@ describe('Ticket participation', () => {
     const wrapper = mountDashboard(stored)
     expect(switches(wrapper).every(item => item.attributes('disabled') !== undefined)).toBe(true)
     await flushPromises()
-    expect(values(wrapper)).toEqual(['true', 'true', 'true'])
+    expect(values(wrapper)).toEqual(['true'])
     expect(switches(wrapper).every(item => item.attributes('disabled') === undefined)).toBe(true)
-    expect(harvesting(wrapper).every(item => item.attributes('disabled') !== undefined)).toBe(true)
-    await switches(wrapper)[1].trigger('click')
-    await flushPromises()
-    expect(saveParticipation).toHaveBeenCalledWith(19, { enabled: true, models: { 'gpt-6-astra': false } })
-  })
-
-  it('restores all disabled choices, edits models while the account is off, and preserves unrelated settings', async () => {
-    stored = account(19, { codex_ticket_harvest_enabled: false, codex_ticket_harvest_models: { 'gpt-6-astra': false, 'gpt-5.6-sol': false, 'gpt-5.6-terra': true }, codex_allow_without_ticket: false })
-    const wrapper = mountDashboard(stored)
-    await flushPromises()
-    expect(values(wrapper)).toEqual(['false', 'false', 'false'])
-    expect(wrapper.findAll('article')).toHaveLength(2)
-    await switches(wrapper)[1].trigger('click')
-    await flushPromises()
-    expect(saveParticipation).toHaveBeenLastCalledWith(19, { enabled: false, models: { 'gpt-6-astra': true, 'gpt-5.6-sol': false, 'gpt-5.6-terra': true } })
+    expect(harvesting(wrapper).attributes('disabled')).toBeDefined()
     await switches(wrapper)[0].trigger('click')
     await flushPromises()
-    expect(values(wrapper)).toEqual(['true', 'true', 'false'])
-    expect(harvesting(wrapper)[0].attributes('disabled')).toBeUndefined()
-    expect(harvesting(wrapper)[1].attributes('disabled')).toBeDefined()
+    expect(saveParticipation).toHaveBeenCalledWith(19, { enabled: false })
+  })
+
+  it('has a single account-level switch and preserves unrelated settings', async () => {
+    stored = account(19, { codex_ticket_harvest_enabled: false, codex_allow_without_ticket: false })
+    const wrapper = mountDashboard(stored)
+    await flushPromises()
+    expect(values(wrapper)).toEqual(['false'])
+    expect(wrapper.findAll('article')).toHaveLength(1)
+    expect(harvesting(wrapper).attributes('disabled')).toBeDefined()
+    await switches(wrapper)[0].trigger('click')
+    await flushPromises()
+    expect(saveParticipation).toHaveBeenLastCalledWith(19, { enabled: true })
+    expect(values(wrapper)).toEqual(['true'])
+    expect(harvesting(wrapper).attributes('disabled')).toBeUndefined()
     const updated = wrapper.emitted('updated')!.at(-1)![0] as Account
     expect(updated.extra?.codex_allow_without_ticket).toBe(false)
-    expect(updated.codex_turn_tickets?.[0].harvest_enabled).toBe(true)
-    await switches(wrapper)[0].trigger('click')
-    await flushPromises()
-    await switches(wrapper)[0].trigger('click')
-    await flushPromises()
-    expect(values(wrapper)).toEqual(['true', 'true', 'false'])
+    expect(updated.codex_ticket?.harvest_enabled).toBe(true)
   })
 
-  it('only explicit false disables a saved choice', async () => {
-    stored = account(19, { codex_ticket_harvest_enabled: 0, codex_ticket_harvest_models: { 'gpt-6-astra': 'false', 'gpt-5.6-sol': false } })
+  it('ignores the retired per-model switches; only explicit false disables the account', async () => {
+    stored = account(19, { codex_ticket_harvest_enabled: 0, codex_ticket_harvest_models: { 'gpt-6-sol': false, 'gpt-6-astra': false } })
     const wrapper = mountDashboard(stored)
     await flushPromises()
-    expect(values(wrapper)).toEqual(['true', 'true', 'false'])
+    expect(values(wrapper)).toEqual(['true'])
+  })
+
+  it('harvests the global ticket without a model', async () => {
+    stored = account(19, {}, true)
+    harvest.mockResolvedValue({ outcome: 'success' })
+    const wrapper = mountDashboard(stored)
+    await flushPromises()
+    await harvesting(wrapper).trigger('click')
+    await flushPromises()
+    expect(harvest).toHaveBeenCalledWith(19)
   })
 
   it('rolls back a failed save and prevents duplicate submissions', async () => {
@@ -108,11 +111,10 @@ describe('Ticket participation', () => {
     expect(values(wrapper)[0]).toBe('false')
     expect(switches(wrapper).every(item => item.attributes('disabled') !== undefined)).toBe(true)
     await switches(wrapper)[0].trigger('click')
-    await switches(wrapper)[1].trigger('click')
     expect(saveParticipation).toHaveBeenCalledTimes(1)
     saving.reject(new Error('save rejected'))
     await flushPromises()
-    expect(values(wrapper)).toEqual(['true', 'true', 'true'])
+    expect(values(wrapper)).toEqual(['true'])
     expect(wrapper.find('[role="alert"]').exists()).toBe(true)
     expect(switches(wrapper)[0].attributes('disabled')).toBeUndefined()
   })
@@ -123,7 +125,7 @@ describe('Ticket participation', () => {
     getById.mockRejectedValueOnce(new Error('refresh unavailable'))
     await switches(wrapper)[0].trigger('click')
     await flushPromises()
-    expect(values(wrapper)).toEqual(['false', 'true', 'true'])
+    expect(values(wrapper)).toEqual(['false'])
     expect(wrapper.text()).toContain('参与设置已保存，但账号详情刷新失败')
     const updated = wrapper.emitted('updated')!.at(-1)![0] as Account
     expect(updated.extra?.codex_ticket_harvest_enabled).toBe(false)
@@ -182,7 +184,7 @@ describe('Ticket participation', () => {
     await flushPromises()
     const updates = wrapper.emitted('updated')!.length
     const reads = getById.mock.calls.length
-    old.resolve({ enabled: false, models: {} })
+    old.resolve({ enabled: false })
     await flushPromises()
     expect(values(wrapper)[0]).toBe('true')
     expect(wrapper.emitted('updated')).toHaveLength(updates)

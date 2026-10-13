@@ -867,7 +867,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return errors.New("openai ws passthrough dialer is nil")
 	}
 
-	observeHandshake := s.codexTicketHandshakeObserver(ctx, ticket)
+	observeHandshake := s.codexTicketHandshakeObserver(ctx, account.ID, ticket)
 	agentTaskRecoveryTried := false
 	var upstreamConn openAIWSClientConn
 	statusCode := 0

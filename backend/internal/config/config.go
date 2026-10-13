@@ -1270,6 +1270,8 @@ type OpenAICodexTicketConfig struct {
 	HarvestRetryMinSeconds       int      `mapstructure:"harvest_retry_min_seconds"`
 	HarvestRetryMaxSeconds       int      `mapstructure:"harvest_retry_max_seconds"`
 	HarvestRefreshSeconds        int      `mapstructure:"harvest_refresh_seconds"`
+	// HarvestBatchSize 是每批并发打票的账号数，默认 10。
+	HarvestBatchSize int `mapstructure:"harvest_batch_size"`
 }
 
 // DefaultOpenAIWSClientFirstMessageTimeoutSeconds preserves the legacy ingress deadline.
@@ -2467,6 +2469,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_retry_min_seconds", 10)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_retry_max_seconds", 30)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_refresh_seconds", 1800)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_batch_size", 10)
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)

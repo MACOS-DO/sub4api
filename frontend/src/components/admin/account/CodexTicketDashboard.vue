@@ -200,7 +200,8 @@ import type { Account } from '@/types'
 const props = defineProps<{ show: boolean; account: Account | null }>()
 const emit = defineEmits<{ close: []; updated: [account: Account] }>()
 const { locale } = useI18n()
-const text = computed(() => locale.value.startsWith('zh') ? {
+// 弹窗关闭时 BaseDialog 仍会读取标题；locale 不可用时回退英文，避免宿主页面渲染失败。
+const text = computed(() => String(locale?.value ?? '').startsWith('zh') ? {
   title: '票据中心', retention: '流水保留 90 天 · 失效凭据仅管理员可查看', refresh: '刷新', close: '关闭',
   available: '共享票', fingerprint: '指纹版本', updateBank: '校验并更新', tabs: '票据中心导航',
   current: '当前票据', attempts: '打票流水', invalidations: '票据过期历史',

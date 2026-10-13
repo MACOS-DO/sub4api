@@ -509,8 +509,16 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
-	// openaiCodexTickets: accountID\x00model → *openAICodexTicket，292 长度门票。
-	openaiCodexTickets           sync.Map
+	// openaiCodexTicket: 全局共享票的进程内缓存（1 秒）。
+	openaiCodexTicket atomic.Pointer[openAICodexSharedTicketEntry]
+	// openaiCodexTicketCache: 共享票的 Redis 缓存，未注入时直接读仓库。
+	openaiCodexTicketCache CodexSharedTicketCache
+	// openaiCodexTicketProbe 仅供测试替换单次打票。
+	openaiCodexTicketProbe func(context.Context, *Account) bool
+	// openaiCodexTicketLastGeneration: 上次观察到的共享票 generation，换代时清理各账号退避。
+	openaiCodexTicketLastGeneration atomic.Pointer[string]
+	// openaiCodexTicketRefreshing: 后台刷新进行中的标记，同时只起一个刷新。
+	openaiCodexTicketRefreshing  atomic.Bool
 	openaiCodexTicketInFlight    sync.Map
 	openaiCodexTicketProxyTurns  sync.Map
 	openaiCodexTicketNextAttempt sync.Map

@@ -53,6 +53,7 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{name}' 吗？",
       testProxy: '测试代理',
       dataImport: '导入',
+      codexTicketPool: '打票代理池',
       dataExportSelected: '导出选中',
       dataImportTitle: '导入代理',
       dataImportHint: '上传代理导出的 JSON 文件以批量导入代理。',

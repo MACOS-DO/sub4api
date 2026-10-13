@@ -13,6 +13,8 @@ type CodexTicketCadence struct {
 	RetryMinSeconds int `json:"retry_min_seconds"`
 	RetryMaxSeconds int `json:"retry_max_seconds"`
 	RefreshSeconds  int `json:"refresh_seconds"`
+	// BatchSize 是每批并发打票的账号数；读取未保存该字段的旧设置时补为默认值。
+	BatchSize int `json:"batch_size"`
 }
 
 type cachedCodexTicketCadence struct {
@@ -20,9 +22,14 @@ type cachedCodexTicketCadence struct {
 	expiresAt time.Time
 }
 
+const codexTicketMaxBatchSize = 200
+
 func validateCodexTicketCadence(value CodexTicketCadence) error {
 	if value.RetryMinSeconds < 1 || value.RetryMinSeconds > 3600 || value.RetryMaxSeconds < value.RetryMinSeconds || value.RetryMaxSeconds > 3600 || value.RefreshSeconds < 0 || value.RefreshSeconds > 86400 {
 		return errors.New("retry interval must be 1..3600 seconds with max >= min, refresh interval 0..86400 seconds")
+	}
+	if value.BatchSize < 1 || value.BatchSize > codexTicketMaxBatchSize {
+		return errors.New("batch size must be 1..200 accounts")
 	}
 	return nil
 }
@@ -44,6 +51,13 @@ func (s *SettingService) GetCodexTicketCadence(ctx context.Context, fallback Cod
 	var result CodexTicketCadence
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return fallback, err
+	}
+	// 旧设置没有 batch_size：补默认值，避免整体校验失败丢掉已保存的间隔。
+	if result.BatchSize == 0 {
+		result.BatchSize = fallback.BatchSize
+	}
+	if result.BatchSize == 0 {
+		result.BatchSize = openAICodexTicketDefaultBatchSize
 	}
 	if err := validateCodexTicketCadence(result); err != nil {
 		return fallback, err
@@ -72,13 +86,16 @@ func (s *SettingService) SetCodexTicketCadence(ctx context.Context, value CodexT
 
 func (s *OpenAIGatewayService) codexTicketCadence(ctx context.Context) CodexTicketCadence {
 	cfg := s.openAICodexTicketConfig()
-	fallback := CodexTicketCadence{RetryMinSeconds: cfg.HarvestRetryMinSeconds, RetryMaxSeconds: cfg.HarvestRetryMaxSeconds, RefreshSeconds: cfg.HarvestRefreshSeconds}
+	fallback := CodexTicketCadence{RetryMinSeconds: cfg.HarvestRetryMinSeconds, RetryMaxSeconds: cfg.HarvestRetryMaxSeconds, RefreshSeconds: cfg.HarvestRefreshSeconds, BatchSize: cfg.HarvestBatchSize}
 	if s.settingService == nil {
 		return fallback
 	}
 	value, err := s.settingService.GetCodexTicketCadence(ctx, fallback)
 	if err != nil {
 		return fallback
+	}
+	if value.BatchSize <= 0 {
+		value.BatchSize = cfg.HarvestBatchSize
 	}
 	return value
 }

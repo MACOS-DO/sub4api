@@ -27,6 +27,7 @@ func (u *codexTicketFuncUpstream) Do(req *http.Request, _ string, _ int64, _ int
 func codexTicketResponse() *http.Response {
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, fakeCodexTicketState(292))
+	h.Add("Set-Cookie", "__oailb=harvested; Path=/; Secure; HttpOnly")
 	return &http.Response{StatusCode: http.StatusOK, Header: h, Body: io.NopCloser(strings.NewReader("data: {}\n\n"))}
 }
 
@@ -67,10 +68,11 @@ func TestCodexTicketProbeBypassesPluginDuringWiring(t *testing.T) {
 	}()
 	close(start)
 	for i := 0; i < 20; i++ {
-		_, state, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "test-token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
+		_, state, cookie, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "test-token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 		require.Len(t, state, 292)
+		require.Equal(t, "__oailb=harvested", cookie)
 	}
 	wg.Wait()
 	require.Equal(t, int64(20), calls.Load())
@@ -97,16 +99,13 @@ func TestCodexTicketProbeParsesNormalSSEAndCookies(t *testing.T) {
 
 func TestCodexTicketProbeDoesNotCarryExistingTicket(t *testing.T) {
 	account := ticketTestAccount(41)
-	account.Extra = map[string]any{openAICodexTicketExtraKey("gpt-6-astra"): &openAICodexTicket{
-		AccountID: account.ID, Model: "gpt-6-astra", State: fakeCodexTicketState(292),
-		Cookie: "session=old", GenerationID: "old-generation", CapturedAt: time.Now(),
-	}}
 	upstream := &codexTicketFuncUpstream{do: func(request *http.Request) (*http.Response, error) {
 		require.Empty(t, request.Header.Get(openAICodexTurnStateHeader))
 		require.Empty(t, request.Header.Get("Cookie"))
 		return codexTicketResponse(), nil
 	}}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, upstream)
+	seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(42), "gpt-6-astra", "old-state", "__oailb=old; session=old"))
 	_, _, _, status, err := svc.fireOpenAICodexTicketProbe(context.Background(), account, "token", "gpt-6-astra", "http://proxy.example.com:8080", ticketProbeChallenge(t), time.Second)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, status)
@@ -130,8 +129,8 @@ func TestCodexTicketPolicyExemptsCredentialShadows(t *testing.T) {
 		headers.Set(openAICodexTurnStateHeader, "client-state")
 		require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), shadow, "gpt-6-astra", headers))
 		require.Equal(t, "client-state", headers.Get(openAICodexTurnStateHeader))
-		require.Empty(t, OpenAICodexTicketStatuses(shadow, cfg, time.Now()))
-		svc.probeOnceOpenAICodexTicket(context.Background(), shadow, "gpt-6-astra")
+		require.Nil(t, OpenAICodexTicketStatusOf(shadow, cfg, svc.CodexSharedTicketSnapshot(context.Background()), time.Now()))
+		svc.probeOnceOpenAICodexTicket(context.Background(), shadow)
 	}
 	svc.refreshOpenAICodexTickets(context.Background())
 	require.Empty(t, upstream.requests)

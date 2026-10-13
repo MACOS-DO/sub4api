@@ -42,7 +42,7 @@ func TestCodexTicketWSObservationRealDialsOnly(t *testing.T) {
 	defer pool.Close()
 	dialer := &codexObservationDialer{}
 	pool.setClientDialerForTest(dialer)
-	observer := svc.codexTicketHandshakeObserver(context.Background(), ticket)
+	observer := svc.codexTicketHandshakeObserver(context.Background(), account.ID, ticket)
 	observations := 0
 	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://upstream.example/responses", Headers: ticketObservationRequest(t, ticket).Header,
 		ObserveHandshake: func(sent http.Header, status int, returned http.Header) {
@@ -83,26 +83,30 @@ func TestCodexTicketWSObservationFailedHandshake(t *testing.T) {
 	defer pool.Close()
 	pool.setClientDialerForTest(&codexObservationDialer{fail: true})
 	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://upstream.example/responses", Headers: ticketObservationRequest(t, ticket).Header,
-		ObserveHandshake: svc.codexTicketHandshakeObserver(WithCodexTicketDiagnostic(context.Background(), account.ID), ticket),
+		ObserveHandshake: svc.codexTicketHandshakeObserver(WithCodexTicketDiagnostic(context.Background(), account.ID), account.ID, ticket),
 	}
 	_, err := pool.Acquire(context.Background(), req)
 	require.Error(t, err)
 	require.Len(t, capture.events, 1)
 	require.Equal(t, http.StatusUnauthorized, *capture.events[0].ResponseHTTPStatus)
 	require.Equal(t, "diagnostic", capture.events[0].RequestKind)
-	require.Nil(t, svc.codexTicketHandshakeObserver(context.Background(), nil))
+	require.Equal(t, account.ID, capture.events[0].AccountID)
+	require.Equal(t, CodexTicketInvalidationCredentialsChanged, capture.events[0].ReasonCode)
+	require.Equal(t, "old-state", *capture.events[0].OriginalTicket)
+	require.Equal(t, "new-state", *capture.events[0].ReturnedTicket)
+	require.Nil(t, svc.codexTicketHandshakeObserver(context.Background(), account.ID, nil))
 }
 
 func TestCodexTicketWSHeadersPreserveInjectedGeneration(t *testing.T) {
 	account := ticketTestAccount(71)
 	ticket := verifiedTicket(account, "gpt-6-astra", "old-state", "__oailb=old")
-	account.Extra = map[string]any{openAICodexTicketExtraKey(ticket.Model): ticket}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)
+	seedSharedCodexTicket(svc, ticket)
 	headers, _, injected, err := svc.buildOpenAIWSHeadersWithTicket(context.Background(), nil, account, "token", OpenAIWSProtocolDecision{}, true, "client-state", "", "session", ticket.Model, "")
 	require.NoError(t, err)
 	require.NotNil(t, injected)
 	require.Equal(t, ticket.GenerationID, injected.GenerationID)
-	require.Equal(t, ticket.State, headers.Get(openAICodexTurnStateHeader))
+	require.Equal(t, ticket.State, headers.Get(openAICodexTurnStateHeader), "the shared ticket supplies the turn-state")
 	require.Equal(t, ticket.Cookie, headers.Get("Cookie"))
 }
 
@@ -160,7 +164,7 @@ func TestCodexTicketWSPrewarmChecksSentCredentials(t *testing.T) {
 				req := openAIWSAcquireRequest{
 					Account: account, WSURL: "wss://upstream.example/responses",
 					Headers:          ticketObservationRequest(t, ticket).Header,
-					ObserveHandshake: svc.codexTicketHandshakeObserver(context.Background(), ticket),
+					ObserveHandshake: svc.codexTicketHandshakeObserver(context.Background(), account.ID, ticket),
 					HeadersFactory: func(_ context.Context, headers http.Header) (http.Header, error) {
 						switch rewrite {
 						case "turn-state":
@@ -177,6 +181,7 @@ func TestCodexTicketWSPrewarmChecksSentCredentials(t *testing.T) {
 				ap.mu.Unlock()
 				pool.prewarmConns(account.ID, req, 1)
 				require.Equal(t, int32(1), dialer.calls.Load())
+				// Rewriting either credential detaches the handshake from the generation.
 				require.Equal(t, rewrite == "none", len(capture.events) == 1)
 				require.Equal(t, rewrite == "none", len(svc.openaiCodexTicketWake) == 1)
 			})

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"hash/fnv"
-	"maps"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -24,39 +23,19 @@ var (
 )
 
 const codexTicketAccountEnabledKey = "codex_ticket_harvest_enabled"
-const codexTicketModelsEnabledKey = "codex_ticket_harvest_models"
 
-func CodexTicketHarvestEnabled(account *Account, model string) bool {
-	if account == nil || !isOpenAICodexTicketAccount(account) || !codexTicketEligibleModel(model) {
-		return false
-	}
-	return codexTicketParticipationEnabled(account, model)
+// codexTicketRetiredModelsKey 是已作废的按模型参与开关。票据全站共享后参与只看账号级开关，
+// 该键不再读取，写入时剥离，避免旧的「某模型不参与」设置继续生效又无法在界面上改回。
+const codexTicketRetiredModelsKey = "codex_ticket_harvest_models"
+
+// CodexTicketHarvestEnabled 表示该账号参与共享票：用它打票，并在门控模型请求上使用共享票。
+func CodexTicketHarvestEnabled(account *Account) bool {
+	return isOpenAICodexTicketAccount(account) && codexTicketParticipationEnabled(account)
 }
 
-// codexTicketParticipationEnabled reads only saved choices, not runtime availability.
-func codexTicketParticipationEnabled(account *Account, model string) bool {
-	if account == nil || account.Extra[codexTicketAccountEnabledKey] == false {
-		return false
-	}
-	model = normalizeOpenAICodexTicketModel(model)
-	switch models := account.Extra[codexTicketModelsEnabledKey].(type) {
-	case map[string]any:
-		return models[model] != false
-	case map[string]bool:
-		participating, exists := models[model]
-		return !exists || participating
-	default:
-		return true
-	}
-}
-
-func (s *OpenAIGatewayService) codexTicketSupportedModel(model string) bool {
-	for _, configured := range s.openAICodexTicketConfig().Models {
-		if model == configured {
-			return true
-		}
-	}
-	return false
+// codexTicketParticipationEnabled reads only the saved account-level choice, not runtime availability.
+func codexTicketParticipationEnabled(account *Account) bool {
+	return account != nil && account.Extra[codexTicketAccountEnabledKey] != false
 }
 
 func (s *OpenAIGatewayService) chooseCodexTicketProxy(ctx context.Context, accountID int64, model string) (string, *Proxy, error) {
@@ -96,49 +75,65 @@ func codexTicketJitter(key string, at time.Time, min, max time.Duration) time.Du
 	return min + time.Duration(h.Sum64()%uint64(max-min+1))
 }
 
+// CodexTicketReasonSuperseded 标记同一轮已有其他账号的票被采用：本次打票成功但没有写入共享票。
+const CodexTicketReasonSuperseded = "superseded"
+
+// scheduleCodexTicketAfterSuccess 在共享票写入后清掉所有账号的失败退避：
+// 票已对全员生效，下一轮打票只由刷新间隔或失效触发。
 func (s *OpenAIGatewayService) scheduleCodexTicketAfterSuccess(ticket *openAICodexTicket) {
 	if ticket == nil {
 		return
 	}
-	key := openAICodexTicketKey(ticket.AccountID, ticket.Model)
-	seconds := s.codexTicketCadence(context.Background()).RefreshSeconds
-	if seconds <= 0 {
-		s.openaiCodexTicketNextAttempt.Delete(key)
-		return
-	}
-	s.openaiCodexTicketNextAttempt.Store(key, ticket.CapturedAt.Add(time.Duration(seconds)*time.Second))
+	s.clearCodexTicketRetries()
+	generation := ticket.GenerationID
+	s.openaiCodexTicketLastGeneration.Store(&generation)
 }
 
-func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, model string, now time.Time) bool {
-	key := openAICodexTicketKey(account.ID, model)
-	var previous *openAICodexTicket
-	if raw, ok := s.openaiCodexTickets.Load(key); ok {
-		previous, _ = raw.(*openAICodexTicket)
+// clearCodexTicketRetries 删除所有账号的退避记录。
+func (s *OpenAIGatewayService) clearCodexTicketRetries() {
+	s.openaiCodexTicketNextAttempt.Clear()
+}
+
+// codexTicketRetryKey 是账号级打票状态（退避、并发去重、代理轮换）的键。
+func codexTicketRetryKey(accountID int64) string {
+	return openAICodexTicketKey(accountID, openAICodexTicketHarvestModel)
+}
+
+// codexTicketAutomaticDue 判断该账号本轮是否要打票：共享票有效、无账号失效且未到刷新间隔时
+// 所有账号都不打；没有票、到了刷新间隔或当前这一代已有账号失效时，各账号在自己的失败退避到期后参与分批打票。
+func (s *OpenAIGatewayService) codexTicketAutomaticDue(account *Account, now time.Time) bool {
+	view := s.sharedCodexTicketView()
+	ticket := view.current()
+	generation := ""
+	if ticket != nil {
+		generation = ticket.GenerationID
 	}
-	ticket := s.lookupOpenAICodexTicket(account, model)
-	if previous != nil && (ticket == nil || previous.GenerationID != ticket.GenerationID) {
-		s.openaiCodexTicketNextAttempt.Delete(key)
+	// 共享票换代（被其他账号/实例打出或失效）时，旧的失败退避不再有意义。
+	if previous := s.openaiCodexTicketLastGeneration.Swap(&generation); previous != nil && *previous != generation {
+		s.clearCodexTicketRetries()
 	}
-	if value, ok := s.openaiCodexTicketNextAttempt.Load(key); ok {
+	if ticket.usable(now, 0, false, 0) && !view.hasInvalidations() {
+		refreshSeconds := s.codexTicketCadence(context.Background()).RefreshSeconds
+		if refreshSeconds <= 0 || now.Before(ticket.CapturedAt.Add(time.Duration(refreshSeconds)*time.Second)) {
+			return false
+		}
+	}
+	if value, ok := s.openaiCodexTicketNextAttempt.Load(codexTicketRetryKey(account.ID)); ok {
 		if next, valid := value.(time.Time); valid && now.Before(next) {
 			return false
 		}
-		return true
-	}
-	if ticket.usable(now, 0, false, 0) {
-		s.scheduleCodexTicketAfterSuccess(ticket)
-		refreshSeconds := s.codexTicketCadence(context.Background()).RefreshSeconds
-		return refreshSeconds > 0 && !now.Before(ticket.CapturedAt.Add(time.Duration(refreshSeconds)*time.Second))
 	}
 	return true
 }
 
-func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, account *Account, model, trigger string) (CodexTicketHarvestResult, error) {
-	return s.runCodexTicketAttemptWithChallengeGenerator(ctx, account, model, trigger, NewModelTraceChallenge)
+// runCodexTicketAttempt 用 gpt-6-sol 为全局共享票打一次票。
+func (s *OpenAIGatewayService) runCodexTicketAttempt(ctx context.Context, account *Account, trigger string) (CodexTicketHarvestResult, error) {
+	return s.runCodexTicketAttemptWithChallengeGenerator(ctx, account, trigger, NewModelTraceChallenge)
 }
 
-func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx context.Context, account *Account, model, trigger string, generateChallenge func() (ModelTraceChallenge, error)) (result CodexTicketHarvestResult, err error) {
-	key := openAICodexTicketKey(account.ID, model)
+func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx context.Context, account *Account, trigger string, generateChallenge func() (ModelTraceChallenge, error)) (result CodexTicketHarvestResult, err error) {
+	model := openAICodexTicketHarvestModel
+	key := codexTicketRetryKey(account.ID)
 	if _, loaded := s.openaiCodexTicketInFlight.LoadOrStore(key, true); loaded {
 		return result, ErrCodexTicketBusy
 	}
@@ -157,7 +152,7 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 	if err != nil {
 		return result, err
 	}
-	if current == nil || current.Status != StatusActive || !CodexTicketHarvestEnabled(current, model) {
+	if current == nil || current.Status != StatusActive || !CodexTicketHarvestEnabled(current) {
 		return result, ErrCodexTicketUnavailable
 	}
 	if openAICodexTicketHarvestLimited(current, model, time.Now()) {
@@ -260,7 +255,8 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 		a.Outcome, a.ReasonCode = "miss", "fingerprint_mismatch"
 		return result, nil
 	}
-	if strings.TrimSpace(state) == "" && strings.TrimSpace(cookie) == "" {
+	// turn-state 与 __oailb 缺一不可：缺任一项的票无法被失效判定观测到，不共享。
+	if strings.TrimSpace(state) == "" || !codexCookieHasOAILB(cookie) {
 		a.Outcome, a.ReasonCode = "miss", "missing_credentials"
 		return result, nil
 	}
@@ -269,26 +265,31 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 	ticket := &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state),
 		GenerationID: generation, VerificationMethod: "modeltrace_v1", FingerprintCommit: commit,
 		CapturedAt: now, Attempts: 1, HTTPStatus: status, Cookie: cookie}
-	if err := s.storeOpenAICodexTicket(ctx, account, ticket); err != nil {
+	store := func() error { return s.storeOpenAICodexTicket(ctx, account, ticket) }
+	superseded, storeErr := false, error(nil)
+	if round := codexTicketRoundFrom(ctx); round != nil {
+		// 同一轮已有票写入：本次照样算打票成功，但不覆盖共享票，也不产生新的 generation。
+		superseded, storeErr = round.adopt(store)
+	} else {
+		storeErr = store()
+	}
+	if storeErr != nil {
 		a.Outcome, a.ReasonCode = "error", "persistence"
 		return result, nil
 	}
-	s.scheduleCodexTicketAfterSuccess(ticket)
-	account.Extra = maps.Clone(account.Extra)
-	if account.Extra == nil {
-		account.Extra = make(map[string]any)
+	if superseded {
+		a.Outcome, a.ReasonCode = "success", CodexTicketReasonSuperseded
+		return result, nil
 	}
-	account.Extra[openAICodexTicketExtraKey(model)] = ticket
+	s.scheduleCodexTicketAfterSuccess(ticket)
 	a.Outcome, a.TicketGenerationID = "success", &generation
 	return result, nil
 
 }
 
-func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, accountID int64, model string) (CodexTicketHarvestResult, error) {
+// ManualCodexTicketHarvest 用 gpt-6-sol 为全局共享票手动打一次票。
+func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, accountID int64) (CodexTicketHarvestResult, error) {
 	var empty CodexTicketHarvestResult
-	if !s.codexTicketSupportedModel(model) {
-		return empty, ErrCodexTicketModel
-	}
 	if !s.openAICodexTicketEnabledContext(ctx) {
 		return empty, ErrCodexTicketUnavailable
 	}
@@ -296,27 +297,27 @@ func (s *OpenAIGatewayService) ManualCodexTicketHarvest(ctx context.Context, acc
 	if err != nil {
 		return empty, err
 	}
-	if account.Status != StatusActive || !CodexTicketHarvestEnabled(account, model) {
+	if account.Status != StatusActive || !CodexTicketHarvestEnabled(account) {
 		return empty, ErrCodexTicketUnavailable
 	}
-	if openAICodexTicketHarvestLimited(account, model, time.Now()) {
+	if openAICodexTicketHarvestLimited(account, openAICodexTicketHarvestModel, time.Now()) {
 		return empty, ErrCodexTicketRateLimited
 	}
-	result, err := s.runCodexTicketAttempt(ctx, account, model, "manual")
+	result, err := s.runCodexTicketAttempt(ctx, account, "manual")
 	if err != nil {
 		return result, err
 	}
-	cfg := s.openAICodexTicketConfig()
-	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
-	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil, "")
-	status := OpenAICodexTicketStatuses(account, cfg, time.Now())
-	for _, item := range status {
-		if item.Model == model {
-			result.TicketStatus = item
-			break
-		}
+	if status := s.codexTicketStatusFor(ctx, account); status != nil {
+		result.TicketStatus = *status
 	}
 	return result, nil
+}
+
+func (s *OpenAIGatewayService) codexTicketStatusFor(ctx context.Context, account *Account) *OpenAICodexTicketStatus {
+	cfg := s.openAICodexTicketConfig()
+	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
+	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil)
+	return OpenAICodexTicketStatusOf(account, cfg, s.CodexSharedTicketSnapshot(ctx), time.Now())
 }
 
 func (s *OpenAIGatewayService) CodexTicketHistory(ctx context.Context, accountID int64, model string, successOnly bool, page, size int) ([]CodexTicketAttempt, int64, OpenAICodexTicketStatus, error) {
@@ -338,19 +339,14 @@ func (s *OpenAIGatewayService) CodexTicketHistory(ctx context.Context, accountID
 	if err != nil {
 		return nil, 0, empty, err
 	}
-	cfg := s.openAICodexTicketConfig()
-	cfg.Enabled = s.openAICodexTicketEnabledContext(ctx)
-	cfg.FailClosed = !s.openAICodexAllowsWithoutTicket(ctx, nil, "")
-	for _, status := range OpenAICodexTicketStatuses(account, cfg, time.Now()) {
-		if status.Model == model {
-			empty = status
-			break
-		}
+	if status := s.codexTicketStatusFor(ctx, account); status != nil {
+		empty = *status
 	}
 	return rows, total, empty, nil
 }
 
-func (s *OpenAIGatewayService) SetCodexTicketParticipation(ctx context.Context, accountID int64, enabled bool, models map[string]bool) error {
+// SetCodexTicketParticipation 保存账号级的共享票参与开关。
+func (s *OpenAIGatewayService) SetCodexTicketParticipation(ctx context.Context, accountID int64, enabled bool) error {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return err
@@ -358,19 +354,7 @@ func (s *OpenAIGatewayService) SetCodexTicketParticipation(ctx context.Context, 
 	if !isOpenAICodexTicketAccount(account) {
 		return ErrCodexTicketUnavailable
 	}
-	for model := range models {
-		if !s.codexTicketSupportedModel(model) {
-			return ErrCodexTicketModel
-		}
-	}
-	values := make(map[string]any, len(models))
-	for model, participating := range models {
-		values[model] = participating
-	}
-	return s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
-		codexTicketAccountEnabledKey: enabled,
-		codexTicketModelsEnabledKey:  values,
-	})
+	return s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{codexTicketAccountEnabledKey: enabled})
 }
 
 func (s *OpenAIGatewayService) ListCodexTicketInvalidations(ctx context.Context, accountID int64, model string, start, end time.Time, page, size int) ([]CodexTicketInvalidationSummary, int64, error) {

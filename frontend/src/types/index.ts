@@ -1223,20 +1223,24 @@ export interface Account {
   ollama_cloud_usage?: OllamaCloudUsageState
   opencode_go_usage?: OpenCodeGoUsageState
   codex_ticket_latest_event?: { model: string; kind: string; occurred_at: string }
-  codex_turn_tickets?: Array<{
+  // The single global Codex ticket seen from this account: harvested with gpt-6-sol
+  // and shared by every participating account on every gated model.
+  codex_ticket?: {
     model: string
     length?: number
     ready: boolean
     remaining_seconds: number
     blocked: boolean
     captured_at?: string
+    source_account_id?: number
+    invalidated_for_account?: boolean
     turn_state_present?: boolean
     cookie_present?: boolean
     fingerprint_commit?: string
     harvest_enabled?: boolean
     harvest_paused?: boolean
     expires_at?: string
-  }>
+  }
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     openai_request_timezone?: string

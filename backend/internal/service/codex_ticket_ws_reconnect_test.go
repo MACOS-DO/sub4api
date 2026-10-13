@@ -32,6 +32,8 @@ func (d *codexTicketReconnectDialer) Dial(ctx context.Context, url string, heade
 		response.Set(openAICodexTurnStateHeader, "previous-connection-state")
 		response.Set("Set-Cookie", "__oailb=first-cookie; Path=/")
 	} else {
+		// Both credentials rotate, but the handshake carried the connection's own
+		// historical turn-state, not the new generation's.
 		response.Set(openAICodexTurnStateHeader, "current-ticket")
 		response.Set("Set-Cookie", "__oailb=rotated-cookie; Path=/")
 	}
@@ -172,12 +174,12 @@ func TestCodexTicketWSReusedHandshakeDoesNotInvalidateNewGeneration(t *testing.T
 
 	runSingleTurnSession("resp_retry_first")
 	require.Empty(t, capture.events)
-	freshTicket := verifiedTicket(account, "gpt-6-astra", "current-ticket", "__oailb=current-cookie")
+	// Another account harvested a new shared generation in the meantime.
+	freshTicket := verifiedTicket(ticketTestAccount(444), "gpt-6-astra", "current-ticket", "__oailb=current-cookie")
 	capture.current = freshTicket
-	capture.onInvalidate = func() { capture.current = nil }
 	key := openAICodexTicketKey(account.ID, freshTicket.Model)
 	retry := time.Now().Add(time.Hour)
-	svc.openaiCodexTickets.Store(key, freshTicket)
+	seedSharedCodexTicket(svc, freshTicket)
 	svc.openaiCodexTicketNextAttempt.Store(key, retry)
 	require.Equal(t, 1, dialer.DialCount())
 
@@ -189,7 +191,7 @@ func TestCodexTicketWSReusedHandshakeDoesNotInvalidateNewGeneration(t *testing.T
 	fresh.mu.Unlock()
 	require.Equal(t, 1, freshWrites)
 	// Reusing the old connection must keep its continuation state, without
-	// attributing that state to the newly stored ticket generation.
+	// attributing that state's rotation to the newly stored shared generation.
 	dialer.mu.Lock()
 	sent := append([]http.Header(nil), dialer.sent...)
 	dialer.mu.Unlock()
@@ -198,9 +200,10 @@ func TestCodexTicketWSReusedHandshakeDoesNotInvalidateNewGeneration(t *testing.T
 	require.Equal(t, freshTicket.Cookie, sent[1].Get("Cookie"))
 	require.Empty(t, capture.events)
 	require.Same(t, freshTicket, capture.current)
-	cached, ok := svc.openaiCodexTickets.Load(key)
+	cached, ok := cachedSharedCodexTicket(svc)
 	require.True(t, ok)
-	require.Same(t, freshTicket, cached)
+	require.Equal(t, freshTicket.GenerationID, cached.GenerationID)
+	require.Equal(t, freshTicket.AccountID, cached.AccountID)
 	remainingRetry, ok := svc.openaiCodexTicketNextAttempt.Load(key)
 	require.True(t, ok)
 	require.Equal(t, retry, remainingRetry)

@@ -187,7 +187,7 @@ func TestCodexProbeInvalidTemplateDoesNotHarvestOrBlockOrdinaryRequests(t *testi
 		return nil, nil
 	}})
 	svc.settingService.settingRepo = &codexPolicyMigrationRepoStub{values: map[string]string{SettingKeyOpenAICodexTicketPromptTemplate: "invalid"}}
-	result, err := svc.runCodexTicketAttempt(context.Background(), account, "gpt-6-astra", "automatic")
+	result, err := svc.runCodexTicketAttempt(context.Background(), account, "automatic")
 	require.NoError(t, err)
 	require.Equal(t, "error", result.Outcome)
 	require.Equal(t, "template_invalid", result.ReasonCode)
@@ -224,11 +224,12 @@ func TestCodexTicketAllowWithoutTicketPrecedenceAndInjection(t *testing.T) {
 			require.Equal(t, !test.allow, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 			err := svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", http.Header{})
 			require.Equal(t, !test.allow, errors.Is(err, ErrOpenAICodexTicketUnavailable))
-			account.Extra[openAICodexTicketExtraKey("gpt-6-astra")] = verifiedTicket(account, "gpt-6-astra", "test-ticket", "session=test")
+			seedSharedCodexTicket(svc, verifiedTicket(ticketTestAccount(40), "gpt-6-astra", "test-state", "__oailb=test; session=test"))
+			require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
 			headers := http.Header{}
 			require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", headers))
-			require.Equal(t, "test-ticket", headers.Get(openAICodexTurnStateHeader))
-			require.Equal(t, "session=test", headers.Get("Cookie"))
+			require.Equal(t, "test-state", headers.Get(openAICodexTurnStateHeader))
+			require.Equal(t, "__oailb=test; session=test", headers.Get("Cookie"))
 			require.Equal(t, test.global, repo.values[SettingKeyOpenAICodexTicketAllowWithoutTicket])
 		})
 	}

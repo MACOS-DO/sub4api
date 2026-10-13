@@ -297,9 +297,10 @@
               v-if="row.platform === 'openai' && (row.type === 'oauth' || row.type === 'setup-token')"
               type="button"
               class="rounded-lg px-2 py-1 text-sm font-semibold tabular-nums text-primary-600 transition hover:bg-primary-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-primary-400 dark:hover:bg-primary-900/20"
-              :aria-label="t('admin.accounts.openai.codexTicketSummary', ticketSummary(row))"
+              :class="row.codex_ticket?.ready ? '' : '!text-amber-600 dark:!text-amber-400'"
+              :aria-label="t('admin.accounts.openai.codexTicketSummary', { status: ticketSummary(row) })"
               @click="openCodexTickets(row)"
-            >{{ ticketSummary(row).ready }} / {{ ticketSummary(row).total }}</button>
+            >{{ ticketSummary(row) }}</button>
             <span v-else class="text-gray-400">—</span>
           </template>
           <template #cell-schedulable="{ row }">
@@ -623,8 +624,8 @@ async function handleCodexDiagnosticCompleted(accountID: number) {
   catch (error) { console.error('Failed to refresh account after diagnostic', error) }
 }
 function ticketSummary(account: Account) {
-  const entries = account.codex_turn_tickets ?? []
-  return { ready: entries.filter(ticket => ticket.ready).length, total: entries.length }
+  if (!account.codex_ticket) return '—'
+  return t(account.codex_ticket.ready ? 'admin.accounts.openai.codexTicketReadyShort' : 'admin.accounts.openai.codexTicketMissingShort')
 }
 
 const showSync = ref(false)
