@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to release (e.g. v0.2.7)
+        description: Existing branch or tag to release (use main for a new version)
         required: true
+        default: main
         type: string
 
 permissions:
@@ -20,3 +21,4 @@ jobs:
     with:
       release-ref: ${{ inputs.tag || github.ref }}
     secrets: inherit
+
