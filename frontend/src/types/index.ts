@@ -1228,6 +1228,20 @@ export interface OpenCodeGoUsageSettings {
 
 export type { BPSCredentialState } from "@/utils/openaiBps"
 
+export type OpenAIRequestTimezoneMode = 'fixed' | 'follow_proxy'
+
+/** 最近一次「跟随 IP 出口」时区检测结果；error 非空表示失败，账号沿用上次的时区。 */
+export interface OpenAIRequestTimezoneDetection {
+  ip?: string
+  country?: string
+  region?: string
+  city?: string
+  timezone?: string
+  proxy_id?: number
+  detected_at: string
+  error?: string
+}
+
 export interface Account {
   id: number
   name: string
@@ -1261,6 +1275,8 @@ export interface Account {
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     openai_request_timezone?: string
+    openai_request_timezone_mode?: OpenAIRequestTimezoneMode
+    openai_request_timezone_detected?: OpenAIRequestTimezoneDetection
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean

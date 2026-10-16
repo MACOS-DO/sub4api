@@ -990,6 +990,22 @@ func (h *AccountHandler) GetOpenAIRequestTimezones(c *gin.Context) {
 	})
 }
 
+// DetectOpenAIRequestTimezone 立即检测账号出口 IP 的时区（请求时区为「跟随 IP 出口」时）。
+// POST /api/v1/admin/accounts/:id/openai-request-timezone/detect
+func (h *AccountHandler) DetectOpenAIRequestTimezone(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	account, err := h.adminService.DetectOpenAIRequestTimezone(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
 func (h *AccountHandler) GetByID(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

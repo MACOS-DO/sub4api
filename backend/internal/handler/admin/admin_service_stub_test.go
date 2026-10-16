@@ -811,6 +811,10 @@ func (s *stubAdminService) RevertAccountProxyFallback(ctx context.Context, id in
 	return nil
 }
 
+func (s *stubAdminService) DetectOpenAIRequestTimezone(ctx context.Context, id int64) (*service.Account, error) {
+	return &service.Account{ID: id}, nil
+}
+
 func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opts service.ShadowOptions) (*service.Account, error) {
 	if s.createSparkShadowErr != nil {
 		return nil, s.createSparkShadowErr

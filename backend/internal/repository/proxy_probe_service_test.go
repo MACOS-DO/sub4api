@@ -133,7 +133,7 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_ProxyServerClosed() {
 }
 
 func (s *ProxyProbeServiceSuite) TestParseIPAPI_Success() {
-	body := []byte(`{"status":"success","query":"1.2.3.4","city":"Beijing","regionName":"Beijing","country":"China","countryCode":"CN"}`)
+	body := []byte(`{"status":"success","query":"1.2.3.4","city":"Beijing","regionName":"Beijing","country":"China","countryCode":"CN","timezone":"Asia/Shanghai"}`)
 	info, latencyMs, err := s.prober.parseIPAPI(body, 100)
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), int64(100), latencyMs)
@@ -142,6 +142,7 @@ func (s *ProxyProbeServiceSuite) TestParseIPAPI_Success() {
 	require.Equal(s.T(), "Beijing", info.Region)
 	require.Equal(s.T(), "China", info.Country)
 	require.Equal(s.T(), "CN", info.CountryCode)
+	require.Equal(s.T(), "Asia/Shanghai", info.Timezone)
 }
 
 func (s *ProxyProbeServiceSuite) TestParseIPAPI_Failure() {

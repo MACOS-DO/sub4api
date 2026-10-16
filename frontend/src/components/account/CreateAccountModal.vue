@@ -3325,7 +3325,7 @@
         </div>
       </div>
 
-      <OpenAIRequestTimezoneField v-if="form.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <OpenAIRequestTimezoneField v-if="form.platform === 'openai'" v-model="openAIRequestTimezone" v-model:mode="openAIRequestTimezoneMode" />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
@@ -4187,6 +4187,7 @@ import type {
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
+  OpenAIRequestTimezoneMode,
   TempUnschedulableScope
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -4743,6 +4744,7 @@ const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 const openAIRequestTimezone = ref('Asia/Singapore')
+const openAIRequestTimezoneMode = ref<OpenAIRequestTimezoneMode>('follow_proxy')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -5669,6 +5671,7 @@ const resetForm = () => {
   form.notes = ''
   form.platform = 'anthropic'
   openAIRequestTimezone.value = 'Asia/Singapore'
+  openAIRequestTimezoneMode.value = 'follow_proxy'
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
@@ -5800,7 +5803,12 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
 
   const extra: Record<string, unknown> = { ...(base || {}) }
-  extra.openai_request_timezone = openAIRequestTimezone.value
+  extra.openai_request_timezone_mode = openAIRequestTimezoneMode.value
+  if (openAIRequestTimezoneMode.value === 'fixed') {
+    extra.openai_request_timezone = openAIRequestTimezone.value
+  } else {
+    delete extra.openai_request_timezone
+  }
   if (accountCategory.value === 'oauth-based') {
     extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
     extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)

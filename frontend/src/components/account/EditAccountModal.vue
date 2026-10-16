@@ -1894,7 +1894,13 @@
         </div>
       </div>
 
-      <OpenAIRequestTimezoneField v-if="account?.platform === 'openai'" v-model="openAIRequestTimezone" />
+      <OpenAIRequestTimezoneField
+        v-if="account?.platform === 'openai'"
+        v-model="openAIRequestTimezone"
+        v-model:mode="openAIRequestTimezoneMode"
+        :account-id="account?.id"
+        :detection="account?.extra?.openai_request_timezone_detected"
+      />
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
@@ -3268,6 +3274,7 @@ import type {
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
+  OpenAIRequestTimezoneMode,
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
@@ -3877,6 +3884,7 @@ const customBaseUrl = ref('')
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
 const openAIRequestTimezone = ref('Asia/Singapore')
+const openAIRequestTimezoneMode = ref<OpenAIRequestTimezoneMode>('fixed')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4386,6 +4394,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
   openAIRequestTimezone.value = 'Asia/Singapore'
+  openAIRequestTimezoneMode.value = 'fixed'
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -4406,6 +4415,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAIRequestTimezone.value = typeof extra?.openai_request_timezone === 'string' ? extra.openai_request_timezone : 'Asia/Singapore'
+    // 未设置模式的存量账号保持固定时区。
+    openAIRequestTimezoneMode.value = extra?.openai_request_timezone_mode === 'follow_proxy' ? 'follow_proxy' : 'fixed'
     openaiFlattenNamespacesEnabled.value =
       newAccount.type === 'oauth' && extra?.openai_responses_flatten_namespaces === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
@@ -5941,7 +5952,9 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      newExtra.openai_request_timezone = openAIRequestTimezone.value
+      newExtra.openai_request_timezone_mode = openAIRequestTimezoneMode.value
+      // 跟随模式下时区由后端检测写入，不回传表单值。
+      if (openAIRequestTimezoneMode.value === 'fixed') newExtra.openai_request_timezone = openAIRequestTimezone.value
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value

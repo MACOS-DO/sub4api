@@ -110,6 +110,8 @@ type AdminService interface {
 	// RevertAccountProxyFallback 将账号的 proxy_id 切回 proxy_fallback_origin_id，并清空 origin 字段。
 	// 若账号不存在返回 ErrAccountNotFound；若账号存在但不在 fallback 状态，返回 ErrAccountNotInFallback。
 	RevertAccountProxyFallback(ctx context.Context, id int64) error
+	// DetectOpenAIRequestTimezone 立即检测跟随出口 IP 的 OpenAI 账号的时区并写回。
+	DetectOpenAIRequestTimezone(ctx context.Context, id int64) (*Account, error)
 	// CreateShadow 为指定 OpenAI OAuth 母账号创建 spark 维度影子账号（一母一影）。
 	// 影子账号不持凭据（Credentials 恒为空），透传母账号凭据；继承母账号的 ProxyID。
 	CreateShadow(ctx context.Context, parentID int64, opts ShadowOptions) (*Account, error)
@@ -618,6 +620,7 @@ type ProxyExitInfo struct {
 	Region      string
 	Country     string
 	CountryCode string
+	Timezone    string // IANA 时区，仅部分探测源（ip-api）返回
 }
 
 // ProxyExitInfoProber tests proxy connectivity and retrieves exit information

@@ -296,6 +296,14 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
+  it('defaults new OpenAI accounts to following the exit IP timezone', async () => {
+    await submitApiKeyAccount('openai')
+
+    const extra = createAccountMock.mock.calls[0]?.[0]?.extra
+    expect(extra?.openai_request_timezone_mode).toBe('follow_proxy')
+    expect(extra).not.toHaveProperty('openai_request_timezone')
+  })
+
   it('omits the upstream request id header from extra when left empty', async () => {
     await submitApiKeyAccount('openai')
 

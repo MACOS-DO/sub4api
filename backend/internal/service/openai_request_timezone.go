@@ -36,6 +36,9 @@ func ValidateOpenAIRequestTimezoneExtra(platform string, extra map[string]any) e
 	if extra == nil {
 		return nil
 	}
+	if err := validateOpenAIRequestTimezoneModeExtra(platform, extra); err != nil {
+		return err
+	}
 	raw, exists := extra[openAIRequestTimezoneExtraKey]
 	if !exists || raw == nil {
 		return nil

@@ -354,6 +354,31 @@ describe('EditAccountModal', () => {
     ])
   })
 
+  it('keeps existing accounts without a timezone mode on their fixed timezone', async () => {
+    const account = buildAccount()
+    account.extra = { openai_request_timezone: 'Asia/Singapore' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="openai-request-timezone-mode-fixed"]').element as HTMLInputElement).checked).toBe(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      openai_request_timezone_mode: 'fixed',
+      openai_request_timezone: 'Asia/Singapore'
+    })
+  })
+
+  it('keeps following the exit IP on save', async () => {
+    const account = buildAccount()
+    account.extra = { openai_request_timezone_mode: 'follow_proxy', openai_request_timezone: 'Asia/Tokyo' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="openai-request-timezone-mode-follow_proxy"]').element as HTMLInputElement).checked).toBe(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_request_timezone_mode).toBe('follow_proxy')
+  })
+
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2028-02-29T12:34:00'))
