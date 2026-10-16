@@ -1,7 +1,7 @@
 <template>
   <section class="w-full rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 dark:border-indigo-900 dark:bg-indigo-950/30 sm:p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><h3 class="font-semibold text-slate-900 dark:text-white">{{ zh ? 'Codex 打票代理池' : 'Codex ticket proxy pool' }}</h3><p class="mt-1 text-xs text-slate-600 dark:text-slate-400">{{ zh ? '复用 IP 设置中的可用代理，按池轮换；无可用代理时不直连。' : 'Rotate available proxies from IP settings; never connect directly without one.' }}</p></div>
+      <div><h3 class="font-semibold text-slate-900 dark:text-white">{{ zh ? 'Codex 打票代理池' : 'Codex ticket proxy pool' }}</h3><p class="mt-1 text-xs text-slate-600 dark:text-slate-400">{{ zh ? '复用 IP 设置中的可用代理，按池轮换；无可用代理时不直连。仅在系统设置「打票出口 IP」选择代理池时生效。' : 'Rotate available proxies from IP settings; never connect directly without one. Applies only when Settings → Ticket egress IP uses the pool.' }}</p></div>
       <button type="button" class="btn btn-primary !py-1.5 text-xs" :disabled="saving || loading || (mode === 'custom' && !selected.length)" @click="save">{{ saving ? '…' : zh ? '保存代理池' : 'Save pool' }}</button>
     </div>
     <div v-if="error" class="mt-3 text-xs text-rose-600">{{ error }}</div>

@@ -370,6 +370,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.GET("/codex-ticket-cadence", h.Admin.Account.GetCodexTicketCadence)
 		accounts.PUT("/codex-ticket-cadence", h.Admin.Account.UpdateCodexTicketCadence)
+		accounts.GET("/codex-ticket-proxy-source", h.Admin.Account.GetCodexTicketProxySource)
+		accounts.PUT("/codex-ticket-proxy-source", h.Admin.Account.UpdateCodexTicketProxySource)
 		accounts.GET("/codex-ticket-fingerprint", h.Admin.Account.GetCodexFingerprintVersion)
 		accounts.POST("/codex-ticket-fingerprint/refresh", h.Admin.Account.RefreshCodexFingerprint)
 		accounts.GET("/:id/codex-ticket-history", h.Admin.Account.GetCodexTicketHistory)

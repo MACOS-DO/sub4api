@@ -68,8 +68,7 @@ func (h *AccountHandler) GetCodexTicketHistory(c *gin.Context) {
 		reason = "disabled"
 	}
 	if available && h.codexTicketSettings != nil {
-		proxies, err := h.codexTicketSettings.AvailableCodexTicketProxies(c.Request.Context())
-		if err != nil || len(proxies) == 0 {
+		if !h.codexTicketSettings.CodexTicketManualProxyAvailable(c.Request.Context()) {
 			available, reason = false, "no_proxy"
 		}
 	}
@@ -322,6 +321,32 @@ func (h *AccountHandler) GetCodexTicketCadence(c *gin.Context) {
 		return
 	}
 	response.Success(c, h.codexTicketGateway.CodexTicketCadence(c.Request.Context()))
+}
+
+func (h *AccountHandler) GetCodexTicketProxySource(c *gin.Context) {
+	if h.codexTicketSettings == nil {
+		codexTicketError(c, service.ErrCodexTicketUnavailable)
+		return
+	}
+	response.Success(c, service.CodexTicketProxySource{Source: h.codexTicketSettings.GetCodexTicketProxySource(c.Request.Context())})
+}
+
+func (h *AccountHandler) UpdateCodexTicketProxySource(c *gin.Context) {
+	if h.codexTicketSettings == nil {
+		codexTicketError(c, service.ErrCodexTicketUnavailable)
+		return
+	}
+	var value service.CodexTicketProxySource
+	if err := c.ShouldBindJSON(&value); err != nil {
+		response.BadRequest(c, "Invalid proxy source")
+		return
+	}
+	source, err := h.codexTicketSettings.SetCodexTicketProxySource(c.Request.Context(), value.Source)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, service.CodexTicketProxySource{Source: source})
 }
 
 func (h *AccountHandler) UpdateCodexTicketCadence(c *gin.Context) {

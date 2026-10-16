@@ -65,7 +65,7 @@ func TestRefreshOpenAICodexTickets_DisabledSkipsHarvest(t *testing.T) {
 
 func TestCodexTicketNeverFallsBackToHandEnteredProxy(t *testing.T) {
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{HarvestProxyURL: "http://legacy.example.com:8080"}, nil)
-	_, _, err := svc.chooseCodexTicketProxy(context.Background(), 41, "gpt-6-astra")
+	_, _, err := svc.chooseCodexTicketProxy(context.Background(), ticketTestAccount(41), "gpt-6-astra")
 	require.ErrorIs(t, err, ErrCodexTicketNoProxy)
 }
 
