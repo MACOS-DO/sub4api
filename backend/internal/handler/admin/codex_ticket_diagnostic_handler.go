@@ -77,14 +77,14 @@ func codexDiagnosticOutput(raw []byte) (string, bool) {
 		streamed = true
 		switch gjson.Get(payload, "type").String() {
 		case "response.output_text.delta":
-			output.WriteString(gjson.Get(payload, "delta").String())
+			_, _ = output.WriteString(gjson.Get(payload, "delta").String())
 		case "response.completed":
 			completed = true
 			if output.Len() == 0 {
 				gjson.Get(payload, "response.output").ForEach(func(_, message gjson.Result) bool {
 					message.Get("content").ForEach(func(_, part gjson.Result) bool {
 						if part.Get("type").String() == "output_text" {
-							output.WriteString(part.Get("text").String())
+							_, _ = output.WriteString(part.Get("text").String())
 						}
 						return true
 					})

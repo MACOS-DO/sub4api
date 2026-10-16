@@ -108,7 +108,7 @@ func readEnvFile(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open dedicated .env: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	values := make(map[string]string)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -178,7 +178,7 @@ func scoreOutputs(ctx context.Context, outputs []service.CodexHypothesisOutput) 
 func runModelTrace(ctx context.Context, mode string, input []byte) ([]byte, error) {
 	node, err := exec.LookPath("node")
 	if err != nil {
-		return nil, errors.New("Node is required for local ModelTrace scoring")
+		return nil, errors.New("node is required for local ModelTrace scoring")
 	}
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -204,13 +204,4 @@ func runModelTrace(ctx context.Context, mode string, input []byte) ([]byte, erro
 		return nil, fmt.Errorf("local ModelTrace %s failed: %w: %s", mode, err, strings.TrimSpace(message))
 	}
 	return output, nil
-}
-
-func printPhase(output io.Writer, name string, phase service.CodexHypothesisPhase, score modelTraceResult) {
-	fmt.Fprintf(output, "%s：HTTP=%v，ModelTrace top-1=%s (%.2f%%)，family=%s，使用=%d/3\n",
-		name, phase.Statuses, score.Prediction, score.Probability*100, score.Family, score.UsedOutputs)
-	if name == "无票" {
-		encoded, _ := json.MarshalIndent(phase.Headers, "  ", "  ")
-		fmt.Fprintf(output, "脱敏出站请求头：%s\n", encoded)
-	}
 }

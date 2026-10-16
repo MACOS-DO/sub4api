@@ -22,7 +22,7 @@ const CodexProbeTemplateMaxBytes = 256 << 10
 var defaultCodexProbeTemplateJSONL string
 
 var ErrCodexProbeTemplateInvalid = errors.New("invalid Codex probe template")
-var ErrCodexProbeIdentity = errors.New("Codex probe identity unavailable")
+var ErrCodexProbeIdentity = errors.New("codex probe identity unavailable")
 
 // CodexProbeTemplate is an immutable, validated initial conversation. It can be
 // shared by concurrent requests; rendering never changes its stored strings.
@@ -259,6 +259,10 @@ func (s *OpenAIGatewayService) buildCodexProbeRequest(ctx context.Context, accou
 	if err != nil {
 		return nil, nil, err
 	}
+	template, ok := ctx.Value(codexProbeTemplateContextKey{}).(*CodexProbeTemplate)
+	if !ok || template == nil {
+		return nil, nil, ErrCodexProbeTemplateInvalid
+	}
 	credential, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 	if err != nil || codexAccountIdentityNamespace(credential) == "" {
 		return nil, nil, ErrCodexProbeIdentity
@@ -268,7 +272,6 @@ func (s *OpenAIGatewayService) buildCodexProbeRequest(ctx context.Context, accou
 	if err != nil {
 		return nil, nil, ErrCodexProbeIdentity
 	}
-	template := ctx.Value(codexProbeTemplateContextKey{}).(*CodexProbeTemplate)
 	return template.render(model, challenge.Prompt, account.OpenAIRequestTimezone(), identity)
 }
 

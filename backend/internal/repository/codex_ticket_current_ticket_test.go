@@ -26,7 +26,7 @@ func TestCodexTicketCurrentTicket(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			query := mock.ExpectQuery(`SELECT COALESCE\(extra->\$2, 'null'::jsonb\) FROM accounts`).
 				WithArgs(int64(7), "codex_turn_ticket:gpt-6-astra")
 			if test.wantErr != nil {

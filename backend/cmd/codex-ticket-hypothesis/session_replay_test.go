@@ -41,8 +41,8 @@ func replayFixture(t *testing.T, root string, installation bool) (string, string
 	for _, item := range items {
 		encoded, err := json.Marshal(item)
 		require.NoError(t, err)
-		lines.Write(encoded)
-		lines.WriteByte('\n')
+		_, _ = lines.Write(encoded)
+		_ = lines.WriteByte('\n')
 	}
 	require.NoError(t, os.WriteFile(path, []byte(lines.String()), 0600))
 	return path, lines.String()

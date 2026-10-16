@@ -47,7 +47,7 @@ func loadSessionReplay(sessionPath, envPath string) (*service.CodexHypothesisRep
 	if err != nil {
 		return nil, fmt.Errorf("open replay session: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || info.Size() > maximumReplaySize {
 		return nil, errors.New("replay session is unreadable or too large")
@@ -197,7 +197,7 @@ func loadReplayInstallationID(sessionPath, envPath string) (string, error) {
 func parseReplayInstallationID(value []byte) (string, error) {
 	parsed, err := uuid.Parse(strings.TrimSpace(string(value)))
 	if err != nil || parsed.Version() != 4 {
-		return "", errors.New("Codex installation ID must be UUIDv4")
+		return "", errors.New("codex installation ID must be UUIDv4")
 	}
 	return parsed.String(), nil
 }

@@ -29,7 +29,7 @@ func (r *codexTicketAttemptRepository) Invalidate(ctx context.Context, event *se
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	key := "codex_turn_ticket:" + event.Model
 	var current sql.NullString
 	err = tx.QueryRowContext(ctx, `SELECT extra->$2->>'generation_id' FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, event.AccountID, key).Scan(&current)
@@ -102,7 +102,7 @@ func (r *codexTicketAttemptRepository) ListInvalidations(ctx context.Context, ac
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]service.CodexTicketInvalidationSummary, 0, size)
 	for rows.Next() {
 		var item service.CodexTicketInvalidationSummary

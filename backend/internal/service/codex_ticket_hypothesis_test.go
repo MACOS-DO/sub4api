@@ -60,7 +60,7 @@ func TestCodexHypothesisRunnerUsesNormalPathAndInjectsTicket(t *testing.T) {
 	require.Len(t, recorder.requests, 6)
 	plainBody, err := recorder.requests[0].GetBody()
 	require.NoError(t, err)
-	defer plainBody.Close()
+	defer func() { _ = plainBody.Close() }()
 	var plainRequest map[string]any
 	require.NoError(t, json.NewDecoder(plainBody).Decode(&plainRequest))
 	require.NotContains(t, plainRequest, "client_metadata")

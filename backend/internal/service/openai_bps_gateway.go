@@ -175,7 +175,7 @@ func readBPSEvents(resp *http.Response, maxSize int, consume func(string, map[st
 		}
 		var payload map[string]any
 		if e := bpsDecode([]byte(text), &payload); e != nil || payload == nil {
-			return fmt.Errorf("Malformed BPS SSE event")
+			return fmt.Errorf("malformed BPS SSE event")
 		}
 		typ := stringValue(payload["type"])
 		if typ == "" {
@@ -201,9 +201,9 @@ func readBPSEvents(resp *http.Response, maxSize int, consume func(string, map[st
 		}
 		if strings.HasPrefix(line, "data:") {
 			if data.Len() > 0 {
-				data.WriteByte('\n')
+				_ = data.WriteByte('\n')
 			}
-			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			_, _ = data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 			if data.Len() > maxSize {
 				return fmt.Errorf("BPS event exceeds maximum size")
 			}
@@ -279,7 +279,7 @@ func (s *OpenAIGatewayService) forwardOpenAIBPS(ctx context.Context, c *gin.Cont
 	if notify, ok := ctx.Value(bpsResponseObserverContextKey{}).(func(int, string, string)); ok {
 		notify(resp.StatusCode, r.Model, requestID)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Bound silent upstream stalls. The timer only closes the reader; all
 	// downstream writes and stream state remain on this goroutine.
 	var timedOut atomic.Bool

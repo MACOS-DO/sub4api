@@ -29,9 +29,11 @@ func TestAccountRepositoryBPSCredentialConditionalState(t *testing.T) {
 	require.Equal(t, "old-token", exec.execArgs[0][8])
 	require.Equal(t, "workspace", exec.execArgs[0][9])
 	var payload map[string]any
-	require.NoError(t, json.Unmarshal(exec.execArgs[0][1].([]byte), &payload))
+	rawPayload, ok := exec.execArgs[0][1].([]byte)
+	require.True(t, ok)
+	require.NoError(t, json.Unmarshal(rawPayload, &payload))
 	require.Equal(t, "revoked", payload["status"])
 	require.Equal(t, "token_revoked", payload["error_code"])
-	require.NotContains(t, string(exec.execArgs[0][1].([]byte)), "old-token")
+	require.NotContains(t, string(rawPayload), "old-token")
 	require.Equal(t, service.OpenAIBPSCredentialIdentity(snapshot), payload["credential_identity"])
 }
