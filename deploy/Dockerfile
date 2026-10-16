@@ -84,9 +84,9 @@ RUN VERSION_VALUE="${VERSION}" && \
 FROM ${ALPINE_IMAGE}
 
 # Labels
-LABEL maintainer="info-talent <github.com/info-talent>"
+LABEL maintainer="talent668 <github.com/talent668>"
 LABEL description="Sub4API - AI API Gateway Platform"
-LABEL org.opencontainers.image.source="https://github.com/info-talent/sub4api"
+LABEL org.opencontainers.image.source="https://github.com/talent668/sub4api"
 
 # Install runtime dependencies
 RUN apk add --no-cache \

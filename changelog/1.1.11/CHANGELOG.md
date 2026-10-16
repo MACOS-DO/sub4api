@@ -11,9 +11,9 @@
 
 - 保留 `github.com/MACOS-DO/sub4api` 模块路径、OpenAI BPS、Codex 定制和本仓库的在线更新源。
 - 调度缓存同时保留 BPS 工作区信息与 Gemini 显式缓存能力；合并 composite OAuth 路由保护与 BPS 排除规则。
-- 部署模板默认使用 `ghcr.io/info-talent/sub4api:latest`，可通过 `SUB4API_IMAGE` 指定私有镜像或固定版本。
+- 部署模板默认使用 `ghcr.io/talent668/sub4api:latest`，可通过 `SUB4API_IMAGE` 指定私有镜像或固定版本。
 - 保持本仓库的 GHCR / Docker Hub 发布流程，以及 `sub4api` 安装包和旧更新器需要的 `sub2api` 兼容包。
-- 发布地址与在线更新源改为 `info-talent/sub4api`；GHCR 可直接使用 GitHub Actions 的 `GITHUB_TOKEN` 发布，Docker Hub 仅在配置两项凭据后启用。
+- 发布地址与在线更新源改为 `talent668/sub4api`；GHCR 可直接使用 GitHub Actions 的 `GITHUB_TOKEN` 发布，Docker Hub 仅在配置两项凭据后启用。
 - 前端包名改为 `sub4api-frontend`，版本同步为 1.1.11，并固定 pnpm 9.15.9。
 - 修复 Windows 交叉打包时 Unix 安装包丢失可执行权限的问题；归档显式保留二进制和部署脚本的 0755 权限，并新增 CI 打包回归检查。
 

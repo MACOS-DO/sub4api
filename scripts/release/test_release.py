@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class ReleaseTest(unittest.TestCase):
     def test_fork_image_defaults_and_update_source(self):
-        image = 'ghcr.io/info-talent/sub4api:latest'
+        image = 'ghcr.io/talent668/sub4api:latest'
         for name in ['docker-compose.yml', 'docker-compose.local.yml', 'docker-compose.standalone.yml']:
             text = (ROOT / 'deploy' / name).read_text(encoding='utf-8')
             self.assertIn('image: ${SUB4API_IMAGE:-' + image + '}', text)
@@ -24,7 +24,7 @@ class ReleaseTest(unittest.TestCase):
             text = (ROOT / name).read_text(encoding='utf-8')
             self.assertIn('project_name: sub4api', text)
             self.assertNotIn('/sub2api:', text)
-        self.assertIn('githubRepo     = "info-talent/sub4api"',
+        self.assertIn('githubRepo     = "talent668/sub4api"',
                       (ROOT / 'backend/internal/service/update_service.go').read_text(encoding='utf-8'))
 
     def setUp(self):
@@ -39,9 +39,9 @@ class ReleaseTest(unittest.TestCase):
         (self.root / 'LICENSE').write_text('fixture')
         (self.root / 'README.md').write_text('fixture')
         self.env = {**os.environ, 'DOCKERHUB_USERNAME': 'Example', 'DOCKERHUB_TOKEN': 'test-only',
-                    'GITHUB_REPOSITORY': 'info-talent/sub4api', 'GITHUB_OUTPUT': str(self.root / 'output'),
+                    'GITHUB_REPOSITORY': 'talent668/sub4api', 'GITHUB_OUTPUT': str(self.root / 'output'),
                     'VERSION': '0.2.7', 'COMMIT': 'abc123', 'BUILD_DATE': '2026-09-19T00:00:00Z',
-                    'GHCR_IMAGE': 'ghcr.io/info-talent/sub4api', 'DOCKERHUB_IMAGE': 'example/sub4api',
+                    'GHCR_IMAGE': 'ghcr.io/talent668/sub4api', 'DOCKERHUB_IMAGE': 'example/sub4api',
                     'IMAGE_DIGEST': 'sha256:test'}
         self.git('init', '-q')
         self.git('add', '.')
@@ -59,7 +59,7 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         output = (self.root / 'output').read_text()
         self.assertIn('version=0.2.7\n', output)
-        self.assertIn('ghcr=ghcr.io/info-talent/sub4api', output)
+        self.assertIn('ghcr=ghcr.io/talent668/sub4api', output)
         self.assertIn('dockerhub=example/sub4api', output)
 
     def test_exact_tag_wins(self):
@@ -78,7 +78,7 @@ class ReleaseTest(unittest.TestCase):
         output = (self.root / 'output').read_text()
         self.assertIn('dockerhub_enabled=false\n', output)
         self.assertIn('dockerhub=\n', output)
-        self.assertIn('tags<<IMAGE_TAGS\nghcr.io/info-talent/sub4api:0.2.7\nghcr.io/info-talent/sub4api:latest\nIMAGE_TAGS', output)
+        self.assertIn('tags<<IMAGE_TAGS\nghcr.io/talent668/sub4api:0.2.7\nghcr.io/talent668/sub4api:latest\nIMAGE_TAGS', output)
         self.assertNotIn('example/sub4api', output)
 
     def test_partial_dockerhub_credentials_fail_early(self):
@@ -105,7 +105,7 @@ class ReleaseTest(unittest.TestCase):
     def test_notes_render(self):
         subprocess.run([sys.executable, str(ROOT / 'scripts/release/notes.py')], cwd=self.root, env=self.env, check=True)
         text = (self.root / 'dist/release-notes.md').read_text()
-        for expected in ['实际更新', '## 📥 Installation', '## 📚 Documentation', 'info-talent/sub4api', 'abc123', 'sha256:test']:
+        for expected in ['实际更新', '## 📥 Installation', '## 📚 Documentation', 'talent668/sub4api', 'abc123', 'sha256:test']:
             self.assertIn(expected, text)
         self.assertNotIn('Wei-Shaw', text)
 
@@ -113,7 +113,7 @@ class ReleaseTest(unittest.TestCase):
         self.env['DOCKERHUB_IMAGE'] = ''
         subprocess.run([sys.executable, str(ROOT / 'scripts/release/notes.py')], cwd=self.root, env=self.env, check=True)
         text = (self.root / 'dist/release-notes.md').read_text()
-        self.assertIn('docker pull ghcr.io/info-talent/sub4api:0.2.7', text)
+        self.assertIn('docker pull ghcr.io/talent668/sub4api:0.2.7', text)
         self.assertNotIn('Docker Hub', text)
         self.assertNotIn('docker pull :', text)
 
