@@ -16,7 +16,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB4API_IMAGE:-ghcr.io/info-talent/sub4api:latest}
     container_name: sub2api
     restart: unless-stopped
     security_opt:

@@ -999,7 +999,9 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	// the full account. Dropping it silently falls back to the platform threshold.
 	// BPS admission also needs workspace identity and JWT expiry before hydration;
 	// neither access_token nor refresh_token belongs in this metadata projection.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold", "chatgpt_account_id", "expires_at"}
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold", "chatgpt_account_id", "expires_at",
+		// Gemini explicit cache admission needs the endpoint, auth mode and upstream capabilities.
+		"base_url", "auth_mode", service.GeminiExplicitCacheUpstreamCredentialKey, service.GeminiExplicitCacheUpstreamMaxTTLCredentialKey}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {

@@ -1,0 +1,8 @@
+{
+  "repository": "Wei-Shaw/sub2api",
+  "version": "0.2.17",
+  "commit": "b0a02a3304a0a78cdd003ddda1dd23ba02c03084",
+  "previous_commit": "f2669c8cf62555cd92389b3f55920e9e6e7c6ff2",
+  "sub4api_version": "1.1.11",
+  "method": "Three-way source merge with Sub4API module paths and customizations preserved"
+}

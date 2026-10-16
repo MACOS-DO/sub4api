@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "${DOCKERHUB_USERNAME:?Configure DOCKERHUB_USERNAME}"
-: "${DOCKERHUB_TOKEN:?Configure DOCKERHUB_TOKEN}"
+: "${GITHUB_REPOSITORY:?Configure GITHUB_REPOSITORY}"
+dockerhub=''
+dockerhub_enabled=false
+if [[ -n "${DOCKERHUB_USERNAME:-}" || -n "${DOCKERHUB_TOKEN:-}" ]]; then
+  : "${DOCKERHUB_USERNAME:?Configure DOCKERHUB_USERNAME}"
+  : "${DOCKERHUB_TOKEN:?Configure DOCKERHUB_TOKEN}"
+  dockerhub="${DOCKERHUB_USERNAME,,}/sub4api"
+  dockerhub_enabled=true
+fi
 version=$(sh backend/scripts/resolve-version.sh)
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   echo 'Version must be a Docker-compatible semantic version (without build metadata).' >&2
@@ -24,7 +31,16 @@ PYNOTES
   echo "version=$version"
   echo "tag=v$version"
   echo "ghcr=ghcr.io/${GITHUB_REPOSITORY,,}"
-  echo "dockerhub=${DOCKERHUB_USERNAME,,}/sub4api"
+  echo "dockerhub=$dockerhub"
+  echo "dockerhub_enabled=$dockerhub_enabled"
+  echo 'tags<<IMAGE_TAGS'
+  echo "ghcr.io/${GITHUB_REPOSITORY,,}:$version"
+  echo "ghcr.io/${GITHUB_REPOSITORY,,}:latest"
+  if [[ "$dockerhub_enabled" == true ]]; then
+    echo "$dockerhub:$version"
+    echo "$dockerhub:latest"
+  fi
+  echo 'IMAGE_TAGS'
   echo "date=$(git show -s --format=%cI HEAD)"
   echo "commit=$(git rev-parse HEAD)"
 } >> "$GITHUB_OUTPUT"

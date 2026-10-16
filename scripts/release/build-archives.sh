@@ -2,6 +2,7 @@
 set -euo pipefail
 : "${VERSION:?}" "${COMMIT:?}" "${BUILD_DATE:?}"
 root=$(pwd)
+archive_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/archive.py"
 output="$root/dist/release"
 mkdir -p "$output"
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
@@ -24,19 +25,12 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; d
   for name in sub4api sub2api; do
     archive="${name}_${VERSION}_${os}_${arch}"
     if [[ "$os" == windows ]]; then
-      python3 - "$stage" "$output/$archive.zip" <<'PYZIP'
-import pathlib, sys, zipfile
-root = pathlib.Path(sys.argv[1])
-with zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED) as archive:
-    for path in sorted(root.rglob('*')):
-        if path.is_file():
-            archive.write(path, path.relative_to(root))
-PYZIP
+      python3 "$archive_script" "$stage" "$output/$archive.zip"
     else
-      tar -czf "$output/$archive.tar.gz" -C "$stage" .
+      python3 "$archive_script" "$stage" "$output/$archive.tar.gz"
     fi
   done
   rm -rf "$stage"
   trap - EXIT
 done
-(cd "$output" && sha256sum ./*.tar.gz ./*.zip | sed 's|  ./|  |' > checksums.txt)
+python3 "$archive_script" --checksums "$output"

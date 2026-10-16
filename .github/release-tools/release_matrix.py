@@ -42,7 +42,7 @@ def archive_name(version, target):
     if not VERSION_RE.fullmatch(version) or target not in targets():
         raise ValueError('invalid release version or target')
     suffix = 'zip' if target['goos'] == 'windows' else 'tar.gz'
-    return f"sub2api_{version}_{target['goos']}_{target['goarch']}.{suffix}"
+    return f"sub4api_{version}_{target['goos']}_{target['goarch']}.{suffix}"
 
 
 def sha256(path):
@@ -95,7 +95,7 @@ def generate_config(args):
         data['before'] = {'hooks': []}
         data['builds'] = [{'id': 'sub2api', 'skip': True}]
         data['archives'] = []
-        extra = [{'glob': 'release-input/sub2api_*.tar.gz'}, {'glob': 'release-input/sub2api_*.zip'}]
+        extra = [{'glob': 'release-input/sub4api_*.tar.gz'}, {'glob': 'release-input/sub4api_*.zip'}]
         if args.simple:
             data['checksum'] = {'disable': True}
         else:
