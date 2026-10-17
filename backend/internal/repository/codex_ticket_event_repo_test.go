@@ -13,7 +13,7 @@ import (
 func TestCodexTicketEventsExposeMetadataOnly(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &codexTicketAttemptRepository{db: db}
 	end := time.Now().UTC()
 	start := end.Add(-90 * 24 * time.Hour)
@@ -36,7 +36,7 @@ func TestCodexTicketEventsExposeMetadataOnly(t *testing.T) {
 func TestCodexTicketLatestEventsBatched(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &codexTicketAttemptRepository{db: db}
 	events, err := repo.LatestEvents(context.Background(), nil)
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestCodexTicketLatestEventsBatched(t *testing.T) {
 func TestCodexTicketAttemptEventsExcludeInvalidations(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &codexTicketAttemptRepository{db: db}
 	end := time.Now().UTC()
 	start := end.Add(-90 * 24 * time.Hour)
@@ -86,7 +86,7 @@ func TestCodexTicketFilteredEventsModelAndOutcome(t *testing.T) {
 		t.Run(test.filter, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			repo := &codexTicketAttemptRepository{db: db}
 			end := time.Now().UTC()
 			start := end.Add(-90 * 24 * time.Hour)
@@ -109,7 +109,7 @@ func TestCodexTicketFilteredEventsModelAndOutcome(t *testing.T) {
 func TestCodexTicketInvalidationEventsDoNotSelectCredentialValues(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := &codexTicketAttemptRepository{db: db}
 	end := time.Now().UTC()
 	start := end.Add(-90 * 24 * time.Hour)

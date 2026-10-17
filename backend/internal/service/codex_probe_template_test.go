@@ -18,6 +18,15 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestBuildCodexProbeRequestRejectsNilPinnedTemplate(t *testing.T) {
+	ctx := context.WithValue(context.Background(), codexProbeTemplateContextKey{}, (*CodexProbeTemplate)(nil))
+	svc := &OpenAIGatewayService{}
+	body, headers, err := svc.buildCodexProbeRequest(ctx, ticketTestAccount(41), "gpt-6-astra", ModelTraceChallenge{})
+	require.ErrorIs(t, err, ErrCodexProbeTemplateInvalid)
+	require.Nil(t, body)
+	require.Nil(t, headers)
+}
+
 func TestCodexProbeDefaultStructureAndPrivacy(t *testing.T) {
 	raw := DefaultCodexProbeTemplate()
 	template, err := ParseCodexProbeTemplate(raw)

@@ -78,5 +78,5 @@ func TestCodexHypothesisModelTraceLocal(t *testing.T) {
 func TestCodexHypothesisMissingNodeFailsBeforeNetwork(t *testing.T) {
 	t.Setenv("PATH", "")
 	_, err := generateChallenges(context.Background())
-	require.ErrorContains(t, err, "Node is required")
+	require.ErrorContains(t, err, "node is required")
 }

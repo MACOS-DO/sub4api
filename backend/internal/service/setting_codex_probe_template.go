@@ -33,7 +33,7 @@ func (s *SettingService) GetCodexProbeTemplate(ctx context.Context) (*CodexProbe
 	defer cancel()
 	raw, err := s.settingRepo.GetValue(readCtx, SettingKeyOpenAICodexTicketPromptTemplate)
 	if err != nil && !errors.Is(err, ErrSettingNotFound) {
-		return nil, errors.New("Codex probe template settings unavailable")
+		return nil, errors.New("codex probe template settings unavailable")
 	}
 	template, err := ParseCodexProbeTemplate(raw)
 	s.codexProbeTemplateCache = &cachedCodexProbeTemplate{template: template, err: err, expiresAt: time.Now().Add(5 * time.Second)}

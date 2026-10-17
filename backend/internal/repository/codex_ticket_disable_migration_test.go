@@ -26,7 +26,7 @@ func TestMigration244TicketDisableRunsOnce(t *testing.T) {
 	fsys := fstest.MapFS{name: &fstest.MapFile{Data: data}}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	for _, applied := range []bool{false, true} {
 		prepareMigrationsBootstrapExpectations(mock)
@@ -55,7 +55,7 @@ func TestMigration244TicketDisableRollsBackWithoutLedgerRecord(t *testing.T) {
 	require.NoError(t, err)
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	prepareMigrationsBootstrapExpectations(mock)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT checksum FROM schema_migrations WHERE filename = $1")).
 		WithArgs(name).WillReturnError(sql.ErrNoRows)

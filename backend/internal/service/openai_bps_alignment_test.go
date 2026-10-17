@@ -76,18 +76,26 @@ func TestOpenAIBPSAdditionalToolsAndReplay(t *testing.T) {
 	original := bpsJSON(native)
 	response, err := s.bpsTransformResponse(c.Request.Context(), a, prepared, bpsResponse(native))
 	require.NoError(t, err)
-	call := response["output"].([]any)[0]
-	input := source["input"].([]any)
+	output, ok := response["output"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, output)
+	call := output[0]
+	input, ok := source["input"].([]any)
+	require.True(t, ok)
 	source["input"] = append(input, map[string]any{"type": "reasoning", "id": "rs_original", "summary": []any{"not-replayed"}, "encrypted_content": "opaque-ciphertext"}, call, map[string]any{"type": "custom_tool_call_output", "id": "ctco_client", "call_id": "call_custom", "output": "applied"})
 	replay, err := s.prepareOpenAIBPS(c.Request.Context(), c, a, []byte(bpsJSON(source)))
 	require.NoError(t, err)
 	var wire map[string]any
 	require.NoError(t, bpsDecode(replay.Body, &wire))
-	items := wire["input"].([]any)
-	reasoning := items[len(items)-3].(map[string]any)
+	items, ok := wire["input"].([]any)
+	require.True(t, ok)
+	require.GreaterOrEqual(t, len(items), 3)
+	reasoning, ok := items[len(items)-3].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, map[string]any{"type": "reasoning", "summary": []any{}, "encrypted_content": "opaque-ciphertext"}, reasoning)
 	require.JSONEq(t, original, bpsJSON(items[len(items)-2]))
-	result := items[len(items)-1].(map[string]any)
+	result, ok := items[len(items)-1].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "function_call_output", result["type"])
 	require.Equal(t, "fc_call_custom", result["id"])
 	require.Equal(t, "applied", result["output"])
@@ -120,13 +128,13 @@ func TestOpenAIBPSCompactedTurnLineage(t *testing.T) {
 			before := prepare("/responses", source)
 			response, err := s.bpsTransformResponse(c.Request.Context(), a, before, bpsResponse(bpsNative("before", "exec", map[string]any{"command": "pwd"})))
 			require.NoError(t, err)
-			source["input"] = append(source["input"].([]any), response["output"].([]any)[0], map[string]any{"type": "function_call_output", "call_id": "before", "output": "workspace"})
+			source["input"] = append(bpsRequireType[[]any](t, source["input"]), bpsRequireType[[]any](t, response["output"])[0], map[string]any{"type": "function_call_output", "call_id": "before", "output": "workspace"})
 			compactRequest := prepare("/responses/compact", source)
 			require.Equal(t, before.TurnID, compactRequest.TurnID)
 			require.Equal(t, 2, compactRequest.AgentIteration)
 			compactResponse, err := s.bpsTransformResponse(c.Request.Context(), a, compactRequest, bpsResponse(bpsText("The work is pending.")))
 			require.NoError(t, err)
-			ref := compactResponse["output"].([]any)[0]
+			ref := bpsRequireType[[]any](t, compactResponse["output"])[0]
 			input := []any{ref}
 			if retainedUser {
 				input = []any{user, ref}
@@ -141,7 +149,7 @@ func TestOpenAIBPSCompactedTurnLineage(t *testing.T) {
 				id := fmt.Sprintf("after_%d", i)
 				result, e := s.bpsTransformResponse(c.Request.Context(), a, after, bpsResponse(bpsNative(id, "exec", map[string]any{"command": "ls"})))
 				require.NoError(t, e)
-				source["input"] = append(source["input"].([]any), result["output"].([]any)[0], map[string]any{"type": "function_call_output", "call_id": id, "output": "files"})
+				source["input"] = append(bpsRequireType[[]any](t, source["input"]), bpsRequireType[[]any](t, result["output"])[0], map[string]any{"type": "function_call_output", "call_id": id, "output": "files"})
 				after = prepare("/responses", source)
 				require.Equal(t, before.TurnID, after.TurnID)
 				require.Equal(t, 3+i, after.AgentIteration)
@@ -155,7 +163,7 @@ func TestOpenAIBPSCompactedTurnLineage(t *testing.T) {
 			after = prepare("/responses", source)
 			require.Equal(t, before.TurnID, after.TurnID)
 			require.Equal(t, 5, after.AgentIteration)
-			source["input"] = append(source["input"].([]any), bpsMessage("user", "new request"))
+			source["input"] = append(bpsRequireType[[]any](t, source["input"]), bpsMessage("user", "new request"))
 			next := prepare("/responses", source)
 			require.NotEqual(t, before.TurnID, next.TurnID)
 			require.Equal(t, 1, next.AgentIteration)
@@ -175,7 +183,7 @@ func TestOpenAIBPSLegacyCompactStateAndStableRetry(t *testing.T) {
 	require.NoError(t, err)
 	response, err := s.bpsTransformResponse(c.Request.Context(), a, first, bpsResponse(bpsNative("legacy_call", "exec", map[string]any{"command": "pwd"})))
 	require.NoError(t, err)
-	source["input"] = append(source["input"].([]any), response["output"].([]any)[0], map[string]any{"type": "function_call_output", "call_id": "legacy_call", "output": "done"})
+	source["input"] = append(bpsRequireType[[]any](t, source["input"]), bpsRequireType[[]any](t, response["output"])[0], map[string]any{"type": "function_call_output", "call_id": "legacy_call", "output": "done"})
 	second, err := s.prepareOpenAIBPS(c.Request.Context(), c, a, []byte(bpsJSON(source)))
 	require.NoError(t, err)
 	require.Equal(t, first.TurnID, second.TurnID)
@@ -192,7 +200,7 @@ func TestOpenAIBPSNativePlanAliasesAndFailureReplay(t *testing.T) {
 	native := map[string]any{"type": "function_call", "id": "fc_plan", "call_id": "plan", "name": "functions.update_plan", "arguments": `{"summary":"next","plan":[{"title":"inspect","status":"active"}]}`}
 	response, err := s.bpsTransformResponse(c.Request.Context(), a, prepared, bpsResponse(native))
 	require.NoError(t, err)
-	call := response["output"].([]any)[0].(map[string]any)
+	call := bpsRequireType[map[string]any](t, bpsRequireType[[]any](t, response["output"])[0])
 	require.Equal(t, "in_progress", gjson.Get(stringValue(call["arguments"]), "plan.0.status").String())
 	for _, output := range []string{"Plan updated", "Plan update failed: rejected"} {
 		source["input"] = []any{bpsMessage("user", "plan"), call, map[string]any{"type": "function_call_output", "call_id": "plan", "output": output}}
@@ -277,44 +285,46 @@ func TestOpenAIBPSForwardToolsCompactStructuredContinuation(t *testing.T) {
 			}
 			appendResult := func(response map[string]any, text string) {
 				t.Helper()
-				output := response["output"].([]any)
-				source["input"] = append(source["input"].([]any), output...)
+				output := bpsRequireType[[]any](t, response["output"])
+				source["input"] = append(bpsRequireType[[]any](t, source["input"]), output...)
 				for _, raw := range output {
-					call := raw.(map[string]any)
+					call := bpsRequireType[map[string]any](t, raw)
 					kind := stringValue(call["type"])
 					if kind == "function_call" || kind == "custom_tool_call" {
-						source["input"] = append(source["input"].([]any), map[string]any{"type": kind + "_output", "call_id": call["call_id"], "output": text})
+						source["input"] = append(bpsRequireType[[]any](t, source["input"]), map[string]any{"type": kind + "_output", "call_id": call["call_id"], "output": text})
 					}
 				}
 			}
 			response, wire := invoke("/responses", map[string]any{"type": "reasoning", "id": "rs_1", "summary": []any{}, "encrypted_content": "ciphertext"}, bpsNative("inspect", "exec", map[string]any{"command": "pwd"}))
-			turn := wire["metadata"].(map[string]any)["turn_id"]
+			turn := bpsRequireType[map[string]any](t, wire["metadata"])["turn_id"]
 			appendResult(response, "/workspace")
 			response, wire = invoke("/responses", map[string]any{"type": "function_call", "id": "fc_plan", "call_id": "plan", "name": "functions.update_plan", "arguments": `{"plan":[{"description":"patch","status":"active"}]}`})
-			require.Equal(t, turn, wire["metadata"].(map[string]any)["turn_id"])
+			require.Equal(t, turn, bpsRequireType[map[string]any](t, wire["metadata"])["turn_id"])
 			require.Contains(t, bpsJSON(wire), "ciphertext")
 			require.Contains(t, bpsJSON(wire), "fc_inspect")
 			appendResult(response, "Plan updated")
 			native := bpsNative("patch", "apply_patch", nil)
 			native["arguments"] = bpsJSON(map[string]any{"summary": "codex2api.custom/apply_patch", "code": "*** Begin Patch\n*** End Patch", "references": []any{}, "extended_summary": "original wrapper"})
 			response, wire = invoke("/responses", native)
-			require.Equal(t, turn, wire["metadata"].(map[string]any)["turn_id"])
+			require.Equal(t, turn, bpsRequireType[map[string]any](t, wire["metadata"])["turn_id"])
 			require.Contains(t, bpsJSON(wire), `status\":\"ok`)
 			appendResult(response, "patch applied")
 			compact, wire := invoke("/responses/compact", bpsText("Patch applied. Verify and return the final result."))
-			require.Equal(t, "4", wire["metadata"].(map[string]any)["agent_iteration"])
-			require.Equal(t, turn, wire["metadata"].(map[string]any)["turn_id"])
+			require.Equal(t, "4", bpsRequireType[map[string]any](t, wire["metadata"])["agent_iteration"])
+			require.Equal(t, turn, bpsRequireType[map[string]any](t, wire["metadata"])["turn_id"])
 			source["input"] = compact["output"]
 			s = &OpenAIGatewayService{cache: s.cache}
 			response, wire = invoke("/responses", bpsNative("verify", "exec", map[string]any{"command": "test -f file"}))
 			require.NotContains(t, bpsJSON(wire), bpsCompactPrefix)
-			require.Equal(t, "4", wire["metadata"].(map[string]any)["agent_iteration"])
-			require.Equal(t, turn, wire["metadata"].(map[string]any)["turn_id"])
+			require.Equal(t, "4", bpsRequireType[map[string]any](t, wire["metadata"])["agent_iteration"])
+			require.Equal(t, turn, bpsRequireType[map[string]any](t, wire["metadata"])["turn_id"])
 			appendResult(response, "verified")
 			response, wire = invoke("/responses", bpsText(`{"ok":true}`))
-			require.Equal(t, "5", wire["metadata"].(map[string]any)["agent_iteration"])
-			require.Equal(t, turn, wire["metadata"].(map[string]any)["turn_id"])
-			require.Equal(t, "json_schema", response["text"].(map[string]any)["format"].(map[string]any)["type"])
+			require.Equal(t, "5", bpsRequireType[map[string]any](t, wire["metadata"])["agent_iteration"])
+			require.Equal(t, turn, bpsRequireType[map[string]any](t, wire["metadata"])["turn_id"])
+			text := bpsRequireType[map[string]any](t, response["text"])
+			format := bpsRequireType[map[string]any](t, text["format"])
+			require.Equal(t, "json_schema", format["type"])
 		})
 	}
 }

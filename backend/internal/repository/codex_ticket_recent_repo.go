@@ -22,7 +22,7 @@ func (r *codexTicketAttemptRepository) LatestEvents(ctx context.Context, account
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var event service.CodexTicketRecentEvent
 		var accountID int64
