@@ -2,7 +2,7 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <CodexTicketProxyPool />
+        <CodexTicketProxyPool ref="codexTicketPoolRef" />
         <div class="flex flex-wrap items-center gap-3">
           <!-- Left: Search + Filters -->
           <div class="relative w-full sm:w-64">
@@ -1189,6 +1189,9 @@ const buildProxyQueryFilters = () => ({
   sort_order: sortState.sort_order
 })
 
+const codexTicketPoolRef = ref<InstanceType<typeof CodexTicketProxyPool> | null>(null)
+let proxiesLoadedOnce = false
+
 const loadProxies = async () => {
   if (abortController) {
     abortController.abort()
@@ -1209,6 +1212,10 @@ const loadProxies = async () => {
     proxies.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
+    // The ticket pool panel loads on its own mount; afterwards keep its proxy list in step
+    // with additions, edits and deletions made on this page.
+    if (proxiesLoadedOnce) void codexTicketPoolRef.value?.reload?.()
+    proxiesLoadedOnce = true
   } catch (error) {
     if (isAbortError(error)) {
       return

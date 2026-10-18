@@ -182,12 +182,12 @@ func (h *ProxyHandler) GetCodexTicketPool(c *gin.Context) {
 		codexTicketError(c, service.ErrCodexTicketUnavailable)
 		return
 	}
-	pool, err := h.codexTicketSettings.GetCodexTicketPool(c.Request.Context())
+	view, err := h.codexTicketSettings.DescribeCodexTicketPool(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, pool)
+	response.Success(c, view)
 }
 
 func (h *ProxyHandler) UpdateCodexTicketPool(c *gin.Context) {
@@ -204,7 +204,7 @@ func (h *ProxyHandler) UpdateCodexTicketPool(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	saved, err := h.codexTicketSettings.GetCodexTicketPool(c.Request.Context())
+	saved, err := h.codexTicketSettings.DescribeCodexTicketPool(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
