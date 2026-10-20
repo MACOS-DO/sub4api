@@ -6,9 +6,6 @@
 -- TypeSafe 不是对话模型，不进入渠道监控 provider，因此 channel_monitors /
 -- channel_monitor_request_templates 的约束保持不变。
 --
--- Sub4API: 保留 openai_bps（245_openai_bps_platform.sql），否则已有 openai_bps 行的
--- 存量库在此迁移会校验失败。
---
 -- Runs after 238_opencode_go_platform.sql. DROP ... IF EXISTS 保证可重入；
 -- 新约束是 238 的超集，存量行瞬时校验通过。
 
@@ -17,7 +14,7 @@ ALTER TABLE user_platform_quotas
 
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
-    CHECK (platform IN ('anthropic', 'openai', 'openai_bps', 'gemini', 'antigravity', 'grok',
+    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
                         'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe'));
 
 ALTER TABLE composite_model_routes
@@ -25,5 +22,5 @@ ALTER TABLE composite_model_routes
 
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
-    CHECK (target_platform IN ('anthropic', 'openai', 'openai_bps', 'gemini', 'antigravity', 'grok',
+    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
                                'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe'));

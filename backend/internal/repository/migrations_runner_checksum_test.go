@@ -3,6 +3,7 @@ package repository
 import (
 	"testing"
 
+	dbmigrations "github.com/MACOS-DO/sub4api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
@@ -161,4 +162,40 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		)
 		require.False(t, ok)
 	})
+
+	t.Run("241 Sub4API历史checksum可兼容上游版本", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"241_add_typesafe_platform.sql",
+			"6034ab0415266a5299a64d49f56b52dab8c61a3c5b2eaa82327c81cc5698a871",
+			"b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2",
+		)
+		require.True(t, ok)
+	})
+
+	t.Run("241未知checksum不兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"241_add_typesafe_platform.sql",
+			"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+			"b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2",
+		)
+		require.False(t, ok)
+	})
+}
+
+// 241 的兼容规则与 241_0 / 250 中硬编码的上游 checksum 必须与内嵌文件一致。
+func TestMigration241ChecksumMatchesUpstreamFile(t *testing.T) {
+	const upstream = "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2"
+	content, err := dbmigrations.FS.ReadFile("241_add_typesafe_platform.sql")
+	require.NoError(t, err)
+	require.Equal(t, upstream, migrationChecksum(string(content)))
+	require.Equal(t, upstream, migrationChecksumCompatibilityRules["241_add_typesafe_platform.sql"].fileChecksum)
+
+	for _, name := range []string{
+		"241_0_sub4api_skip_typesafe_constraint_for_openai_bps.sql",
+		"250_sub4api_normalize_241_checksum.sql",
+	} {
+		content, err := dbmigrations.FS.ReadFile(name)
+		require.NoError(t, err)
+		require.Containsf(t, string(content), upstream, "%s must reference upstream 241 checksum", name)
+	}
 }
