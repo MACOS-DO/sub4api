@@ -59,9 +59,17 @@ func (s *OpenAIGatewayService) codexTicketSupportedModel(model string) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) chooseCodexTicketProxy(ctx context.Context, accountID int64, model string) (string, *Proxy, error) {
+// chooseCodexTicketProxy 选择打票出口。返回的 *Proxy 为 nil 表示直连（仅账号模式下账号未绑定代理时）。
+func (s *OpenAIGatewayService) chooseCodexTicketProxy(ctx context.Context, account *Account, model string) (string, *Proxy, error) {
 	if s.settingService == nil {
 		return "", nil, ErrCodexTicketNoProxy
+	}
+	accountID := account.ID
+	if s.settingService.GetCodexTicketProxySource(ctx) == CodexTicketProxySourceAccount {
+		if account.ProxyID != nil && account.Proxy != nil {
+			return account.Proxy.URL(), account.Proxy, nil
+		}
+		return "", nil, nil
 	}
 	proxies, err := s.settingService.AvailableCodexTicketProxies(ctx)
 	if err != nil {
@@ -197,12 +205,14 @@ func (s *OpenAIGatewayService) runCodexTicketAttemptWithChallengeGenerator(ctx c
 		}
 		return result, nil
 	}
-	proxyURL, proxy, proxyErr := s.chooseCodexTicketProxy(ctx, account.ID, model)
+	proxyURL, proxy, proxyErr := s.chooseCodexTicketProxy(ctx, account, model)
 	if proxyErr != nil {
 		a.Outcome, a.ReasonCode = "error", "proxy_unavailable"
 		return result, proxyErr
 	}
-	a.ProxyID, a.ProxyName = &proxy.ID, proxy.Name
+	if proxy != nil {
+		a.ProxyID, a.ProxyName = &proxy.ID, proxy.Name
+	}
 	if s.httpUpstream == nil {
 		a.Outcome, a.ReasonCode = "error", "upstream_unavailable"
 		return result, ErrCodexTicketUnavailable

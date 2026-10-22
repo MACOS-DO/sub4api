@@ -103,3 +103,65 @@ func (s *SettingService) AvailableCodexTicketProxies(ctx context.Context) ([]Pro
 	sort.Slice(available, func(i, j int) bool { return available[i].ID < available[j].ID })
 	return available, nil
 }
+
+type CodexTicketPoolProxyRef struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name,omitempty"`
+	Reason string `json:"reason,omitempty"` // deleted | disabled | expired
+}
+
+// CodexTicketPoolView 是代理池的已保存配置加上「此刻实际生效」的结果，供后台核对：
+// Effective 是打票会轮换的代理；Unavailable 是已勾选但当前不会被使用的代理。
+type CodexTicketPoolView struct {
+	CodexTicketPool
+	Source      string                    `json:"source"`
+	Effective   []CodexTicketPoolProxyRef `json:"effective"`
+	Unavailable []CodexTicketPoolProxyRef `json:"unavailable"`
+}
+
+func (s *SettingService) DescribeCodexTicketPool(ctx context.Context) (CodexTicketPoolView, error) {
+	pool, err := s.GetCodexTicketPool(ctx)
+	if err != nil {
+		return CodexTicketPoolView{}, err
+	}
+	view := CodexTicketPoolView{CodexTicketPool: pool, Source: s.GetCodexTicketProxySource(ctx),
+		Effective: []CodexTicketPoolProxyRef{}, Unavailable: []CodexTicketPoolProxyRef{}}
+	available, err := s.AvailableCodexTicketProxies(ctx)
+	if err != nil {
+		return view, err
+	}
+	effective := make(map[int64]bool, len(available))
+	for _, proxy := range available {
+		effective[proxy.ID] = true
+		view.Effective = append(view.Effective, CodexTicketPoolProxyRef{ID: proxy.ID, Name: proxy.Name})
+	}
+	if pool.Mode != "custom" {
+		return view, nil
+	}
+	found, err := s.proxyRepo.ListByIDs(ctx, pool.ProxyIDs)
+	if err != nil {
+		return view, err
+	}
+	byID := make(map[int64]Proxy, len(found))
+	for _, proxy := range found {
+		byID[proxy.ID] = proxy
+	}
+	now := time.Now()
+	for _, id := range pool.ProxyIDs {
+		if effective[id] {
+			continue
+		}
+		ref := CodexTicketPoolProxyRef{ID: id, Reason: "deleted"}
+		if proxy, ok := byID[id]; ok {
+			ref.Name = proxy.Name
+			switch {
+			case !proxy.IsActive():
+				ref.Reason = "disabled"
+			case proxy.IsExpired(now):
+				ref.Reason = "expired"
+			}
+		}
+		view.Unavailable = append(view.Unavailable, ref)
+	}
+	return view, nil
+}

@@ -496,6 +496,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := ValidateOpenAIRequestTimezoneExtra(input.Platform, accountExtra); err != nil {
 		return nil, err
 	}
+	if accountExtra != nil {
+		// 检测结果只由后端写入；跟随模式下时区在创建后检测得出。
+		preserveOpenAIRequestTimezoneDetection(nil, accountExtra)
+	}
 	accountExtra, err = normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
 	if err != nil {
 		return nil, err
@@ -586,6 +590,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			}()
 		}
 	}
+	s.scheduleOpenAIRequestTimezoneDetection(account)
 
 	return account, nil
 }
@@ -654,6 +659,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 	wasOveragesEnabled := account.IsOveragesEnabled()
+	previousTimezoneMode := account.OpenAIRequestTimezoneMode()
+	previousProxyID := cloneAccountValuePointer(account.ProxyID)
+	_, hadTimezoneDetection := account.Extra[openAIRequestTimezoneDetectedExtraKey]
 
 	if input.Name != "" {
 		account.Name = input.Name
@@ -749,6 +757,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		preserveOpenAIRequestTimezoneDetection(account.Extra, normalizedExtra)
 		normalizedExtra = MergeOpenAICodexTicketExtra(normalizedExtra, account.Extra)
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
@@ -979,6 +988,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if !sameProxyID(previousProxyID, updated.ProxyID) || previousTimezoneMode != updated.OpenAIRequestTimezoneMode() || !hadTimezoneDetection {
+		s.scheduleOpenAIRequestTimezoneDetection(updated)
+	}
 	return updated, nil
 }
 
@@ -1028,6 +1040,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
 	delete(input.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(input.Extra, OpenCodeGoUsageSnapshotExtraKey)
+	delete(input.Extra, openAIRequestTimezoneDetectedExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -1257,6 +1270,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 				return nil, err
 			}
 		}
+		s.scheduleOpenAIRequestTimezoneDetectionByIDs(ctx, input.AccountIDs)
 	}
 
 	// Handle group bindings per account (requires individual operations).
@@ -1429,6 +1443,7 @@ func (s *adminServiceImpl) RevertAccountProxyFallback(ctx context.Context, id in
 	if err != nil {
 		return fmt.Errorf("get account after proxy revert: %w", err)
 	}
+	s.scheduleOpenAIRequestTimezoneDetection(account)
 	return s.propagateProxyToShadows(ctx, id, account.ProxyID)
 }
 

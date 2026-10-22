@@ -1136,10 +1136,16 @@ export async function getOpenAIRequestTimezones(): Promise<{ default: string; ti
   return data
 }
 
+export async function detectOpenAIRequestTimezone(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/openai-request-timezone/detect`)
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
   getOpenAIRequestTimezones,
+  detectOpenAIRequestTimezone,
   getUpstreamBillingRatesWithEtag,
   getById,
   create,

@@ -111,6 +111,17 @@ export async function saveCadence(value: { retry_min_seconds: number; retry_max_
   await apiClient.put('/admin/accounts/codex-ticket-cadence', value)
 }
 
+export type TicketProxySource = 'pool' | 'account'
+
+export async function proxySource(): Promise<{ source: TicketProxySource }> {
+  const { data } = await apiClient.get('/admin/accounts/codex-ticket-proxy-source')
+  return data
+}
+
+export async function saveProxySource(source: TicketProxySource): Promise<void> {
+  await apiClient.put('/admin/accounts/codex-ticket-proxy-source', { source })
+}
+
 export interface TicketParticipation {
   enabled: boolean
   models: Record<string, boolean>
