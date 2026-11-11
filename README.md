@@ -2,9 +2,9 @@
 
 **TG 交流群：[t.me/macosdo](https://t.me/macosdo)**
 
-<a href="https://proxylane.dev/?utm_source=macosdo&utm_medium=partnership&utm_campaign=macosdo_sponsor_202610&utm_content=github_readme"><img src="assets/partners/proxylane.png" alt="ProxyLane 住宅代理" width="800"></a>
+<a href="https://proxylane.dev/go/macosdo-readme"><img src="assets/partners/proxylane.png" alt="ProxyLane 静态 ISP" width="800"></a>
 
-**ProxyLane 住宅代理**：195 个国家，95%+ IP 获 Scamalytics 低风险评级。账号请求时区用新加坡，打票代理池也选新加坡住宅 IP，每个账号一个固定 IP，最长保持 72 小时。中文界面，支持 USDT 付款，首次购买使用优惠码 `MACOSDO30` 享 7 折。
+**ProxyLane 静态 ISP**：Claude、Codex 账号一号一个固定 IP。美国 Comcast / RCN / Verizon 家宽，日本、新加坡原生 IP，20+ 国家，支持 PayPal、USDT。ISP 首单使用优惠码 `MACOSDO20` 享 8 折。配置方法见 [每个账号一个独立 IP](docs/PROXY_CN.md)。
 
 <div align="center">
 
